@@ -1103,6 +1103,8 @@ class PrinterService
 
             $escpos->text($this->formatClosedBillingPair('Transaksi Kasir', number_format((float) ($recapData['cashierCount'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Total Penjualan', 'Rp '.number_format((float) ($recapData['cashierRevenue'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Gross Sales', 'Rp '.number_format((float) ($recapData['grossSales'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Net Sales', 'Rp '.number_format((float) ($recapData['netSales'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Total Pajak', 'Rp '.number_format((float) ($recapData['totalTax'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width)."\n");
@@ -1230,6 +1232,8 @@ class PrinterService
             $separator,
             $this->formatClosedBillingPair('Transaksi Kasir', number_format((float) ($recapData['cashierCount'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total Penjualan', 'Rp '.number_format((float) ($recapData['cashierRevenue'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Gross Sales', 'Rp '.number_format((float) ($recapData['grossSales'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Net Sales', 'Rp '.number_format((float) ($recapData['netSales'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total Pajak', 'Rp '.number_format((float) ($recapData['totalTax'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width),

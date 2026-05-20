@@ -211,6 +211,16 @@
           <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardTotalDp, 0, ',', '.') }}</p>
         </div>
 
+        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
+          <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardGrossSales, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+          <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
+          <p class="text-2xl font-bold text-slate-800 mt-1">Rp {{ number_format($dashboardNetSales, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
           <p class="text-sm font-medium text-gray-700">Total Pembayaran Tunai</p>
           <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($dashboardTotalCash, 0, ',', '.') }}</p>

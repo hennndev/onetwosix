@@ -319,6 +319,8 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Save PDF')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
+        ->assertSeeText('Gross Sales (Included DP)')
+        ->assertSeeText('Net Sales (Included DP)')
         ->assertSeeText('Total Compliment (Qty)')
         ->assertSeeText('Total FOC (Qty)')
         ->assertSeeText('Qty 8')
@@ -469,6 +471,8 @@ test('recap close preview print endpoint triggers server print and returns log p
         ->toContain('Qty: 2x')
         ->toContain('Item Keluar Kitchen')
         ->toContain('Item Keluar Bar')
+        ->toContain('Gross Sales')
+        ->toContain('Net Sales')
         ->toContain('DAFTAR TRANSAKSI')
         ->toContain('RCP-PRINT-001');
 });
@@ -584,7 +588,9 @@ test('recap close preview print can skip transaction history when disabled', fun
 
     expect($printedLog)
         ->not->toContain('DAFTAR TRANSAKSI')
-        ->not->toContain('RCP-NOHIST-001');
+        ->not->toContain('RCP-NOHIST-001')
+        ->toContain('Gross Sales')
+        ->toContain('Net Sales');
 });
 
 test('recap close preview excludes incomplete empty transactions', function () {
@@ -786,6 +792,8 @@ test('recap close preview print calculates total with tax service and discount',
     expect($printedLog)
         ->toContain('Total Diskon')
         ->toContain('- Rp 5.000')
+        ->toContain('Gross Sales')
+        ->toContain('Net Sales')
         ->toContain('Total DP');
 });
 

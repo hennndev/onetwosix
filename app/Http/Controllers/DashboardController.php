@@ -105,6 +105,8 @@ class DashboardController extends Controller
         $dashboardTotalTax = (float) ($dashboardAggregate?->total_tax ?? 0);
         $dashboardTotalServiceCharge = (float) ($dashboardAggregate?->total_service_charge ?? 0);
         $dashboardTotalDp = (float) ($dashboardAggregate?->total_dp ?? 0);
+        $dashboardGrossSales = (float) ($dashboardAggregate?->total_amount ?? 0) + $dashboardTotalDp;
+        $dashboardNetSales = max(0.0, $dashboardGrossSales - $dashboardTotalTax - $dashboardTotalServiceCharge);
         $dashboardTotalCash = (float) ($dashboardAggregate?->total_cash ?? 0);
         $dashboardTotalTransfer = (float) ($dashboardAggregate?->total_transfer ?? 0);
         $dashboardTotalDebit = (float) ($dashboardAggregate?->total_debit ?? 0);
@@ -140,6 +142,8 @@ class DashboardController extends Controller
             'dashboardTotalTax',
             'dashboardTotalServiceCharge',
             'dashboardTotalDp',
+            'dashboardGrossSales',
+            'dashboardNetSales',
             'dashboardTotalCash',
             'dashboardTotalTransfer',
             'dashboardTotalDebit',
