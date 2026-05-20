@@ -69,7 +69,18 @@
 
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <p class="text-sm font-medium text-gray-500">Total Penjualan Kasir</p>
-            <p class="text-2xl font-bold text-emerald-700 mt-1">Rp {{ number_format($cashierRevenue, 0, ',', '.') }}</p>
+            {{-- <p class="text-2xl font-bold text-emerald-700 mt-1">Rp {{ number_format($cashierRevenue, 0, ',', '.') }}</p> --}}
+
+            <div class="space-y-1.5 mt-3 border-t pt-2">
+              <div class="flex justify-between items-center">
+                <span class="text-sm font-medium text-emerald-700">Gross Sales</span>
+                <span class="text-base font-semibold text-emerald-700">Rp {{ number_format($grossSales, 0, ',', '.') }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm font-medium text-slate-700">Net Sales</span>
+                <span class="text-base font-semibold text-slate-700">Rp {{ number_format($netSales, 0, ',', '.') }}</span>
+              </div>
+            </div>
           </div>
 
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -711,20 +722,21 @@
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <p class="text-sm font-medium text-gray-500">Total Penjualan Kasir</p>
-                  <p class="text-2xl font-bold text-emerald-700 mt-1"
-                     x-text="selectedHistory?.total_amount ?? 'Rp 0'"></p>
-                </div>
+                  {{-- <p class="text-2xl font-bold text-emerald-700 mt-1"
+                     x-text="selectedHistory?.total_amount ?? 'Rp 0'"></p> --}}
 
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
-                  <p class="text-2xl font-bold text-emerald-800 mt-1"
-                     x-text="'Rp ' + Number((Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0))).toLocaleString('id-ID')"></p>
-                </div>
-
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
-                  <p class="text-2xl font-bold text-slate-800 mt-1"
-                     x-text="'Rp ' + Number(Math.max(0, (Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0) - Number(selectedHistory?.total_tax_raw || 0) - Number(selectedHistory?.total_service_charge_raw || 0)))).toLocaleString('id-ID')"></p>
+                  <div class="space-y-1.5 mt-3 border-t pt-2">
+                    <div class="flex justify-between items-center">
+                      <span class="text-sm font-medium text-emerald-700">Gross Sales</span>
+                      <span class="text-base font-semibold text-emerald-700"
+                            x-text="'Rp ' + Number((Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0))).toLocaleString('id-ID')"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-sm font-medium text-slate-700">Net Sales</span>
+                      <span class="text-base font-semibold text-slate-700"
+                            x-text="'Rp ' + Number(Math.max(0, (Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0) - Number(selectedHistory?.total_tax_raw || 0) - Number(selectedHistory?.total_service_charge_raw || 0)))).toLocaleString('id-ID')"></span>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

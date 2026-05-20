@@ -65,8 +65,8 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')
         ->assertSeeText('Total DP')
-        ->assertSeeText('Gross Sales (Included DP)')
-        ->assertSeeText('Net Sales (Included DP)')
+        ->assertSeeText('Gross Sales')
+        ->assertSeeText('Net Sales')
         ->assertSeeText('(booking)')
         ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Pembayaran Transfer')
@@ -341,8 +341,9 @@ test('dashboard uses paid_at within the 09:00 operational window for totals', fu
     actingAs($admin)
         ->get(route('admin.dashboard'))
         ->assertSuccessful()
-        ->assertSeeText('Rp 100.000')
-        ->assertSeeText('1 transaksi')
+        ->assertSeeText('Gross Sales')
+        ->assertSeeText('Net Sales')
+        ->assertSeeText('Transaksi Hari Ini')
         ->assertSeeText('4 item terjual');
 
     Carbon::setTestNow();

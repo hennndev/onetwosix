@@ -52,10 +52,20 @@
             </svg>
           </div>
         </div>
-        <div class="mb-1">
+        {{-- <div class="mb-4">
           <p class="text-2xl font-bold text-gray-800">Rp {{ number_format($revenueToday, 0, ',', '.') }}</p>
+        </div> --}}
+
+        <div class="space-y-2 mb-3 border-t pt-3">
+          <div class="flex justify-between items-center">
+            <span class="text-sm font-medium text-emerald-700">Gross Sales</span>
+            <span class="text-base font-semibold text-emerald-800">Rp {{ number_format($dashboardGrossSales, 0, ',', '.') }}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-sm font-medium text-slate-700">Net Sales</span>
+            <span class="text-base font-semibold text-slate-800">Rp {{ number_format($dashboardNetSales, 0, ',', '.') }}</span>
+          </div>
         </div>
-        <p class="text-sm text-gray-500">{{ $transactionsToday }} transaksi</p>
       </div>
 
       <!-- Transaksi Hari Ini -->
@@ -209,16 +219,6 @@
         <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-lg">
           <p class="text-sm font-medium text-cyan-700">Total DP <span class="text-xs font-normal">(booking)</span></p>
           <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardTotalDp, 0, ',', '.') }}</p>
-        </div>
-
-        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-          <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
-          <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardGrossSales, 0, ',', '.') }}</p>
-        </div>
-
-        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-          <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
-          <p class="text-2xl font-bold text-slate-800 mt-1">Rp {{ number_format($dashboardNetSales, 0, ',', '.') }}</p>
         </div>
 
         <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">

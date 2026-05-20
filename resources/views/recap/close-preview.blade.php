@@ -139,10 +139,6 @@
           <span class="value">{{ number_format($cashierCount, 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Penjualan</span>
-          <span class="value">Rp {{ number_format($cashierRevenue, 0, ',', '.') }}</span>
-        </div>
-        <div class="flex items-center justify-between gap-2">
           <span class="label">Gross Sales (Included DP)</span>
           <span class="value">Rp {{ number_format($grossSales ?? 0, 0, ',', '.') }}</span>
         </div>
