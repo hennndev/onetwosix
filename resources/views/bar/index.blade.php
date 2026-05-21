@@ -301,13 +301,61 @@
           </button>
         </form>
         <form action="{{ route('admin.bar.end-day') }}"
+              x-ref="submitEndDayBarForm"
               method="POST">
           @csrf
-          <button type="submit"
+          <button type="button"
+                  @click="openSubmitEndDayBarModal()"
                   class="inline-flex items-center rounded-xl bg-purple-500 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-600 transition">
             Submit End Day Bar
           </button>
         </form>
+      </div>
+
+      <div class="rounded-xl border border-purple-200 bg-purple-50/40 p-4">
+        <h3 class="text-sm font-semibold text-purple-800">Preview Snapshot Bar</h3>
+        <p class="text-xs text-purple-700 mt-1">Daftar item dan quantity yang akan masuk ke End Day saat ini.</p>
+
+        <div class="mt-3 space-y-2">
+          @forelse (($barEndDayPreview['items'] ?? []) as $item)
+            <div class="flex items-center justify-between rounded-lg border border-purple-100 bg-white px-3 py-2">
+              <span class="text-sm text-gray-800">{{ $item['name'] }}</span>
+              <span class="text-sm font-semibold text-purple-700">{{ number_format((int) $item['quantity'], 0, ',', '.') }}</span>
+            </div>
+          @empty
+            <p class="text-sm text-gray-500">Belum ada item pada snapshot bar.</p>
+          @endforelse
+        </div>
+      </div>
+    </div>
+
+    <div x-show="showSubmitEndDayBarModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         style="display: none;"
+         class="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4"
+         @click.self="closeSubmitEndDayBarModal()">
+      <div class="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-900">Konfirmasi Submit End Day Bar</h3>
+          <p class="text-sm text-gray-500 mt-1">Pastikan snapshot sudah sesuai. Data yang disubmit tidak bisa diubah.</p>
+        </div>
+        <div class="px-5 py-4 flex items-center justify-end gap-2">
+          <button type="button"
+                  @click="closeSubmitEndDayBarModal()"
+                  class="inline-flex items-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+            Batal
+          </button>
+          <button type="button"
+                  @click="confirmSubmitEndDayBar()"
+                  class="inline-flex items-center rounded-xl bg-purple-500 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-600 transition">
+            Ya, Submit End Day
+          </button>
+        </div>
       </div>
     </div>
 
@@ -331,7 +379,7 @@
               <tr @click="openHistoryDetail({{ $history->id }})"
                   class="cursor-pointer hover:bg-purple-50 transition">
                 <td class="px-5 py-3 text-sm text-gray-800">{{ $history->end_day?->format('d/m/Y') ?? '-' }}</td>
-                <td class="px-5 py-3 text-sm text-gray-900 text-right font-semibold">{{ number_format((int) $history->total_items, 0, ',', '.') }}</td>
+                <td class="px-5 py-3 text-sm text-gray-900 text-right font-semibold">{{ number_format((int) ($history->resolved_total_items ?? $history->total_items), 0, ',', '.') }}</td>
                 <td class="px-5 py-3 text-sm text-gray-600">{{ $history->last_synced_at?->format('d/m/Y H:i') ?? '-' }}</td>
               </tr>
             @empty
@@ -518,6 +566,7 @@
         toastMessage: '',
         toastType: 'success',
         pollInterval: null,
+        showSubmitEndDayBarModal: false,
         showHistoryDetailModal: false,
         selectedHistoryDetail: null,
         isReprintingHistory: false,
@@ -526,7 +575,7 @@
                     return [
                         'id' => $history->id,
                         'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
-                        'total_items' => (int) $history->total_items,
+                        'total_items' => (int) ($history->resolved_total_items ?? $history->total_items),
                         'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
                         'preview_url' => route('admin.bar.end-day.preview', $history),
                         'items' => $history->endayItems->map(function ($item) {
@@ -586,6 +635,19 @@
         filterByStatus(status) {
           this.currentStatus = status;
           this.fetchOrders();
+        },
+
+        openSubmitEndDayBarModal() {
+          this.showSubmitEndDayBarModal = true;
+        },
+
+        closeSubmitEndDayBarModal() {
+          this.showSubmitEndDayBarModal = false;
+        },
+
+        confirmSubmitEndDayBar() {
+          this.closeSubmitEndDayBarModal();
+          this.$refs.submitEndDayBarForm?.submit();
         },
 
         openHistoryDetail(historyId) {

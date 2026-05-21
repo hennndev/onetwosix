@@ -50,30 +50,44 @@ class BarController extends Controller
             'selesai' => BarOrder::where('status', 'selesai')->count(),
         ];
 
-        [$endDay] = $this->resolveEndDayRange();
+        [$endDay, $startAt, $endAt] = $this->resolveEndDayRange();
 
-        $dailySnapshot = DailyBarSnapshot::query()
-            ->with(['dailyItems.inventoryItem'])
-            ->whereDate('end_day', $endDay)
-            ->latest('id')
-            ->first();
+        $dailySnapshot = $this->rebuildDailySnapshot($endDay, $startAt, $endAt);
+        $snapshotItems = collect();
+
+        if ($dailySnapshot !== null) {
+            $dailySnapshot->loadMissing(['dailyItems.inventoryItem']);
+
+            $snapshotItems = $dailySnapshot->dailyItems
+                ->map(fn (DailyBarItem $item): array => [
+                    'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item'),
+                    'quantity' => (int) $item->quantity,
+                ])
+                ->values();
+        }
 
         $barEndDayPreview = [
             'total_items' => (int) ($dailySnapshot?->total_items ?? 0),
             'last_synced_at' => $dailySnapshot?->last_synced_at,
+            'items' => $snapshotItems->all(),
         ];
         $barRecapHistories = RecapHistoryBar::query()
             ->with(['endayItems.inventoryItem'])
             ->latest('end_day')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function (RecapHistoryBar $history): RecapHistoryBar {
+                $history->setAttribute('resolved_total_items', (int) $history->endayItems->sum('quantity'));
+
+                return $history;
+            });
 
         return view('bar.index', compact('orders', 'stats', 'barEndDayPreview', 'barRecapHistories'));
     }
 
     public function submitEndDay(PrinterService $printerService): RedirectResponse
     {
-        [$endDay] = $this->resolveEndDayRange();
+        [$endDay, $startAt, $endAt] = $this->resolveEndDayRange();
 
         $existingHistory = RecapHistoryBar::query()
             ->whereDate('end_day', $endDay)
@@ -82,6 +96,8 @@ class BarController extends Controller
         if ($existingHistory !== null) {
             return back()->with('error', 'End day bar untuk tanggal '.$endDay.' sudah ditutup.');
         }
+
+        $this->rebuildDailySnapshot($endDay, $startAt, $endAt);
 
         $dailySnapshot = DailyBarSnapshot::query()
             ->with(['dailyItems.inventoryItem'])
@@ -170,10 +186,12 @@ class BarController extends Controller
     public function previewEndDay(RecapHistoryBar $history)
     {
         $history->loadMissing(['endayItems.inventoryItem']);
+        $resolvedTotalItems = (int) $history->endayItems->sum('quantity');
 
         return view('bar.end-day-preview', [
             'history' => $history,
             'items' => $history->endayItems,
+            'totalItems' => $resolvedTotalItems,
         ]);
     }
 
@@ -279,7 +297,7 @@ class BarController extends Controller
             ->whereNotNull('inventory_item_id')
             ->whereHas('barOrder', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
                 $query->where('created_at', '>=', $startAt)
-                    ->where('created_at', '<', $endAt)
+                    ->where('created_at', '<=', $endAt)
                     ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt));
             })
             ->groupBy('inventory_item_id')

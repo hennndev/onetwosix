@@ -123,7 +123,7 @@
       <section class="mt-3 space-y-1.5 border-b border-dashed border-gray-300 pb-2">
         <div class="flex items-center justify-between gap-2">
           <span class="label">Total Item</span>
-          <span class="value">{{ number_format((int) ($history->total_items ?? 0), 0, ',', '.') }}</span>
+          <span class="value">{{ number_format((int) ($totalItems ?? ($history->total_items ?? 0)), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
           <span class="label">Last Synced</span>

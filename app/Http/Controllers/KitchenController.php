@@ -46,23 +46,37 @@ class KitchenController extends Controller
         $prosesOrders = KitchenOrder::where('status', 'proses')->count();
         $selesaiOrders = KitchenOrder::where('status', 'selesai')->count();
 
-        [$endDay] = $this->resolveEndDayRange();
+        [$endDay, $startAt, $endAt] = $this->resolveEndDayRange();
 
-        $dailySnapshot = DailyKitchenSnapshot::query()
-            ->with(['dailyItems.inventoryItem'])
-            ->whereDate('end_day', $endDay)
-            ->latest('id')
-            ->first();
+        $dailySnapshot = $this->rebuildDailySnapshot($endDay, $startAt, $endAt);
+        $snapshotItems = collect();
+
+        if ($dailySnapshot !== null) {
+            $dailySnapshot->loadMissing(['dailyItems.inventoryItem']);
+
+            $snapshotItems = $dailySnapshot->dailyItems
+                ->map(fn (DailyKitchenItem $item): array => [
+                    'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item'),
+                    'quantity' => (int) $item->quantity,
+                ])
+                ->values();
+        }
 
         $kitchenEndDayPreview = [
             'total_items' => (int) ($dailySnapshot?->total_items ?? 0),
             'last_synced_at' => $dailySnapshot?->last_synced_at,
+            'items' => $snapshotItems->all(),
         ];
         $kitchenRecapHistories = RecapHistoryKitchen::query()
             ->with(['endayItems.inventoryItem'])
             ->latest('end_day')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function (RecapHistoryKitchen $history): RecapHistoryKitchen {
+                $history->setAttribute('resolved_total_items', (int) $history->endayItems->sum('quantity'));
+
+                return $history;
+            });
 
         return view('kitchen.index', compact('orders', 'totalOrders', 'baruOrders', 'prosesOrders', 'selesaiOrders', 'kitchenEndDayPreview', 'kitchenRecapHistories'));
     }
@@ -194,10 +208,12 @@ class KitchenController extends Controller
     public function previewEndDay(RecapHistoryKitchen $history)
     {
         $history->loadMissing(['endayItems.inventoryItem']);
+        $resolvedTotalItems = (int) $history->endayItems->sum('quantity');
 
         return view('kitchen.end-day-preview', [
             'history' => $history,
             'items' => $history->endayItems,
+            'totalItems' => $resolvedTotalItems,
         ]);
     }
 
@@ -303,7 +319,7 @@ class KitchenController extends Controller
             ->whereNotNull('inventory_item_id')
             ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
                 $query->where('created_at', '>=', $startAt)
-                    ->where('created_at', '<', $endAt)
+                    ->where('created_at', '<=', $endAt)
                     ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt));
             })
             ->groupBy('inventory_item_id')

@@ -74,11 +74,12 @@ test('kitchen page shows end day and history tabs with recap snapshot data', fun
         ->assertSeeText('History')
         ->assertSeeText('End Day Kitchen')
         ->assertSeeText('History End Day Kitchen')
+        ->assertSeeText('Konfirmasi Submit End Day Kitchen')
         ->assertSeeText('Klik baris history untuk melihat detail item dan quantity.')
         ->assertSeeText('Detail Item Kitchen')
         ->assertSeeText('Nasi Goreng')
         ->assertSeeText('0')
-        ->assertSeeText('9');
+        ->assertSeeText('4');
 });
 
 test('bar page shows end day and history tabs with recap snapshot data', function () {
@@ -138,11 +139,12 @@ test('bar page shows end day and history tabs with recap snapshot data', functio
         ->assertSeeText('History')
         ->assertSeeText('End Day Bar')
         ->assertSeeText('History End Day Bar')
+        ->assertSeeText('Konfirmasi Submit End Day Bar')
         ->assertSeeText('Klik baris history untuk melihat detail item dan quantity.')
         ->assertSeeText('Detail Item Bar')
         ->assertSeeText('Mojito')
         ->assertSeeText('0')
-        ->assertSeeText('10');
+        ->assertSeeText('5');
 });
 
 test('kitchen end day submit stores recap and item detail snapshots', function () {
@@ -391,29 +393,50 @@ test('bar end day submit stores recap and item detail snapshots', function () {
         'updated_at' => now(),
     ]);
 
-    $activeSnapshot = DailyBarSnapshot::query()->create([
-        'end_day' => '2026-03-27',
-        'total_items' => 6,
-        'last_synced_at' => now(),
+    $barOrderOne = \App\Models\BarOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'B-SUBMIT-001',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 30000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+        'created_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
     ]);
 
-    DB::table('daily_bar_items')->insert([
-        [
-            'daily_bar_snapshot_id' => $activeSnapshot->id,
-            'end_day' => '2026-03-27',
-            'inventory_item_id' => $drinkA->id,
-            'quantity' => 3,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ],
-        [
-            'daily_bar_snapshot_id' => $activeSnapshot->id,
-            'end_day' => '2026-03-27',
-            'inventory_item_id' => $drinkB->id,
-            'quantity' => 3,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ],
+    \App\Models\BarOrderItem::query()->create([
+        'bar_order_id' => $barOrderOne->id,
+        'inventory_item_id' => $drinkA->id,
+        'quantity' => 3,
+        'price' => 10000,
+        'is_completed' => true,
+        'created_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
+    ]);
+
+    $barOrderTwo = \App\Models\BarOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'B-SUBMIT-002',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 36000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+        'created_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
+    ]);
+
+    \App\Models\BarOrderItem::query()->create([
+        'bar_order_id' => $barOrderTwo->id,
+        'inventory_item_id' => $drinkB->id,
+        'quantity' => 3,
+        'price' => 12000,
+        'is_completed' => true,
+        'created_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
     ]);
 
     actingAs($admin)
@@ -498,7 +521,7 @@ test('kitchen end day history can be reprinted', function () {
 
     $history = RecapHistoryKitchen::query()->create([
         'end_day' => now()->toDateString(),
-        'total_items' => 2,
+        'total_items' => 99,
         'last_synced_at' => now(),
     ]);
 
@@ -616,7 +639,8 @@ test('kitchen end day history preview page shows item details', function () {
         ->assertSeeText('Preview Print Struk - End Day Kitchen')
         ->assertSeeText('Reprint Sekarang')
         ->assertSeeText('Sop Buntut')
-        ->assertSeeText('2');
+        ->assertSeeText('2')
+        ->assertDontSeeText('99');
 });
 
 test('bar end day history preview page shows item details', function () {
@@ -638,7 +662,7 @@ test('bar end day history preview page shows item details', function () {
 
     $history = RecapHistoryBar::query()->create([
         'end_day' => now()->toDateString(),
-        'total_items' => 3,
+        'total_items' => 77,
         'last_synced_at' => now(),
     ]);
 
@@ -656,11 +680,14 @@ test('bar end day history preview page shows item details', function () {
         ->assertSeeText('Preview Print Struk - End Day Bar')
         ->assertSeeText('Reprint Sekarang')
         ->assertSeeText('Lemon Tea')
-        ->assertSeeText('3');
+        ->assertSeeText('3')
+        ->assertDontSeeText('77');
 });
 
 test('kitchen end day tab shows data from daily snapshot parent-child', function () {
     $admin = adminUser();
+
+    Carbon::setTestNow(Carbon::create(2026, 3, 27, 16, 0, 0, 'Asia/Jakarta'));
 
     $todayEndDay = now('Asia/Jakarta')->toDateString();
 
@@ -678,30 +705,42 @@ test('kitchen end day tab shows data from daily snapshot parent-child', function
         'material_produced' => false,
     ]);
 
-    $snapshot = DailyKitchenSnapshot::query()->create([
-        'end_day' => $todayEndDay,
-        'total_items' => 2,
-        'last_synced_at' => now(),
+    $order = \App\Models\KitchenOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'K-AUTO-SYNC-001',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 24000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
     ]);
 
-    DB::table('daily_kitchen_items')->insert([
-        'daily_kitchen_snapshot_id' => $snapshot->id,
-        'end_day' => $todayEndDay,
+    \App\Models\KitchenOrderItem::query()->create([
+        'kitchen_order_id' => $order->id,
         'inventory_item_id' => $item->id,
         'quantity' => 2,
-        'created_at' => now(),
-        'updated_at' => now(),
+        'price' => 12000,
+        'is_completed' => true,
     ]);
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
         ->get(route('admin.kitchen.index'))
         ->assertSuccessful()
-        ->assertSeeText('2');
+        ->assertSeeText('2')
+        ->assertSeeText('Preview Snapshot Kitchen')
+        ->assertSeeText('Kitchen Snapshot Item');
+
+    expect(DailyKitchenSnapshot::query()->whereDate('end_day', $todayEndDay)->exists())->toBeTrue();
+
+    Carbon::setTestNow();
 });
 
 test('bar end day tab shows data from daily snapshot parent-child', function () {
     $admin = adminUser();
+
+    Carbon::setTestNow(Carbon::create(2026, 3, 27, 16, 0, 0, 'Asia/Jakarta'));
 
     $todayEndDay = now('Asia/Jakarta')->toDateString();
 
@@ -719,26 +758,36 @@ test('bar end day tab shows data from daily snapshot parent-child', function () 
         'material_produced' => false,
     ]);
 
-    $snapshot = DailyBarSnapshot::query()->create([
-        'end_day' => $todayEndDay,
-        'total_items' => 3,
-        'last_synced_at' => now(),
+    $order = \App\Models\BarOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'B-AUTO-SYNC-001',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 42000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
     ]);
 
-    DB::table('daily_bar_items')->insert([
-        'daily_bar_snapshot_id' => $snapshot->id,
-        'end_day' => $todayEndDay,
+    \App\Models\BarOrderItem::query()->create([
+        'bar_order_id' => $order->id,
         'inventory_item_id' => $item->id,
         'quantity' => 3,
-        'created_at' => now(),
-        'updated_at' => now(),
+        'price' => 14000,
+        'is_completed' => true,
     ]);
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
         ->get(route('admin.bar.index'))
         ->assertSuccessful()
-        ->assertSeeText('3');
+        ->assertSeeText('3')
+        ->assertSeeText('Preview Snapshot Bar')
+        ->assertSeeText('Bar Snapshot Item');
+
+    expect(DailyBarSnapshot::query()->whereDate('end_day', $todayEndDay)->exists())->toBeTrue();
+
+    Carbon::setTestNow();
 });
 
 test('kitchen sync snapshot endpoint rebuilds snapshot from new kitchen orders', function () {
