@@ -238,7 +238,7 @@
                   <div class="flex-1">
                     <div class="text-sm font-semibold text-gray-800"
                          :class="{ 'line-through text-gray-400': item.is_completed }"
-                         x-text="item.recipe_name"></div>
+                         x-text="item.item_name ?? item.recipe_name ?? 'Unknown'"></div>
                     <div class="text-xs text-gray-500 mt-0.5">x<span x-text="item.quantity"></span></div>
                   </div>
                   <button x-show="!item.is_completed"
