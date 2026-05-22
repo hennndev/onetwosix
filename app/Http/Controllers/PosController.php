@@ -1882,7 +1882,7 @@ class PosController extends Controller
             }
 
             // Auto-print kitchen ticket if a printer is configured for 'kitchen' location
-            $this->printKitchenTicket($kitchenOrder, $selectedCheckerPrinterIds);
+            $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
         }
 
         // Create Bar Order if there are bar items
@@ -1910,7 +1910,7 @@ class PosController extends Controller
             }
 
             // Auto-print bar ticket if a printer is configured for 'bar' location
-            $this->printBarTicket($barOrder, $selectedCheckerPrinterIds);
+            $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
@@ -1963,14 +1963,14 @@ class PosController extends Controller
     /**
      * Print kitchen order ticket.
      */
-    protected function printKitchenTicket(KitchenOrder $kitchenOrder, ?Collection $selectedCheckerPrinterIds = null): bool
+    protected function printKitchenTicket(KitchenOrder $kitchenOrder, Collection $items, ?Collection $selectedCheckerPrinterIds = null): bool
     {
         try {
-            $kitchenOrder->load(['items.inventoryItem.printers', 'table']);
+            $kitchenOrder->loadMissing(['table']);
 
             return $this->printItemsToAssignedPrinters(
                 $kitchenOrder,
-                $kitchenOrder->items,
+                $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
                     'checker' => $this->printerService->printCheckerTicket($order, $printer),
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
@@ -1987,14 +1987,14 @@ class PosController extends Controller
     /**
      * Print bar order ticket.
      */
-    protected function printBarTicket(BarOrder $barOrder, ?Collection $selectedCheckerPrinterIds = null): bool
+    protected function printBarTicket(BarOrder $barOrder, Collection $items, ?Collection $selectedCheckerPrinterIds = null): bool
     {
         try {
-            $barOrder->load(['items.inventoryItem.printers', 'table']);
+            $barOrder->loadMissing(['table']);
 
             return $this->printItemsToAssignedPrinters(
                 $barOrder,
-                $barOrder->items,
+                $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
                     'checker' => $this->printerService->printCheckerTicket($order, $printer),
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),

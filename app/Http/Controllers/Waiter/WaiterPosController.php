@@ -370,7 +370,7 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printKitchenTicket($kitchenOrder);
+            $this->printKitchenTicket($kitchenOrder, $kitchenItems);
         }
 
         if ($barItems->isNotEmpty()) {
@@ -395,7 +395,7 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printBarTicket($barOrder);
+            $this->printBarTicket($barOrder, $barItems);
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
@@ -443,13 +443,13 @@ class WaiterPosController extends Controller
         }
     }
 
-    protected function printKitchenTicket(KitchenOrder $kitchenOrder): void
+    protected function printKitchenTicket(KitchenOrder $kitchenOrder, Collection $items): void
     {
         try {
-            $kitchenOrder->load(['items.inventoryItem.printers', 'table']);
+            $kitchenOrder->loadMissing(['table']);
             $this->printItemsToAssignedPrinters(
                 $kitchenOrder,
-                $kitchenOrder->items,
+                $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
                     'checker' => $this->printerService->printCheckerTicket($order, $printer),
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
@@ -462,13 +462,13 @@ class WaiterPosController extends Controller
         }
     }
 
-    protected function printBarTicket(BarOrder $barOrder): void
+    protected function printBarTicket(BarOrder $barOrder, Collection $items): void
     {
         try {
-            $barOrder->load(['items.inventoryItem.printers', 'table']);
+            $barOrder->loadMissing(['table']);
             $this->printItemsToAssignedPrinters(
                 $barOrder,
-                $barOrder->items,
+                $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
                     'checker' => $this->printerService->printCheckerTicket($order, $printer),
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
