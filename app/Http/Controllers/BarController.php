@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\BarOrder;
-use App\Models\BarOrderItem;
 use App\Models\DailyBarItem;
 use App\Models\DailyBarSnapshot;
 use App\Models\Dashboard;
 use App\Models\EndayBarItem;
 use App\Models\GeneralSetting;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\RecapHistoryBar;
 use App\Services\PrinterService;
@@ -292,15 +292,26 @@ class BarController extends Controller
     {
         $lastCloseAt = RecapHistoryBar::query()->latest('created_at')->value('created_at');
 
-        $aggregatedItems = BarOrderItem::query()
-            ->selectRaw('inventory_item_id, SUM(quantity) as total_quantity')
-            ->whereNotNull('inventory_item_id')
-            ->whereHas('barOrder', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
+        $aggregatedItems = OrderItem::query()
+            ->selectRaw('order_items.inventory_item_id, SUM(order_items.quantity) as total_quantity')
+            ->whereNotNull('order_items.inventory_item_id')
+            ->where(function ($query): void {
+                $query->whereNull('order_items.status')
+                    ->orWhere('order_items.status', '!=', 'cancelled');
+            })
+            ->whereHas('order', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
                 $query->where('created_at', '>=', $startAt)
                     ->where('created_at', '<=', $endAt)
                     ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt));
             })
-            ->groupBy('inventory_item_id')
+            ->whereHas('inventoryItem.printers', function ($query): void {
+                $query->where('printers.is_active', true)
+                    ->where(function ($printerQuery): void {
+                        $printerQuery->where('printers.printer_type', 'bar')
+                            ->orWhere('printers.location', 'bar');
+                    });
+            })
+            ->groupBy('order_items.inventory_item_id')
             ->get();
 
         DailyBarSnapshot::query()->delete();

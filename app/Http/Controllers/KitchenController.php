@@ -8,7 +8,7 @@ use App\Models\Dashboard;
 use App\Models\EndayKitchenItem;
 use App\Models\GeneralSetting;
 use App\Models\KitchenOrder;
-use App\Models\KitchenOrderItem;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\RecapHistoryKitchen;
 use App\Services\PrinterService;
@@ -83,7 +83,7 @@ class KitchenController extends Controller
 
     public function submitEndDay(PrinterService $printerService): RedirectResponse
     {
-        [$endDay] = $this->resolveEndDayRange();
+        [$endDay, $startAt, $endAt] = $this->resolveEndDayRange();
 
         $existingHistory = RecapHistoryKitchen::query()
             ->whereDate('end_day', $endDay)
@@ -118,6 +118,8 @@ class KitchenController extends Controller
                 return back()->with('error', 'End day kitchen tanggal '.$endDay.' sudah ada di history, tapi print gagal: '.$e->getMessage());
             }
         }
+
+        $this->rebuildDailySnapshot($endDay, $startAt, $endAt);
 
         $dailySnapshot = DailyKitchenSnapshot::query()
             ->with(['dailyItems.inventoryItem'])
@@ -314,15 +316,26 @@ class KitchenController extends Controller
     {
         $lastCloseAt = RecapHistoryKitchen::query()->latest('created_at')->value('created_at');
 
-        $aggregatedItems = KitchenOrderItem::query()
-            ->selectRaw('inventory_item_id, SUM(quantity) as total_quantity')
-            ->whereNotNull('inventory_item_id')
-            ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
+        $aggregatedItems = OrderItem::query()
+            ->selectRaw('order_items.inventory_item_id, SUM(order_items.quantity) as total_quantity')
+            ->whereNotNull('order_items.inventory_item_id')
+            ->where(function ($query): void {
+                $query->whereNull('order_items.status')
+                    ->orWhere('order_items.status', '!=', 'cancelled');
+            })
+            ->whereHas('order', function ($query) use ($startAt, $endAt, $lastCloseAt): void {
                 $query->where('created_at', '>=', $startAt)
                     ->where('created_at', '<=', $endAt)
                     ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt));
             })
-            ->groupBy('inventory_item_id')
+            ->whereHas('inventoryItem.printers', function ($query): void {
+                $query->where('printers.is_active', true)
+                    ->where(function ($printerQuery): void {
+                        $printerQuery->where('printers.printer_type', 'kitchen')
+                            ->orWhere('printers.location', 'kitchen');
+                    });
+            })
+            ->groupBy('order_items.inventory_item_id')
             ->get();
 
         DailyKitchenSnapshot::query()->delete();

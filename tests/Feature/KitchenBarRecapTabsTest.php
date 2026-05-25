@@ -6,9 +6,12 @@ use App\Models\Dashboard;
 use App\Models\EndayBarItem;
 use App\Models\EndayKitchenItem;
 use App\Models\InventoryItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\RecapHistoryBar;
 use App\Models\RecapHistoryKitchen;
+use App\Models\User;
 use App\Services\PrinterService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +19,46 @@ use Mockery\MockInterface;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\mock;
+
+function createEndDayOrderItem(User $admin, InventoryItem $item, int $quantity, Carbon $createdAt): void
+{
+    $price = (float) $item->price;
+    $subtotal = $price * $quantity;
+
+    $order = Order::query()->create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-END-'.strtoupper(uniqid()),
+        'status' => 'completed',
+        'items_total' => $subtotal,
+        'discount_amount' => 0,
+        'total' => $subtotal,
+        'ordered_at' => $createdAt,
+        'completed_at' => $createdAt,
+        'payment_method' => 'cash',
+        'payment_mode' => 'cash',
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+
+    OrderItem::query()->create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $item->id,
+        'item_name' => (string) $item->name,
+        'item_code' => (string) $item->code,
+        'quantity' => $quantity,
+        'price' => $price,
+        'subtotal' => $subtotal,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => null,
+        'status' => 'served',
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+}
 
 test('kitchen page shows end day and history tabs with recap snapshot data', function () {
     $admin = adminUser();
@@ -235,30 +278,11 @@ test('kitchen end day submit stores recap and item detail snapshots', function (
         'updated_at' => now(),
     ]);
 
-    $activeSnapshot = DailyKitchenSnapshot::query()->create([
-        'end_day' => '2026-03-27',
-        'total_items' => 6,
-        'last_synced_at' => now(),
-    ]);
+    $foodA->printers()->syncWithoutDetaching([$kitchenPrinter->id]);
+    $foodB->printers()->syncWithoutDetaching([$kitchenPrinter->id]);
 
-    DB::table('daily_kitchen_items')->insert([
-        [
-            'daily_kitchen_snapshot_id' => $activeSnapshot->id,
-            'end_day' => '2026-03-27',
-            'inventory_item_id' => $foodA->id,
-            'quantity' => 3,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ],
-        [
-            'daily_kitchen_snapshot_id' => $activeSnapshot->id,
-            'end_day' => '2026-03-27',
-            'inventory_item_id' => $foodB->id,
-            'quantity' => 3,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ],
-    ]);
+    createEndDayOrderItem($admin, $foodA, 3, Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'));
+    createEndDayOrderItem($admin, $foodB, 3, Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
@@ -393,51 +417,11 @@ test('bar end day submit stores recap and item detail snapshots', function () {
         'updated_at' => now(),
     ]);
 
-    $barOrderOne = \App\Models\BarOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'B-SUBMIT-001',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 30000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
-        'created_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
-        'updated_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
-    ]);
+    $drinkA->printers()->syncWithoutDetaching([$barPrinter->id]);
+    $drinkB->printers()->syncWithoutDetaching([$barPrinter->id]);
 
-    \App\Models\BarOrderItem::query()->create([
-        'bar_order_id' => $barOrderOne->id,
-        'inventory_item_id' => $drinkA->id,
-        'quantity' => 3,
-        'price' => 10000,
-        'is_completed' => true,
-        'created_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
-        'updated_at' => Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'),
-    ]);
-
-    $barOrderTwo = \App\Models\BarOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'B-SUBMIT-002',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 36000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
-        'created_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
-        'updated_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
-    ]);
-
-    \App\Models\BarOrderItem::query()->create([
-        'bar_order_id' => $barOrderTwo->id,
-        'inventory_item_id' => $drinkB->id,
-        'quantity' => 3,
-        'price' => 12000,
-        'is_completed' => true,
-        'created_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
-        'updated_at' => Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'),
-    ]);
+    createEndDayOrderItem($admin, $drinkA, 3, Carbon::create(2026, 3, 27, 19, 0, 0, 'Asia/Jakarta'));
+    createEndDayOrderItem($admin, $drinkB, 3, Carbon::create(2026, 3, 27, 20, 0, 0, 'Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
@@ -705,24 +689,22 @@ test('kitchen end day tab shows data from daily snapshot parent-child', function
         'material_produced' => false,
     ]);
 
-    $order = \App\Models\KitchenOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'K-AUTO-SYNC-001',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 24000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
+    $kitchenPrinter = Printer::query()->create([
+        'name' => 'Kitchen Snapshot Printer',
+        'location' => 'kitchen',
+        'printer_type' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
     ]);
 
-    \App\Models\KitchenOrderItem::query()->create([
-        'kitchen_order_id' => $order->id,
-        'inventory_item_id' => $item->id,
-        'quantity' => 2,
-        'price' => 12000,
-        'is_completed' => true,
-    ]);
+    $item->printers()->syncWithoutDetaching([$kitchenPrinter->id]);
+    createEndDayOrderItem($admin, $item, 2, now('Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
@@ -758,24 +740,22 @@ test('bar end day tab shows data from daily snapshot parent-child', function () 
         'material_produced' => false,
     ]);
 
-    $order = \App\Models\BarOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'B-AUTO-SYNC-001',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 42000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
+    $barPrinter = Printer::query()->create([
+        'name' => 'Bar Snapshot Printer',
+        'location' => 'bar',
+        'printer_type' => 'bar',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
     ]);
 
-    \App\Models\BarOrderItem::query()->create([
-        'bar_order_id' => $order->id,
-        'inventory_item_id' => $item->id,
-        'quantity' => 3,
-        'price' => 14000,
-        'is_completed' => true,
-    ]);
+    $item->printers()->syncWithoutDetaching([$barPrinter->id]);
+    createEndDayOrderItem($admin, $item, 3, now('Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
@@ -809,24 +789,22 @@ test('kitchen sync snapshot endpoint rebuilds snapshot from new kitchen orders',
         'material_produced' => false,
     ]);
 
-    $order = \App\Models\KitchenOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'K-SYNC-001',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 28000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
+    $kitchenPrinter = Printer::query()->create([
+        'name' => 'Kitchen Sync Printer',
+        'location' => 'kitchen',
+        'printer_type' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
     ]);
 
-    \App\Models\KitchenOrderItem::query()->create([
-        'kitchen_order_id' => $order->id,
-        'inventory_item_id' => $item->id,
-        'quantity' => 2,
-        'price' => 14000,
-        'is_completed' => true,
-    ]);
+    $item->printers()->syncWithoutDetaching([$kitchenPrinter->id]);
+    createEndDayOrderItem($admin, $item, 2, now('Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
@@ -859,24 +837,22 @@ test('bar sync snapshot endpoint rebuilds snapshot from new bar orders', functio
         'material_produced' => false,
     ]);
 
-    $order = \App\Models\BarOrder::query()->create([
-        'order_id' => null,
-        'order_number' => 'B-SYNC-001',
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 30000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
+    $barPrinter = Printer::query()->create([
+        'name' => 'Bar Sync Printer',
+        'location' => 'bar',
+        'printer_type' => 'bar',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
     ]);
 
-    \App\Models\BarOrderItem::query()->create([
-        'bar_order_id' => $order->id,
-        'inventory_item_id' => $item->id,
-        'quantity' => 2,
-        'price' => 15000,
-        'is_completed' => true,
-    ]);
+    $item->printers()->syncWithoutDetaching([$barPrinter->id]);
+    createEndDayOrderItem($admin, $item, 2, now('Asia/Jakarta'));
 
     actingAs($admin)
         ->withSession(['accurate_database' => 'test'])
