@@ -250,9 +250,15 @@ class MenuController extends Controller
 
         $inventory->printers()->sync($validated['printer_ids'] ?? []);
 
+        $printers = $inventory->printers()
+            ->select('printers.id', 'printers.name', 'printers.location')
+            ->get()
+            ->map(fn ($printer) => ['id' => $printer->id, 'name' => $printer->name, 'location' => $printer->location])
+            ->all();
+
         return response()->json([
             'success' => true,
-            'printer_ids' => $inventory->printers()->pluck('printers.id')->all(),
+            'printers' => $printers,
         ]);
     }
 }

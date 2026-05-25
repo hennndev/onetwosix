@@ -70,6 +70,12 @@ class WaiterPosController extends Controller
             $displayName = filled($inventoryItem->pos_name)
                 ? (string) $inventoryItem->pos_name
                 : (string) $inventoryItem->name;
+            $assignedCheckerPrinters = $this->resolveAssignedCheckerPrinters($inventoryItem);
+            $assignedCheckerPrinterIds = collect($assignedCheckerPrinters)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
 
             $cart[$productId] = [
                 'id' => $productId,
@@ -77,6 +83,8 @@ class WaiterPosController extends Controller
                 'price' => $this->resolveZeroPricedItemAmount($inventoryItem),
                 'quantity' => 1,
                 'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location ?? 'direct',
+                'assigned_checker_printers' => $assignedCheckerPrinters,
+                'assigned_checker_printer_ids' => $assignedCheckerPrinterIds,
             ];
         }
 
@@ -98,7 +106,7 @@ class WaiterPosController extends Controller
             unset($cart[$productId]);
         } elseif (isset($cart[$productId])) {
             $itemId = (int) str_replace('item_', '', $productId);
-            $inventoryItem = InventoryItem::find($itemId);
+            $inventoryItem = InventoryItem::with('printers')->find($itemId);
             $setting = PosCategorySetting::allKeyed()->get($inventoryItem?->category_type);
 
             if (! $inventoryItem || ! $setting || ! $setting->show_in_pos || ! $inventoryItem->is_visible_in_pos) {
@@ -119,6 +127,14 @@ class WaiterPosController extends Controller
             }
 
             $cart[$productId]['quantity'] = $validated['quantity'];
+
+            $assignedCheckerPrinters = $this->resolveAssignedCheckerPrinters($inventoryItem);
+            $cart[$productId]['assigned_checker_printers'] = $assignedCheckerPrinters;
+            $cart[$productId]['assigned_checker_printer_ids'] = collect($assignedCheckerPrinters)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
 
             if ($request->has('notes')) {
                 $notes = trim((string) ($validated['notes'] ?? ''));
@@ -169,7 +185,15 @@ class WaiterPosController extends Controller
     {
         $validated = $request->validate([
             'session_id' => 'required|exists:table_sessions,id',
+            'checker_printer_ids' => 'nullable|array',
+            'checker_printer_ids.*' => 'integer|exists:printers,id',
         ]);
+
+        $selectedCheckerPrinterIds = collect($request->input('checker_printer_ids', []))
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
 
         $waiterId = (int) Auth::id();
 
@@ -191,6 +215,27 @@ class WaiterPosController extends Controller
 
         if (empty($cart)) {
             return response()->json(['success' => false, 'message' => 'Keranjang kosong.'], 400);
+        }
+
+        $availableCheckerPrinters = $this->resolveCheckerPrintersFromCart($cart);
+        $canChooseChecker = (bool) (GeneralSetting::instance()->can_choose_checker ?? false);
+
+        if ($canChooseChecker && $availableCheckerPrinters->count() > 1) {
+            if ($selectedCheckerPrinterIds->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pilih minimal satu printer checker.',
+                ], 422);
+            }
+
+            $invalidPrinterIds = $selectedCheckerPrinterIds->diff($availableCheckerPrinters->pluck('id'));
+
+            if ($invalidPrinterIds->isNotEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Printer checker yang dipilih tidak sesuai assignment menu.',
+                ], 422);
+            }
         }
 
         $availability = $this->resolveCartAvailability($cart);
@@ -273,7 +318,7 @@ class WaiterPosController extends Controller
             ]);
 
             $order->load('items');
-            $this->routeOrderToPreparation($order, $tableSession, $orderNumber);
+            $this->routeOrderToPreparation($order, $tableSession, $orderNumber, $selectedCheckerPrinterIds);
 
             if ($tableSession->billing) {
                 $billing = $tableSession->billing;
@@ -297,8 +342,12 @@ class WaiterPosController extends Controller
         }
     }
 
-    protected function routeOrderToPreparation(Order $order, TableSession $tableSession, string $orderNumber): void
-    {
+    protected function routeOrderToPreparation(
+        Order $order,
+        TableSession $tableSession,
+        string $orderNumber,
+        ?Collection $selectedCheckerPrinterIds = null
+    ): void {
         $order->loadMissing(['items.inventoryItem.printers']);
 
         $kitchenItems = collect();
@@ -370,7 +419,7 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printKitchenTicket($kitchenOrder, $kitchenItems);
+            $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
         }
 
         if ($barItems->isNotEmpty()) {
@@ -395,7 +444,7 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printBarTicket($barOrder, $barItems);
+            $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
@@ -403,7 +452,8 @@ class WaiterPosController extends Controller
                 $order,
                 $checkerCashierItems,
                 $orderNumber,
-                $tableId
+                $tableId,
+                $selectedCheckerPrinterIds
             );
         }
 
@@ -413,7 +463,8 @@ class WaiterPosController extends Controller
         Order $order,
         Collection $checkerCashierItems,
         string $orderNumber,
-        ?int $tableId
+        ?int $tableId,
+        ?Collection $selectedCheckerPrinterIds = null
     ): void {
         try {
             $virtualOrder = new KitchenOrder([
@@ -436,14 +487,15 @@ class WaiterPosController extends Controller
                     'checker' => $this->printerService->printCheckerTicket($preparationOrder, $printer),
                     'cashier' => $this->printerService->printCashierTicket($preparationOrder, $printer),
                     default => false,
-                }
+                },
+                $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
         }
     }
 
-    protected function printKitchenTicket(KitchenOrder $kitchenOrder, Collection $items): void
+    protected function printKitchenTicket(KitchenOrder $kitchenOrder, Collection $items, ?Collection $selectedCheckerPrinterIds = null): void
     {
         try {
             $kitchenOrder->loadMissing(['table']);
@@ -455,14 +507,15 @@ class WaiterPosController extends Controller
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
                     'bar' => $this->printerService->printBarTicket($order, $printer),
                     default => $this->printerService->printKitchenTicket($order, $printer),
-                }
+                },
+                $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
         }
     }
 
-    protected function printBarTicket(BarOrder $barOrder, Collection $items): void
+    protected function printBarTicket(BarOrder $barOrder, Collection $items, ?Collection $selectedCheckerPrinterIds = null): void
     {
         try {
             $barOrder->loadMissing(['table']);
@@ -474,19 +527,34 @@ class WaiterPosController extends Controller
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
                     'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
                     default => $this->printerService->printBarTicket($order, $printer),
-                }
+                },
+                $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
         }
     }
 
-    protected function printItemsToAssignedPrinters(object $order, Collection $items, callable $callback): void
-    {
+    protected function printItemsToAssignedPrinters(
+        object $order,
+        Collection $items,
+        callable $callback,
+        ?Collection $selectedCheckerPrinterIds = null
+    ): void {
         $groupedByPrinter = [];
 
         foreach ($items as $item) {
             $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
+
+            if ($selectedCheckerPrinterIds?->isNotEmpty()) {
+                $targetPrinters = $targetPrinters->filter(function (Printer $printer) use ($selectedCheckerPrinterIds): bool {
+                    if ($this->resolvePrinterServiceType($printer) !== 'checker') {
+                        return true;
+                    }
+
+                    return $selectedCheckerPrinterIds->contains((int) $printer->id);
+                });
+            }
 
             if ($targetPrinters->isEmpty()) {
                 continue;
@@ -514,6 +582,41 @@ class WaiterPosController extends Controller
             }
         }
 
+    }
+
+    protected function resolveCheckerPrintersFromCart(array $cart): Collection
+    {
+        $inventoryItemIds = collect($cart)
+            ->map(fn ($item, $productId): int => (int) str_replace('item_', '', (string) $productId))
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($inventoryItemIds->isEmpty()) {
+            return collect();
+        }
+
+        return InventoryItem::query()
+            ->with('printers')
+            ->whereIn('id', $inventoryItemIds)
+            ->get()
+            ->flatMap(fn (InventoryItem $inventoryItem): Collection => $inventoryItem->printers ?? collect())
+            ->filter(fn (Printer $printer): bool => $printer->is_active && $this->resolvePrinterServiceType($printer) === 'checker')
+            ->unique('id')
+            ->values();
+    }
+
+    protected function resolvePrinterServiceType(Printer $printer): ?string
+    {
+        $type = strtolower(trim((string) $printer->printer_type));
+
+        if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
+            return $type;
+        }
+
+        $location = strtolower(trim((string) $printer->location));
+
+        return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
     }
 
     protected function resolvePreparationLocationFromPrinters(InventoryItem $inventoryItem): ?string
@@ -577,6 +680,8 @@ class WaiterPosController extends Controller
                     'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
                         ? trim((string) $item['notes'])
                         : null,
+                    'assigned_checker_printers' => collect($item['assigned_checker_printers'] ?? [])->values()->all(),
+                    'assigned_checker_printer_ids' => collect($item['assigned_checker_printer_ids'] ?? [])->values()->all(),
                 ],
             ];
         })->all();
@@ -749,5 +854,22 @@ class WaiterPosController extends Controller
         return in_array($sqlState, ['23000', '23505'], true)
             || str_contains($message, 'duplicate entry')
             || str_contains($message, 'unique constraint');
+    }
+
+    /**
+     * @return array<int, array{id:int,name:string}>
+     */
+    protected function resolveAssignedCheckerPrinters(InventoryItem $inventoryItem): array
+    {
+        $inventoryItem->loadMissing('printers');
+
+        return $inventoryItem->printers
+            ?->filter(fn (Printer $printer): bool => $printer->is_active && $this->resolvePrinterServiceType($printer) === 'checker')
+            ->map(fn (Printer $printer): array => [
+                'id' => (int) $printer->id,
+                'name' => (string) $printer->name,
+            ])
+            ->values()
+            ->all() ?? [];
     }
 }

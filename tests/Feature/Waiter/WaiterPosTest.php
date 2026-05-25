@@ -4,6 +4,7 @@ use App\Http\Controllers\Waiter\WaiterPosController;
 use App\Models\Area;
 use App\Models\BarOrder;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
@@ -456,6 +457,184 @@ test('waiter checkout with checker-only item does not create kitchen or bar orde
     expect($order)->not->toBeNull()
         ->and(KitchenOrder::query()->where('order_id', $order->id)->exists())->toBeFalse()
         ->and(BarOrder::query()->where('order_id', $order->id)->exists())->toBeFalse();
+});
+
+test('waiter checkout requires selected checker printers when can_choose_checker is enabled and multiple checker printers are assigned', function () {
+    GeneralSetting::instance()->update(['can_choose_checker' => true]);
+
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-CHK-REQ');
+    $session = posSession($table, $customer, $waiter);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $checkerPrinterOne = Printer::create([
+        'name' => 'Waiter Checker Required 1',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $checkerPrinterTwo = Printer::create([
+        'name' => 'Waiter Checker Required 2',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Checker Required Menu',
+        'code' => 'MENU-WAITER-CHECKER-REQ-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$checkerPrinterOne->id, $checkerPrinterTwo->id]);
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                    'assigned_checker_printer_ids' => [$checkerPrinterOne->id, $checkerPrinterTwo->id],
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Pilih minimal satu printer checker.');
+});
+
+test('waiter checkout prints checker ticket only to selected checker printers when can_choose_checker is enabled', function () {
+    GeneralSetting::instance()->update(['can_choose_checker' => true]);
+
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-CHK-SEL');
+    $session = posSession($table, $customer, $waiter);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $checkerPrinterOne = Printer::create([
+        'name' => 'Waiter Checker Selected 1',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $checkerPrinterTwo = Printer::create([
+        'name' => 'Waiter Checker Selected 2',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Checker Selected Menu',
+        'code' => 'MENU-WAITER-CHECKER-SEL-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$checkerPrinterOne->id, $checkerPrinterTwo->id]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($checkerPrinterTwo): void {
+        $mock->shouldReceive('printCheckerTicket')
+            ->once()
+            ->withArgs(function ($order, $printer) use ($checkerPrinterTwo): bool {
+                return (int) $printer->id === (int) $checkerPrinterTwo->id
+                    && (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printKitchenTicket')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+        $mock->shouldReceive('printCashierTicket')->never();
+    });
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                    'assigned_checker_printer_ids' => [$checkerPrinterOne->id, $checkerPrinterTwo->id],
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), [
+            'session_id' => $session->id,
+            'checker_printer_ids' => [$checkerPrinterTwo->id],
+        ])
+        ->assertOk()
+        ->assertJsonPath('success', true);
 });
 
 test('waiter cannot checkout for a session belonging to another waiter', function () {

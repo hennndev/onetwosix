@@ -9,6 +9,7 @@ use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PosCategorySetting;
+use App\Models\Printer;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
@@ -164,11 +165,13 @@ class WaiterController extends Controller
     public function pos(): View
     {
         $waiterId = (int) Auth::id();
+        $settings = GeneralSetting::instance();
 
         $posSettings = PosCategorySetting::allKeyed()->filter(fn ($setting) => $setting->show_in_pos);
         $allowedTypes = $posSettings->keys()->values()->all();
 
-        $products = InventoryItem::whereIn('category_type', $allowedTypes ?: ['__none__'])
+        $products = InventoryItem::with('printers')
+            ->whereIn('category_type', $allowedTypes ?: ['__none__'])
             ->where('is_active', true)
             ->where('is_visible_in_pos', true)
             ->get()
@@ -178,6 +181,23 @@ class WaiterController extends Controller
                 $displayName = filled($item->pos_name)
                     ? (string) $item->pos_name
                     : (string) $item->name;
+                $assignedCheckerPrinters = $item->printers
+                    ?->filter(function (Printer $printer): bool {
+                        if (! $printer->is_active) {
+                            return false;
+                        }
+
+                        $printerType = strtolower(trim((string) $printer->printer_type));
+                        $printerLocation = strtolower(trim((string) $printer->location));
+
+                        return $printerType === 'checker' || $printerLocation === 'checker';
+                    })
+                    ->map(fn (Printer $printer): array => [
+                        'id' => (int) $printer->id,
+                        'name' => (string) $printer->name,
+                    ])
+                    ->values()
+                    ->all() ?? [];
 
                 return [
                     'id' => 'item_'.$item->id,
@@ -187,6 +207,7 @@ class WaiterController extends Controller
                     'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
                     'is_menu' => (bool) $setting?->is_menu,
                     'is_item_group' => $isItemGroup,
+                    'assigned_checker_printers' => $assignedCheckerPrinters,
                     'type' => 'item',
                 ];
             })
@@ -210,8 +231,24 @@ class WaiterController extends Controller
                 'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
                     ? trim((string) $item['notes'])
                     : null,
+                'assigned_checker_printers' => collect($item['assigned_checker_printers'] ?? [])->values()->all(),
+                'assigned_checker_printer_ids' => collect($item['assigned_checker_printer_ids'] ?? [])->values()->all(),
             ],
         ])->all();
+
+        $checkerPrinters = Printer::query()
+            ->where('is_active', true)
+            ->where(function ($query): void {
+                $query->where('printer_type', 'checker')
+                    ->orWhere('location', 'checker');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Printer $printer): array => [
+                'id' => (int) $printer->id,
+                'name' => (string) $printer->name,
+            ])
+            ->values();
 
         $selectedSession = session(\App\Http\Controllers\Waiter\WaiterPosController::SESSION_KEY);
 
@@ -220,7 +257,9 @@ class WaiterController extends Controller
             session()->forget(\App\Http\Controllers\Waiter\WaiterPosController::SESSION_KEY);
         }
 
-        return view('waiter.pos', compact('products', 'activeSessions', 'cart', 'selectedSession'));
+        $canChooseChecker = (bool) ($settings->can_choose_checker ?? false);
+
+        return view('waiter.pos', compact('products', 'activeSessions', 'cart', 'selectedSession', 'canChooseChecker', 'checkerPrinters'));
     }
 
     public function notifications(): View

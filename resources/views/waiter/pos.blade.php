@@ -280,6 +280,27 @@
           <span class="font-semibold text-slate-900"
                 x-text="cartCount"></span>
         </div>
+        <template x-if="shouldChooseCheckerOnCheckout()">
+          <div class="rounded-xl border border-slate-200 p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-900">Pilih Printer Checker</span>
+              <span class="text-xs text-slate-500"
+                    x-text="`${getSelectedCheckerPrinterIds().length} dipilih`"></span>
+            </div>
+            <div class="space-y-1.5 max-h-32 overflow-y-auto">
+              <template x-for="printer in getCheckerPrintersFromCart()"
+                        :key="printer.id">
+                <label class="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox"
+                         :value="printer.id"
+                         x-model="selectedCheckerPrinterIds"
+                         class="rounded border-slate-300 text-teal-500 focus:ring-teal-500">
+                  <span x-text="printer.name"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
         <div class="rounded-xl bg-slate-50 border border-slate-100 p-3 space-y-2">
           <div class="flex items-center justify-between text-sm">
             <span class="text-slate-600">Subtotal</span>
@@ -374,6 +395,9 @@
           categoryFilter: '',
           cart: @json($cart ?? []),
           sessions: @json($waiterSessionsPayload),
+          checkerPrinters: @json($checkerPrinters ?? []),
+          canChooseChecker: @json((bool) ($canChooseChecker ?? false)),
+          selectedCheckerPrinterIds: [],
           selectedSession: @json($selectedSession ?? null),
           showCart: false,
           showConfirmOrder: false,
@@ -382,7 +406,9 @@
           toastMsg: '',
           toastSuccess: true,
 
-          init() {},
+          init() {
+            this.hydrateCartCheckerAssignments();
+          },
 
           get cartCount() {
             return Object.values(this.cart).reduce((s, i) => s + (i.qty || 0), 0);
@@ -426,7 +452,125 @@
               return;
             }
 
+            this.hydrateCartCheckerAssignments();
+
+            this.prepareCheckerSelectionFromCart();
+
+            if (this.shouldChooseCheckerOnCheckout() && this.getSelectedCheckerPrinterIds().length === 0) {
+              this.flash('Pilih minimal satu printer checker.', false);
+              return;
+            }
+
             this.showConfirmOrder = true;
+          },
+
+          resolveCheckerPrinterIdsForCartItem(item, cartKey) {
+            const fromCart = Array.isArray(item?.assigned_checker_printer_ids) ?
+              item.assigned_checker_printer_ids.map((id) => Number(id)) : [];
+
+            const normalizedFromCart = fromCart.filter((id) => Number.isInteger(id) && id > 0);
+
+            if (normalizedFromCart.length > 0) {
+              return normalizedFromCart;
+            }
+
+            const productId = String(item?.id || cartKey || '');
+            const matchedProduct = (this.products || []).find((product) => String(product.id) === productId);
+            const fromProduct = Array.isArray(matchedProduct?.assigned_checker_printers) ?
+              matchedProduct.assigned_checker_printers.map((printer) => Number(printer?.id)) : [];
+
+            return fromProduct.filter((id) => Number.isInteger(id) && id > 0);
+          },
+
+          hydrateCartCheckerAssignments() {
+            const nextCart = {
+              ...(this.cart || {}),
+            };
+
+            Object.entries(nextCart).forEach(([cartKey, item]) => {
+              if (!item || !Array.isArray(item.assigned_checker_printer_ids) || item.assigned_checker_printer_ids.length === 0) {
+                const resolvedIds = this.resolveCheckerPrinterIdsForCartItem(item, cartKey);
+
+                if (resolvedIds.length > 0) {
+                  nextCart[cartKey] = {
+                    ...item,
+                    assigned_checker_printer_ids: resolvedIds,
+                  };
+                }
+              }
+            });
+
+            this.cart = nextCart;
+          },
+
+          getCheckerPrintersFromCart() {
+            const checkerPrinterMap = new Map(
+              (this.checkerPrinters || [])
+              .map((printer) => [Number(printer.id), {
+                id: Number(printer.id),
+                name: String(printer.name || `Checker #${printer.id}`),
+              }]),
+            );
+
+            Object.values(this.cart || {}).forEach((item) => {
+              (Array.isArray(item.assigned_checker_printers) ? item.assigned_checker_printers : []).forEach((printer) => {
+                const printerId = Number(printer?.id || 0);
+
+                if (printerId > 0 && !checkerPrinterMap.has(printerId)) {
+                  checkerPrinterMap.set(printerId, {
+                    id: printerId,
+                    name: String(printer?.name || `Checker #${printerId}`),
+                  });
+                }
+              });
+            });
+
+            Object.values(this.cart || {}).forEach((item) => {
+              const assignedIds = this.resolveCheckerPrinterIdsForCartItem(item, item?.id);
+
+              assignedIds.forEach((printerId) => {
+                if (printerId > 0 && !checkerPrinterMap.has(printerId)) {
+                  checkerPrinterMap.set(printerId, {
+                    id: printerId,
+                    name: `Checker #${printerId}`,
+                  });
+                }
+              });
+            });
+
+            const selectedFromCart = new Map();
+
+            Object.entries(this.cart || {}).forEach(([cartKey, item]) => {
+              const assignedIds = this.resolveCheckerPrinterIdsForCartItem(item, cartKey);
+
+              assignedIds.forEach((printerId) => {
+                const checkerPrinter = checkerPrinterMap.get(printerId);
+
+                if (checkerPrinter) {
+                  selectedFromCart.set(checkerPrinter.id, checkerPrinter);
+                }
+              });
+            });
+
+            return Array.from(selectedFromCart.values());
+          },
+
+          shouldChooseCheckerOnCheckout() {
+            return this.canChooseChecker && this.getCheckerPrintersFromCart().length > 1;
+          },
+
+          getSelectedCheckerPrinterIds() {
+            return Array.from(new Set((this.selectedCheckerPrinterIds || [])
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)));
+          },
+
+          prepareCheckerSelectionFromCart() {
+            const availableCheckerPrinters = this.getCheckerPrintersFromCart();
+            const availableIds = availableCheckerPrinters.map((printer) => Number(printer.id));
+            const retainedSelection = this.getSelectedCheckerPrinterIds().filter((id) => availableIds.includes(id));
+
+            this.selectedCheckerPrinterIds = retainedSelection.length > 0 ? retainedSelection : availableIds;
           },
 
           async selectSession(sessionId) {
@@ -460,11 +604,15 @@
               if (data.success) {
                 this.cart = data.cart ?? this.cart;
                 if (!this.cart[product.id]) {
+                  const assignedCheckerPrinterIds = Array.isArray(product.assigned_checker_printers) ?
+                    product.assigned_checker_printers.map((printer) => Number(printer?.id)).filter((id) => Number.isInteger(id) && id > 0) : [];
+
                   this.cart[product.id] = {
                     name: product.name,
                     price: product.price,
                     qty: 1,
                     notes: null,
+                    assigned_checker_printer_ids: assignedCheckerPrinterIds,
                   };
                 }
               } else {
@@ -475,11 +623,15 @@
               if (this.cart[product.id]) {
                 this.cart[product.id].qty++;
               } else {
+                const assignedCheckerPrinterIds = Array.isArray(product.assigned_checker_printers) ?
+                  product.assigned_checker_printers.map((printer) => Number(printer?.id)).filter((id) => Number.isInteger(id) && id > 0) : [];
+
                 this.cart[product.id] = {
                   name: product.name,
                   price: product.price,
                   qty: 1,
                   notes: null,
+                  assigned_checker_printer_ids: assignedCheckerPrinterIds,
                 };
               }
             } finally {
@@ -581,7 +733,8 @@
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
                 body: JSON.stringify({
-                  session_id: this.selectedSession
+                  session_id: this.selectedSession,
+                  checker_printer_ids: this.shouldChooseCheckerOnCheckout() ? this.getSelectedCheckerPrinterIds() : undefined,
                 }),
               });
               const data = await res.json();

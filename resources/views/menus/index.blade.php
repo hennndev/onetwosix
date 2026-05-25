@@ -624,7 +624,16 @@
         {{-- Detail Group --}}
         <div class="px-5 pb-5">
           <div class="mb-4">
-            <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Target Printer</p>
+            <div class="mb-3 flex items-center justify-between">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Target Printer</p>
+              @if (!$printers->isEmpty())
+                <button id="menuModalPrinterSave"
+                        type="button"
+                        class="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+                  Simpan
+                </button>
+              @endif
+            </div>
             @if ($printers->isEmpty())
               <div class="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-400">
                 Belum ada printer aktif.
@@ -890,10 +899,23 @@
 
         setCountPortionToggleVisibility(Boolean(menu.is_item_group));
 
+        const modalPrinterTargets = document.getElementById('menuModalPrinterTargets');
+        if (modalPrinterTargets) {
+          modalPrinterTargets.dataset.selectionTouched = '0';
+        }
+
+        const selectedPrinterIdsFromMenu = Array.isArray(menu.printers) ?
+          menu.printers.map((printer) => Number(printer?.id || 0)).filter((id) => Number.isInteger(id) && id > 0) : [];
+
         document.querySelectorAll('[data-menu-modal-printer]').forEach((checkbox) => {
-          checkbox.checked = false;
           checkbox.dataset.itemId = menu.id;
+          checkbox.checked = selectedPrinterIdsFromMenu.includes(Number(checkbox.value));
         });
+
+        const saveBtn = document.getElementById('menuModalPrinterSave');
+        if (saveBtn) {
+          saveBtn.dataset.itemId = menu.id;
+        }
 
         // Load detail group
         const loading = document.getElementById('menuModalDetailLoading');
@@ -914,11 +936,6 @@
           .then(r => r.json())
           .then(data => {
             loading.classList.add('hidden');
-
-            const selectedPrinterIds = Array.isArray(data.printer_ids) ? data.printer_ids.map(Number) : [];
-            document.querySelectorAll('[data-menu-modal-printer]').forEach((checkbox) => {
-              checkbox.checked = selectedPrinterIds.includes(Number(checkbox.value));
-            });
 
             if (!data.success || !Array.isArray(data.detail_group) || data.detail_group.length === 0) {
               empty.textContent = data.message || 'Tidak ada bahan terdaftar.';
@@ -1047,33 +1064,38 @@
         }
       }
 
-      document.addEventListener('change', async function(event) {
-        const checkbox = event.target instanceof HTMLInputElement && event.target.matches('[data-menu-modal-printer]') ?
+      document.addEventListener('click', async function(event) {
+        const saveBtn = event.target instanceof HTMLElement && event.target.id === 'menuModalPrinterSave' ?
           event.target :
           null;
 
-        if (!checkbox) {
+        if (!saveBtn) {
           return;
         }
 
-        const itemId = checkbox.dataset.itemId;
+        const itemId = saveBtn.dataset.itemId;
         if (!itemId) {
           return;
         }
 
-        const allCheckboxes = Array.from(document.querySelectorAll(`[data-menu-modal-printer][data-item-id="${itemId}"]`));
+        const allCheckboxes = Array.from(document.querySelectorAll('[data-menu-modal-printer]'));
         const selectedPrinterIds = allCheckboxes
           .filter((input) => input instanceof HTMLInputElement && input.checked)
           .map((input) => Number(input.value));
 
-        checkbox.disabled = true;
+        saveBtn.disabled = true;
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = '...';
 
         try {
-          await syncPrinterTargets(itemId, selectedPrinterIds);
-        } catch {
-          checkbox.checked = !checkbox.checked;
-        } finally {
-          checkbox.disabled = false;
+          const response = await syncPrinterTargets(itemId, selectedPrinterIds);
+          location.reload();
+        } catch (error) {
+          saveBtn.textContent = 'Error';
+          setTimeout(() => {
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+          }, 2000);
         }
       });
 
