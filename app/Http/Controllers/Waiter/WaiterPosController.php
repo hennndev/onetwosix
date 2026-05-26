@@ -827,10 +827,12 @@ class WaiterPosController extends Controller
     protected function createOrderWithRetry(array $attributes): Order
     {
         $offset = 0;
-        $maxAttempts = 5;
+        $maxAttempts = 10;
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            $attributes['order_number'] = $this->generateDailyOrderNumber($offset);
+            $attributes['order_number'] = $attempt === 1
+                ? $this->generateDailyOrderNumber($offset)
+                : $this->generateFallbackDailyOrderNumber($attempt);
 
             try {
                 return Order::create($attributes);
@@ -839,11 +841,22 @@ class WaiterPosController extends Controller
                     throw $exception;
                 }
 
-                $offset += 2;
+                $offset++;
             }
         }
 
         throw new \RuntimeException('Gagal membuat order number unik.');
+    }
+
+    protected function generateFallbackDailyOrderNumber(int $attempt): string
+    {
+        $sequence = random_int(1, 9999) + $attempt;
+
+        if ($sequence > 9999) {
+            $sequence -= 9999;
+        }
+
+        return sprintf('ORD-%s-%04d', today()->format('Ymd'), $sequence);
     }
 
     protected function isDuplicateEntryException(QueryException $exception): bool

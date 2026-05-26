@@ -1546,10 +1546,12 @@ class PosController extends Controller
     protected function createOrderWithRetry(array $attributes, string $prefix, string $scope): Order
     {
         $offset = 0;
-        $maxAttempts = 5;
+        $maxAttempts = 10;
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            $attributes['order_number'] = $this->generateDailyOrderNumberWithOffset($prefix, $scope, $offset);
+            $attributes['order_number'] = $attempt === 1
+                ? $this->generateDailyOrderNumberWithOffset($prefix, $scope, $offset)
+                : $this->generateFallbackDailyOrderNumber($prefix, $attempt);
 
             try {
                 return Order::create($attributes);
@@ -1558,11 +1560,22 @@ class PosController extends Controller
                     throw $exception;
                 }
 
-                $offset += 2;
+                $offset++;
             }
         }
 
         throw new \RuntimeException('Gagal membuat order number unik.');
+    }
+
+    protected function generateFallbackDailyOrderNumber(string $prefix, int $attempt): string
+    {
+        $sequence = random_int(1, 9999) + $attempt;
+
+        if ($sequence > 9999) {
+            $sequence -= 9999;
+        }
+
+        return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
     }
 
     protected function createWalkInBillingWithRetry(array $attributes): string
