@@ -65,8 +65,12 @@
     </a>
   </header>
 
+  <div class="pt-12">
+    @include('layouts.top-spender-banner')
+  </div>
+
   {{-- Main scrollable content --}}
-  <main class="min-h-screen pt-12 pb-20">
+  <main class="min-h-screen pb-20">
     {{ $slot }}
   </main>
 

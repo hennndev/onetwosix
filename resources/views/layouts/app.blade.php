@@ -41,6 +41,7 @@
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Top Header -->
       @include('layouts.header')
+      @include('layouts.top-spender-banner')
 
       <!-- Page Content -->
       <main class="flex-1 overflow-y-auto">
