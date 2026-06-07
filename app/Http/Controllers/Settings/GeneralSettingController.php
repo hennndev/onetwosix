@@ -7,6 +7,7 @@ use App\Models\GeneralSetting;
 use App\Models\Printer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class GeneralSettingController extends Controller
@@ -31,13 +32,50 @@ class GeneralSettingController extends Controller
             'end_day_kitchen_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_bar_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'auth_code_target_email' => ['nullable', 'email'],
+            'daily_auth_code_access_emails' => [
+                'nullable',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $emails = collect(preg_split('/[\r\n,]+/', (string) $value, -1, PREG_SPLIT_NO_EMPTY))
+                        ->map(fn (string $email): string => Str::lower(trim($email)))
+                        ->filter();
+
+                    foreach ($emails as $email) {
+                        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                            $fail('Setiap email akses daily auth code harus valid.');
+
+                            return;
+                        }
+                    }
+                },
+            ],
         ]);
 
         $validated['can_choose_checker'] = $request->boolean('can_choose_checker');
+        $validated['daily_auth_code_access_emails'] = $this->normalizeEmailList(
+            $validated['daily_auth_code_access_emails'] ?? null
+        );
 
         GeneralSetting::instance()->update($validated);
 
         return redirect()->route('admin.settings.general.index')
             ->with('success', 'Pengaturan umum berhasil disimpan.');
+    }
+
+    private function normalizeEmailList(?string $emails): ?string
+    {
+        if ($emails === null) {
+            return null;
+        }
+
+        $normalizedEmails = collect(preg_split('/[\r\n,]+/', $emails, -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $email): string => Str::lower(trim($email)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $normalizedEmails->isEmpty()
+            ? null
+            : $normalizedEmails->implode("\n");
     }
 }

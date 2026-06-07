@@ -237,6 +237,22 @@
           @enderror
         </div>
 
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="daily_auth_code_access_emails">
+            Email Akses Daily Auth Code
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Daftar akun/email yang boleh membuka dan memakai menu Daily Auth Code. Tulis satu email per baris atau pisahkan dengan koma.</p>
+          <textarea id="daily_auth_code_access_emails"
+                    name="daily_auth_code_access_emails"
+                    rows="4"
+                    placeholder="manager@company.com&#10;ops@company.com"
+                    class="w-full border @error('daily_auth_code_access_emails') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none">{{ old('daily_auth_code_access_emails', implode("\n", $settings->dailyAuthCodeAccessEmails())) }}</textarea>
+          @error('daily_auth_code_access_emails')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
       </div>
 
       <!-- Info box -->
@@ -253,7 +269,7 @@
           </svg>
           Catatan
         </p>
-        <p>Pengaturan ini mengatur persentase charge, opsi pilih checker, printer default (termasuk target End Day Kitchen/Bar), dan email tujuan auth code.</p>
+        <p>Pengaturan ini mengatur persentase charge, opsi pilih checker, printer default, email tujuan auth code, dan akun yang boleh membuka Daily Auth Code.</p>
       </div>
 
       <div class="mt-6 flex items-center gap-3">

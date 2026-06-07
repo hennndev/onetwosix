@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\GeneralSetting;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,14 +17,22 @@ class CheckAdminRole
             abort(403);
         }
 
-        // Administrators have unrestricted access
-        if ($user->hasRole('Administrator')) {
-            return $next($request);
-        }
-
         $currentRoute = $request->route()?->getName();
 
         if (! $currentRoute) {
+            return $next($request);
+        }
+
+        if (str_starts_with($currentRoute, 'admin.settings.daily-auth-code.')) {
+            if ($user->hasRole('Administrator') && GeneralSetting::instance()->allowsDailyAuthCodeAccess($user->email)) {
+                return $next($request);
+            }
+
+            abort(403, 'Akses ditolak.');
+        }
+
+        // Administrators have unrestricted access outside the daily auth code settings page
+        if ($user->hasRole('Administrator')) {
             return $next($request);
         }
 

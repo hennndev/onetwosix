@@ -89,6 +89,7 @@ test('general settings can save receipt printer assignments', function () {
             'end_day_kitchen_printer_id' => $endDayKitchenPrinter->id,
             'end_day_bar_printer_id' => $endDayBarPrinter->id,
             'auth_code_target_email' => 'approval@company.test',
+            'daily_auth_code_access_emails' => "manager@company.test\nops@company.test",
         ])
         ->assertRedirect(route('admin.settings.general.index'));
 
@@ -100,6 +101,7 @@ test('general settings can save receipt printer assignments', function () {
         ->and((int) $settings->end_day_kitchen_printer_id)->toBe((int) $endDayKitchenPrinter->id)
         ->and((int) $settings->end_day_bar_printer_id)->toBe((int) $endDayBarPrinter->id)
         ->and((string) $settings->auth_code_target_email)->toBe('approval@company.test')
+        ->and((array) $settings->dailyAuthCodeAccessEmails())->toBe(['manager@company.test', 'ops@company.test'])
         ->and((int) $settings->tax_percentage)->toBe(10)
         ->and((int) $settings->service_charge_percentage)->toBe(5)
         ->and((bool) $settings->can_choose_checker)->toBeTrue();
@@ -118,4 +120,19 @@ test('general settings rejects invalid auth code target email format', function 
         ])
         ->assertRedirect(route('admin.settings.general.index'))
         ->assertSessionHasErrors(['auth_code_target_email']);
+});
+
+test('general settings rejects invalid daily auth code access email format', function () {
+    $admin = adminUser();
+
+    actingAs($admin)
+        ->from(route('admin.settings.general.index'))
+        ->put(route('admin.settings.general.update'), [
+            'tax_percentage' => 10,
+            'service_charge_percentage' => 5,
+            'can_choose_checker' => true,
+            'daily_auth_code_access_emails' => "manager@company.test\ninvalid-email",
+        ])
+        ->assertRedirect(route('admin.settings.general.index'))
+        ->assertSessionHasErrors(['daily_auth_code_access_emails']);
 });
