@@ -96,6 +96,7 @@
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">DP</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Event</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Orders</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Subtotal</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Service Charge</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">PB1</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
@@ -286,6 +287,16 @@
               <td class="px-5 py-4 whitespace-nowrap text-right">
                 <div class="text-base text-gray-700">
                   Rp {{ number_format($ordersForEligibility, 0, ',', '.') }}
+                </div>
+              </td>
+
+              {{-- Subtotal --}}
+              <td class="px-5 py-4 whitespace-nowrap text-right">
+                @php
+                  $subtotalAmount = (float) ($activeBookingSubtotals[$reservation->id] ?? 0);
+                @endphp
+                <div class="text-base font-semibold text-gray-900">
+                  Rp {{ number_format($subtotalAmount, 0, ',', '.') }}
                 </div>
               </td>
 

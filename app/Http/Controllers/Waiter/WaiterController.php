@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Waiter;
 
 use App\Http\Controllers\Controller;
 use App\Models\Area;
+use App\Models\DisplayMessageRequest;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -406,5 +407,78 @@ class WaiterController extends Controller
     public function settings(): View
     {
         return view('waiter.settings');
+    }
+
+    public function displayMessages(Request $request): View
+    {
+        $waiterId = (int) Auth::id();
+
+        $activeSessions = TableSession::with(['customer.profile', 'table.area'])
+            ->where('waiter_id', $waiterId)
+            ->where('status', 'active')
+            ->whereNotNull('table_reservation_id')
+            ->orderByDesc('checked_in_at')
+            ->get();
+
+        $selectedSessionId = (int) ($request->integer('session_id') ?: session(WaiterPosController::SESSION_KEY));
+        $selectedSession = $selectedSessionId > 0
+            ? $activeSessions->firstWhere('id', $selectedSessionId)
+            : null;
+
+        if ($selectedSession === null && $activeSessions->count() === 1) {
+            $selectedSession = $activeSessions->first();
+            $selectedSessionId = (int) $selectedSession?->id;
+        }
+
+        if ($selectedSession !== null) {
+            session()->put(WaiterPosController::SESSION_KEY, $selectedSession->id);
+        }
+
+        $messages = DisplayMessageRequest::with(['customer.profile'])
+            ->whereIn('customer_id', $activeSessions->pluck('customer_id')->filter()->unique()->values())
+            ->latest()
+            ->get();
+
+        return view('waiter.display-messages', [
+            'messages' => $messages,
+            'totalMessages' => $messages->count(),
+            'pendingMessages' => $messages->where('status', 'pending')->count(),
+            'displayedMessages' => $messages->where('status', 'displayed')->count(),
+            'activeSessions' => $activeSessions,
+            'selectedSession' => $selectedSession,
+            'selectedSessionId' => $selectedSessionId > 0 ? $selectedSessionId : null,
+        ]);
+    }
+
+    public function storeDisplayMessage(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|integer|exists:table_sessions,id',
+            'message' => 'required|string|max:500',
+            'tip' => 'nullable|integer|min:0',
+        ]);
+
+        $session = TableSession::with(['customer.profile', 'table.area'])
+            ->whereKey((int) $validated['session_id'])
+            ->where('waiter_id', (int) Auth::id())
+            ->where('status', 'active')
+            ->whereNotNull('table_reservation_id')
+            ->first();
+
+        if (! $session || ! $session->customer_id) {
+            return back()
+                ->withErrors(['session_id' => 'Pilih tamu aktif terlebih dahulu.'])
+                ->withInput();
+        }
+
+        DisplayMessageRequest::create([
+            'customer_id' => (int) $session->customer_id,
+            'message' => trim((string) $validated['message']),
+            'tip' => $validated['tip'] ?? null,
+            'status' => 'pending',
+        ]);
+
+        return redirect()->route('waiter.display-messages.index', ['session_id' => $session->id])
+            ->with('success', 'Display message berhasil dikirim.');
     }
 }

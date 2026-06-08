@@ -206,6 +206,12 @@ class TableReservationController extends Controller
             ]];
         });
 
+        $activeBookingSubtotals = $activeBookingsByTable->mapWithKeys(function (TableReservation $booking) {
+            return [
+                $booking->id => $this->calculateActiveBookingItemSubtotal($booking),
+            ];
+        });
+
         $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser'])
             ->where('status', 'pending')
             ->orderBy('reservation_date')
@@ -300,6 +306,7 @@ class TableReservationController extends Controller
             'activeSessionChargePreviews',
             'activeSessionEventAdjustments',
             'activeBookingEventAdjustments',
+            'activeBookingSubtotals',
             'historyTotalCount',
             'historyCompletedCount',
             'historyForceClosedCount',
@@ -1157,6 +1164,20 @@ class TableReservationController extends Controller
             'fixed' => round($baseMinimumCharge + (float) $event->price_adjustment_value, 2),
             default => $baseMinimumCharge,
         };
+    }
+
+    protected function calculateActiveBookingItemSubtotal(TableReservation $booking): float
+    {
+        $tableSession = $booking->tableSession;
+
+        if (! $tableSession) {
+            return 0;
+        }
+
+        return (float) $tableSession->orders
+            ->flatMap->items
+            ->where('status', '!=', 'cancelled')
+            ->sum(fn ($item) => (float) ($item->subtotal ?? 0) + (float) ($item->tax_amount ?? 0) + (float) ($item->service_charge_amount ?? 0));
     }
 
     /**

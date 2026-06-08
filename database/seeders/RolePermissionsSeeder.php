@@ -88,7 +88,9 @@ class RolePermissionsSeeder extends Seeder
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         // Collect all unique permission patterns
-        $allPermissions = collect(self::ROLE_PERMISSIONS)->flatten()->unique();
+        $allPermissions = collect(self::ROLE_PERMISSIONS)
+            ->flatten()
+            ->unique();
 
         foreach ($allPermissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);

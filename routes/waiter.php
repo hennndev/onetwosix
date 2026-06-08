@@ -26,3 +26,5 @@ Route::post('/table-scanner/process-checkin', [TableController::class, 'processC
 Route::get('/bookings', [TableReservationController::class, 'index'])->name('bookings.index');
 Route::get('/notifications', [WaiterController::class, 'notifications'])->name('notifications');
 Route::get('/settings', [WaiterController::class, 'settings'])->name('settings');
+Route::get('/display-messages', [WaiterController::class, 'displayMessages'])->name('display-messages.index');
+Route::post('/display-messages', [WaiterController::class, 'storeDisplayMessage'])->name('display-messages.store');

@@ -1102,6 +1102,91 @@ test('active bookings page includes transaction checker progress for close billi
         ->assertSee('Transaction Checker belum lengkap');
 });
 
+test('active bookings page subtotal sums order item subtotal tax and service charge', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 115000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 115000,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Subtotal Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 100000,
+        'stock_quantity' => 10,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 100000,
+        'discount_amount' => 0,
+        'total' => 100000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 100000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'tax_amount' => 10000,
+        'service_charge_amount' => 5000,
+        'status' => 'pending',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertOk()
+        ->assertSee('Subtotal')
+        ->assertSee('Rp 115.000');
+});
+
 test('billing cannot be closed while transaction checker is incomplete', function () {
     $admin = adminUser();
     $area = makeArea();

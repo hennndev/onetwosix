@@ -11,8 +11,45 @@ class RealtimeTopSpenderBanner
      */
     public function current(): ?array
     {
-        /** @var TableSession|null $topSession */
-        $topSession = TableSession::query()
+        $topSession = $this->topSessions(1)->first();
+
+        if (! $topSession) {
+            return null;
+        }
+
+        return [
+            'customer_name' => $this->resolveCustomerName($topSession),
+            'table_number' => $topSession->table?->table_number,
+            'area_name' => $topSession->table?->area?->name,
+            'orders_subtotal' => $this->resolveRunningSubtotal($topSession),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function topSpenders(int $limit = 3): array
+    {
+        return $this->topSessions($limit)
+            ->values()
+            ->map(function (TableSession $session, int $index): array {
+                return [
+                    'rank' => $index + 1,
+                    'customer_name' => $this->resolveCustomerName($session),
+                    'table_number' => $session->table?->table_number,
+                    'area_name' => $session->table?->area?->name,
+                    'orders_subtotal' => $this->resolveRunningSubtotal($session),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, TableSession>
+     */
+    protected function topSessions(int $limit): \Illuminate\Support\Collection
+    {
+        return TableSession::query()
             ->with([
                 'table.area',
                 'reservation.customer.profile',
@@ -33,18 +70,7 @@ class RealtimeTopSpenderBanner
             ->whereNotNull('table_reservation_id')
             ->get()
             ->sortByDesc(fn (TableSession $session): float => $this->resolveRunningSubtotal($session))
-            ->first();
-
-        if (! $topSession) {
-            return null;
-        }
-
-        return [
-            'customer_name' => $this->resolveCustomerName($topSession),
-            'table_number' => $topSession->table?->table_number,
-            'area_name' => $topSession->table?->area?->name,
-            'orders_subtotal' => $this->resolveRunningSubtotal($topSession),
-        ];
+            ->take($limit);
     }
 
     protected function resolveRunningSubtotal(TableSession $session): float

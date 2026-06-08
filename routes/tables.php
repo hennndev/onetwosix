@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::resource('tables', TableController::class)->except(['show', 'create', 'edit']);
 Route::get('active-tables', [TableController::class, 'activeTables'])->name('active-tables.index');
+Route::get('active-tables/readonly', [TableController::class, 'activeTablesReadonly'])->name('active-tables.readonly');
 Route::patch('active-tables/{session}/pax', [TableController::class, 'updatePax'])->name('active-tables.updatePax');
 Route::get('table-scanner', [TableController::class, 'scanner'])->name('table-scanner.index');
 Route::post('table-scanner/scan', [TableController::class, 'scanQR'])->name('table-scanner.scan');

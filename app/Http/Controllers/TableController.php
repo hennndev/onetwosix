@@ -4,14 +4,265 @@ namespace App\Http\Controllers;
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\Event;
+use App\Models\GeneralSetting;
 use App\Models\Tabel;
 use App\Models\TableSession;
+use App\Support\RealtimeTopSpenderBanner;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class TableController extends Controller
 {
+    /**
+     * @return array<string, mixed>
+     */
+    protected function activeTablesViewData(Request $request): array
+    {
+        $query = TableSession::with([
+            'table.area',
+            'customer.profile',
+            'customer.customerUser',
+            'reservation.customer.profile',
+            'reservation.customer.customerUser',
+            'waiter.profile',
+            'billing',
+            'orders.items.inventoryItem',
+        ])
+            ->where('status', 'active');
+
+        if ($request->has('area_id') && $request->area_id != '') {
+            $query->whereHas('table', function ($q) use ($request) {
+                $q->where('area_id', $request->area_id);
+            });
+        }
+
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('session_code', 'like', "%{$search}%")
+                    ->orWhereHas('table', function ($tableQuery) use ($search) {
+                        $tableQuery->where('table_number', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                        $customerQuery->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $sessions = $query->orderBy('checked_in_at', 'desc')->get();
+
+        $activeSessionChargePreviews = $sessions->mapWithKeys(function (TableSession $session): array {
+            $billing = $session->billing;
+
+            return [
+                $session->id => $this->calculateSessionBillingTotals(
+                    $session,
+                    (float) ($billing?->discount_amount ?? 0),
+                    (float) ($billing?->minimum_charge ?? 0),
+                    (float) ($session->reservation?->down_payment_amount ?? 0),
+                ),
+            ];
+        });
+
+        $activeSessionEventAdjustments = $sessions->mapWithKeys(function (TableSession $session): array {
+            $activeEvent = $this->resolveActiveEventForDate($session->reservation?->reservation_date);
+
+            if (! $activeEvent) {
+                return [$session->id => null];
+            }
+
+            $baseMinimumCharge = (float) ($session->billing?->minimum_charge ?? $session->table?->minimum_charge ?? 0);
+            $adjustedMinimumCharge = $this->applyEventAdjustmentToMinimumCharge($baseMinimumCharge, $activeEvent);
+
+            return [$session->id => [
+                'event_name' => (string) $activeEvent->name,
+                'adjustment_type' => (string) $activeEvent->price_adjustment_type,
+                'adjustment_value' => (float) $activeEvent->price_adjustment_value,
+                'adjustment_label' => (string) $activeEvent->getPriceAdjustmentFormatted(),
+                'base_minimum_charge' => $baseMinimumCharge,
+                'adjusted_minimum_charge' => $adjustedMinimumCharge,
+            ]];
+        });
+
+        $activeSessionSubtotals = $sessions->mapWithKeys(function (TableSession $session): array {
+            return [
+                $session->id => $this->calculateActiveSessionItemSubtotal($session),
+            ];
+        });
+
+        $sessions = $sessions->map(function (TableSession $session) use ($activeSessionSubtotals): TableSession {
+            $session->setAttribute('realtime_subtotal', $this->resolveRealtimeSubtotal($session));
+            $session->setAttribute('active_session_subtotal', $activeSessionSubtotals[$session->id] ?? 0);
+
+            return $session;
+        });
+
+        return [
+            'sessions' => $sessions,
+            'areas' => Area::where('is_active', true)->orderBy('sort_order')->get(),
+            'totalActiveSessions' => \App\Models\TableSession::where('status', 'active')->count(),
+            'totalRevenue' => Billing::whereHas('tableSession', function ($q) {
+                $q->where('status', 'active');
+            })->sum('grand_total'),
+            'topSpenders' => app(RealtimeTopSpenderBanner::class)->topSpenders(3),
+            'activeSessionChargePreviews' => $activeSessionChargePreviews,
+            'activeSessionEventAdjustments' => $activeSessionEventAdjustments,
+            'activeSessionSubtotals' => $activeSessionSubtotals,
+        ];
+    }
+
+    protected function resolveRealtimeSubtotal(TableSession $session): float
+    {
+        $realtimeSubtotal = (float) ($session->realtime_items_subtotal ?? 0)
+            + (float) ($session->realtime_items_tax_total ?? 0)
+            + (float) ($session->realtime_items_service_charge_total ?? 0);
+
+        if ($realtimeSubtotal > 0) {
+            return $realtimeSubtotal;
+        }
+
+        return (float) ($session->billing?->subtotal ?? $session->billing?->orders_total ?? 0);
+    }
+
+    protected function resolveActiveEventForDate(mixed $reservationDate): ?Event
+    {
+        if (blank($reservationDate)) {
+            return null;
+        }
+
+        $dateString = $reservationDate instanceof \Carbon\Carbon
+            ? $reservationDate->toDateString()
+            : (string) $reservationDate;
+
+        return Event::query()
+            ->where('is_active', true)
+            ->whereDate('start_date', '<=', $dateString)
+            ->whereDate('end_date', '>=', $dateString)
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    protected function applyEventAdjustmentToMinimumCharge(float $baseMinimumCharge, Event $event): float
+    {
+        return match ($event->price_adjustment_type) {
+            'percentage' => round($baseMinimumCharge * (1 + ((float) $event->price_adjustment_value / 100)), 2),
+            'fixed' => round($baseMinimumCharge + (float) $event->price_adjustment_value, 2),
+            default => $baseMinimumCharge,
+        };
+    }
+
+    protected function calculateActiveSessionItemSubtotal(TableSession $session): float
+    {
+        return (float) $session->orders
+            ->flatMap->items
+            ->where('status', '!=', 'cancelled')
+            ->sum(fn ($item) => (float) ($item->subtotal ?? 0) + (float) ($item->tax_amount ?? 0) + (float) ($item->service_charge_amount ?? 0));
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge, float $downPaymentAmount = 0): array
+    {
+        $settings = GeneralSetting::instance();
+        $orders = $session->orders
+            ->where('status', '!=', 'cancelled')
+            ->values();
+
+        $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
+        $subtotal = max($minimumCharge, $ordersTotal);
+
+        $bases = $this->resolveSessionChargeableBases($orders);
+
+        $taxRate = ((float) $settings->tax_percentage) / 100;
+        $serviceChargeRate = ((float) $settings->service_charge_percentage) / 100;
+
+        $tax = round(max($bases['tax_base'], 0) * $taxRate, 2);
+
+        $serviceChargeBaseWithTax = max($bases['service_charge_base'], 0);
+        if ($taxRate > 0) {
+            $serviceChargeBaseWithTax += max($bases['tax_and_service_base'], 0) * $taxRate;
+        }
+
+        $serviceCharge = round($serviceChargeBaseWithTax * $serviceChargeRate, 2);
+        $discountBaseTotal = $subtotal + $serviceCharge + $tax;
+        $discountAmount = min(max($discountAmount, 0), $discountBaseTotal);
+        $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
+        $grandTotalBeforeDownPayment = max($discountBaseTotal - $discountAmount, 0);
+        $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
+
+        return [
+            'orders_total' => $ordersTotal,
+            'minimum_charge' => $minimumCharge,
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'subtotal_after_discount' => $subtotalAfterDiscount,
+            'discount_base_total' => $discountBaseTotal,
+            'service_charge_percentage' => (float) $settings->service_charge_percentage,
+            'service_charge' => $serviceCharge,
+            'tax_percentage' => (float) $settings->tax_percentage,
+            'tax' => $tax,
+            'down_payment_amount' => $downPaymentAmount,
+            'grand_total_before_down_payment' => $grandTotalBeforeDownPayment,
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $orders
+     * @return array<string, float>
+     */
+    protected function resolveSessionChargeableBases(Collection $orders): array
+    {
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($orders as $order) {
+            $orderItems = $order->items->where('status', '!=', 'cancelled')->values();
+            $orderNetTotal = (float) ($order->total ?? 0);
+
+            if ($orderItems->isEmpty()) {
+                $serviceChargeBase += max($orderNetTotal, 0);
+                $taxBase += max($orderNetTotal, 0);
+                $taxAndServiceBase += max($orderNetTotal, 0);
+
+                continue;
+            }
+
+            $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+            $ratio = $itemsSubtotal > 0 ? max($orderNetTotal, 0) / $itemsSubtotal : 0;
+
+            foreach ($orderItems as $orderItem) {
+                $itemNetSubtotal = (float) ($orderItem->subtotal ?? 0) * $ratio;
+                $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+                $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+                if ($includeServiceCharge) {
+                    $serviceChargeBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax) {
+                    $taxBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax && $includeServiceCharge) {
+                    $taxAndServiceBase += $itemNetSubtotal;
+                }
+            }
+        }
+
+        return [
+            'service_charge_base' => $serviceChargeBase,
+            'tax_base' => $taxBase,
+            'tax_and_service_base' => $taxAndServiceBase,
+        ];
+    }
+
     // HALAMAN TABLE MANAGEMENT
     public function index(Request $request)
     {
@@ -154,43 +405,12 @@ class TableController extends Controller
     // HALAMAN ACTIVE TABLES
     public function activeTables(Request $request)
     {
-        $query = \App\Models\TableSession::with(['table.area', 'customer.profile', 'reservation', 'billing'])
-            ->where('status', 'active');
+        return view('active-tables.index', $this->activeTablesViewData($request));
+    }
 
-        if ($request->has('area_id') && $request->area_id != '') {
-            $query->whereHas('table', function ($q) use ($request) {
-                $q->where('area_id', $request->area_id);
-            });
-        }
-
-        if ($request->has('search') && $request->search != '') {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('session_code', 'like', "%{$search}%")
-                    ->orWhereHas('table', function ($tableQuery) use ($search) {
-                        $tableQuery->where('table_number', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                        $customerQuery->where('name', 'like', "%{$search}%");
-                    });
-            });
-        }
-
-        $sessions = $query->orderBy('checked_in_at', 'desc')->get();
-
-        $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
-
-        $totalActiveSessions = \App\Models\TableSession::where('status', 'active')->count();
-        $totalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q) {
-            $q->where('status', 'active');
-        })->sum('grand_total');
-
-        return view('active-tables.index', compact(
-            'sessions',
-            'areas',
-            'totalActiveSessions',
-            'totalRevenue'
-        ));
+    public function activeTablesReadonly(Request $request)
+    {
+        return view('active-tables.readonly', $this->activeTablesViewData($request));
     }
 
     // UPDATE PAX PADA ACTIVE TABLE

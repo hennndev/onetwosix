@@ -68,7 +68,17 @@ test('waiter can access settings page', function () {
         ->withSession(['accurate_database' => 'test'])
         ->get(route('waiter.settings'))
         ->assertOk()
-        ->assertViewIs('waiter.settings');
+        ->assertViewIs('waiter.settings')
+        ->assertSee(route('waiter.display-messages.index'), false);
+});
+
+test('waiter can access display messages page', function () {
+    $this->actingAs(makeWaiter())
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('waiter.display-messages.index'))
+        ->assertOk()
+        ->assertViewIs('waiter.display-messages')
+        ->assertSee('Request Tamu', false);
 });
 
 test('waiter index redirects to scanner', function () {
