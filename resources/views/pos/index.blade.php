@@ -30,6 +30,7 @@
     @include('pos._components.auth-modal-reprint')
 
     <script>
+      window.posUserId = {{ auth()->id() }};
       const posRoutes = {
         selectCounter: "{{ route('admin.pos.select-counter') }}",
         addToCart: "{{ route('admin.pos.add-to-cart', '__PRODUCT_ID__') }}",

@@ -98,6 +98,12 @@ class DailyAuthCodeController extends Controller
         $record = DailyAuthCode::forDate(now()->format('Y-m-d'));
         $requestedBy = auth()->user()?->name ?? 'System';
 
+        if ($settings->mail_provider === 'resend') {
+            config(['mail.default' => 'resend']);
+        } else {
+            config(['mail.default' => 'smtp']);
+        }
+
         Mail::to($targetEmail)->send(new DailyAuthCodeDeliveryMail(
             code: $record->active_code,
             requestedBy: $requestedBy,

@@ -218,6 +218,7 @@ Route::middleware('auth')->group(function () {
         Route::prefix('settings/general')->name('settings.general.')->group(function () {
             Route::get('/', [GeneralSettingController::class, 'index'])->name('index');
             Route::put('/', [GeneralSettingController::class, 'update'])->name('update');
+            Route::post('/test-email', [GeneralSettingController::class, 'sendTestEmail'])->name('test-email');
         });
     });
 });

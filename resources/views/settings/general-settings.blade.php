@@ -21,6 +21,11 @@
         {{ session('success') }}
       </div>
     @endif
+    @if (session('error'))
+      <div class="mb-4 px-4 py-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+        {{ session('error') }}
+      </div>
+    @endif
 
     <!-- Header -->
     <div class="mb-6">
@@ -222,6 +227,23 @@
 
         <div class="p-6">
           <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="mail_provider">
+            Metode Pengiriman Email
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Pilih provider email untuk pengiriman sistem (seperti pengiriman Auth Code).</p>
+          <select id="mail_provider"
+                  name="mail_provider"
+                  class="w-full border @error('mail_provider') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+            <option value="smtp" {{ old('mail_provider', $settings->mail_provider) === 'smtp' ? 'selected' : '' }}>SMFTP (Default / Gmail)</option>
+            <option value="resend" {{ old('mail_provider', $settings->mail_provider) === 'resend' ? 'selected' : '' }}>Resend API</option>
+          </select>
+          @error('mail_provider')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
                  for="auth_code_target_email">
             Email Tujuan Auth Code
           </label>
@@ -283,6 +305,19 @@
         </a>
       </div>
     </form>
+
+    <div class="mt-8 pt-8 border-t border-slate-200">
+      <h3 class="text-lg font-bold text-slate-800 mb-2">Uji Coba Pengiriman Email</h3>
+      <p class="text-sm text-slate-500 mb-4">Kirim email percobaan untuk memastikan pengaturan email (SMTP/Resend) berfungsi dengan baik. Sistem akan mengirim pesan ke <strong>Email Tujuan Auth Code</strong>.</p>
+      <form action="{{ route('admin.settings.general.test-email') }}" method="POST">
+        @csrf
+        <button type="submit"
+                class="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+          Kirim Email Percobaan
+        </button>
+      </form>
+    </div>
 
   </div>
 </x-app-layout>

@@ -31,6 +31,7 @@ class GeneralSettingController extends Controller
             'end_day_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_kitchen_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_bar_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'mail_provider' => ['required', 'string', 'in:smtp,resend'],
             'auth_code_target_email' => ['nullable', 'email'],
             'daily_auth_code_access_emails' => [
                 'nullable',
@@ -77,5 +78,31 @@ class GeneralSettingController extends Controller
         return $normalizedEmails->isEmpty()
             ? null
             : $normalizedEmails->implode("\n");
+    }
+
+    public function sendTestEmail(): RedirectResponse
+    {
+        $settings = GeneralSetting::instance();
+
+        if (empty($settings->auth_code_target_email)) {
+            return back()->with('error', 'Gagal mengirim test email: Email Tujuan Auth Code belum diisi.');
+        }
+
+        try {
+            if ($settings->mail_provider === 'resend') {
+                config(['mail.default' => 'resend']);
+            } else {
+                config(['mail.default' => 'smtp']);
+            }
+
+            \Illuminate\Support\Facades\Mail::to($settings->auth_code_target_email)->send(new \App\Mail\TestMail(
+                requestedBy: auth()->user()?->name ?? 'Administrator',
+                requestedAt: now()->format('d M Y H:i:s')
+            ));
+
+            return back()->with('success', 'Email percobaan berhasil dikirim ke '.$settings->auth_code_target_email.' menggunakan '.strtoupper($settings->mail_provider).'. Silakan cek kotak masuk Anda.');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal mengirim email: '.$e->getMessage());
+        }
     }
 }
