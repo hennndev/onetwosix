@@ -370,20 +370,39 @@ class UserController extends Controller
     }
 
     // HAPUS USER/STAF INTERNAL
-    public function destroy(User $user)
+    public function destroy(Request $request, User $user)
     {
         try {
             $accurateId = $user->internalUser?->accurate_id;
 
-            if ($accurateId !== null) {
+            if ($accurateId !== null && !$request->has('force')) {
                 $this->accurateService->deleteEmployee((int) $accurateId);
             }
             $user->delete();
 
             return redirect()->route('admin.users.index')
                 ->with('success', 'User berhasil dihapus');
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() == '23000') {
+                return back()->withErrors(['error' => 'Gagal menghapus user: User ini sudah terhubung dengan data transaksi (seperti order). Silakan ubah status user menjadi "Inactive" melalui menu Edit daripada menghapusnya.']);
+            }
+            return back()->withErrors(['error' => 'Gagal menghapus user karena ada data terkait: ' . $e->getMessage()]);
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal menghapus user: '.$e->getMessage()]);
+            $errorMessage = $e->getMessage();
+            
+            // Check if error is related to Accurate
+            $isAccurateError = str_contains(strtolower($errorMessage), 'accurate') || 
+                               str_contains(strtolower($errorMessage), 'tidak ditemukan') || 
+                               str_contains(strtolower($errorMessage), 'sudah dihapus') || 
+                               str_contains(strtolower($errorMessage), 'host database');
+                               
+            if ($isAccurateError) {
+                return back()
+                    ->with('accurate_error_id', $user->id)
+                    ->with('accurate_error_message', $errorMessage);
+            }
+            
+            return back()->withErrors(['error' => 'Gagal menghapus user: ' . $errorMessage]);
         }
     }
 }
