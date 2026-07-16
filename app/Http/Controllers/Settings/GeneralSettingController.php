@@ -33,6 +33,9 @@ class GeneralSettingController extends Controller
             'end_day_bar_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'mail_provider' => ['required', 'string', 'in:smtp,resend'],
             'auth_code_target_email' => ['nullable', 'email'],
+            'auth_code_target_whatsapp' => ['nullable', 'string', 'max:20'],
+            'fonnte_token' => ['nullable', 'string'],
+            'auth_code_delivery_channel' => ['required', 'string', 'in:both,email,whatsapp'],
             'daily_auth_code_access_emails' => [
                 'nullable',
                 'string',

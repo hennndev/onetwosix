@@ -88,7 +88,9 @@ test('general settings can save receipt printer assignments', function () {
             'end_day_receipt_printer_id' => $endDayPrinter->id,
             'end_day_kitchen_printer_id' => $endDayKitchenPrinter->id,
             'end_day_bar_printer_id' => $endDayBarPrinter->id,
+            'mail_provider' => 'resend',
             'auth_code_target_email' => 'approval@company.test',
+            'auth_code_delivery_channel' => 'both',
             'daily_auth_code_access_emails' => "manager@company.test\nops@company.test",
         ])
         ->assertRedirect(route('admin.settings.general.index'));
@@ -116,6 +118,8 @@ test('general settings rejects invalid auth code target email format', function 
             'tax_percentage' => 10,
             'service_charge_percentage' => 5,
             'can_choose_checker' => true,
+            'mail_provider' => 'resend',
+            'auth_code_delivery_channel' => 'both',
             'auth_code_target_email' => 'invalid-email',
         ])
         ->assertRedirect(route('admin.settings.general.index'))
@@ -131,6 +135,8 @@ test('general settings rejects invalid daily auth code access email format', fun
             'tax_percentage' => 10,
             'service_charge_percentage' => 5,
             'can_choose_checker' => true,
+            'mail_provider' => 'resend',
+            'auth_code_delivery_channel' => 'both',
             'daily_auth_code_access_emails' => "manager@company.test\ninvalid-email",
         ])
         ->assertRedirect(route('admin.settings.general.index'))

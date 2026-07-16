@@ -83,36 +83,98 @@ class DailyAuthCodeController extends Controller
         ]);
     }
 
-    public function sendEmail(Request $request): JsonResponse
+    public function sendEmail(Request $request, \App\Services\FonnteService $fonnteService): JsonResponse
     {
         $settings = GeneralSetting::instance();
         $targetEmail = trim((string) $settings->auth_code_target_email);
+        $targetWhatsapp = trim((string) $settings->auth_code_target_whatsapp);
+        $channel = $settings->auth_code_delivery_channel ?: 'both';
 
-        if ($targetEmail === '') {
+        $shouldSendEmail = in_array($channel, ['both', 'email'], true);
+        $shouldSendWhatsapp = in_array($channel, ['both', 'whatsapp'], true);
+
+        // Validation based on chosen channel
+        if ($shouldSendEmail && $targetEmail === '' && $shouldSendWhatsapp && $targetWhatsapp === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email atau Nomor WhatsApp tujuan auth code belum diatur di General Setting.',
+            ], 422);
+        } elseif ($shouldSendEmail && ! $shouldSendWhatsapp && $targetEmail === '') {
             return response()->json([
                 'success' => false,
                 'message' => 'Email tujuan auth code belum diatur di General Setting.',
+            ], 422);
+        } elseif ($shouldSendWhatsapp && ! $shouldSendEmail && $targetWhatsapp === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nomor WhatsApp tujuan auth code belum diatur di General Setting.',
             ], 422);
         }
 
         $record = DailyAuthCode::forDate(now()->format('Y-m-d'));
         $requestedBy = auth()->user()?->name ?? 'System';
 
-        if ($settings->mail_provider === 'resend') {
-            config(['mail.default' => 'resend']);
-        } else {
-            config(['mail.default' => 'smtp']);
+        $emailSent = false;
+        $whatsappSent = false;
+
+        // Send Email if configured
+        if ($shouldSendEmail && $targetEmail !== '') {
+            try {
+                if ($settings->mail_provider === 'resend') {
+                    config(['mail.default' => 'resend']);
+                } else {
+                    config(['mail.default' => 'smtp']);
+                }
+
+                Mail::to($targetEmail)->send(new DailyAuthCodeDeliveryMail(
+                    code: $record->active_code,
+                    requestedBy: $requestedBy,
+                    requestedAt: now()->format('d M Y H:i:s')
+                ));
+                $emailSent = true;
+            } catch (\Exception $e) {
+                // Log exception internally but don't halt whatsapp transmission
+                report($e);
+            }
         }
 
-        Mail::to($targetEmail)->send(new DailyAuthCodeDeliveryMail(
-            code: $record->active_code,
-            requestedBy: $requestedBy,
-            requestedAt: now()->format('d M Y H:i:s')
-        ));
+        // Send WhatsApp if configured
+        if ($shouldSendWhatsapp && $targetWhatsapp !== '') {
+            try {
+                $whatsappSent = $fonnteService->sendOtp($targetWhatsapp, $record->active_code, $requestedBy);
+            } catch (\Exception $e) {
+                report($e);
+            }
+        }
+
+        if ($shouldSendEmail && ! $emailSent && $shouldSendWhatsapp && ! $whatsappSent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim auth code ke email maupun WhatsApp.',
+            ], 500);
+        } elseif ($shouldSendEmail && ! $emailSent && ! $shouldSendWhatsapp) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim auth code ke email.',
+            ], 500);
+        } elseif ($shouldSendWhatsapp && ! $whatsappSent && ! $shouldSendEmail) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim auth code ke WhatsApp.',
+            ], 500);
+        }
+
+        $channels = [];
+        if ($emailSent) {
+            $channels[] = 'Email';
+        }
+        if ($whatsappSent) {
+            $channels[] = 'WhatsApp';
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Auth code berhasil dikirim ke email tujuan.',
+            'message' => 'Auth code berhasil dikirim ke '.implode(' & ', $channels).'.',
         ]);
     }
 }

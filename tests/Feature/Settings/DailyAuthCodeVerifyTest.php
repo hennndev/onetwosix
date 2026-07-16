@@ -6,6 +6,10 @@ test('verify returns valid true when code matches active code', function () {
     $user = adminUser();
     $today = now()->format('Y-m-d');
 
+    \App\Models\GeneralSetting::instance()->update([
+        'daily_auth_code_access_emails' => $user->email,
+    ]);
+
     DailyAuthCode::create([
         'date' => $today,
         'code' => '1234',
@@ -22,6 +26,10 @@ test('verify returns valid true when code matches active code', function () {
 test('verify returns valid false when code does not match', function () {
     $user = adminUser();
     $today = now()->format('Y-m-d');
+
+    \App\Models\GeneralSetting::instance()->update([
+        'daily_auth_code_access_emails' => $user->email,
+    ]);
 
     DailyAuthCode::create([
         'date' => $today,
@@ -40,6 +48,10 @@ test('verify uses override code when set', function () {
     $user = adminUser();
     $today = now()->format('Y-m-d');
 
+    \App\Models\GeneralSetting::instance()->update([
+        'daily_auth_code_access_emails' => $user->email,
+    ]);
+
     DailyAuthCode::create([
         'date' => $today,
         'code' => '1234',
@@ -56,6 +68,10 @@ test('verify uses override code when set', function () {
 
 test('verify requires exactly 4 digits', function () {
     $user = adminUser();
+
+    \App\Models\GeneralSetting::instance()->update([
+        'daily_auth_code_access_emails' => $user->email,
+    ]);
 
     $this->actingAs($user)
         ->withSession(['accurate_database' => 'test'])

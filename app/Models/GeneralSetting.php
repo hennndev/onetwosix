@@ -18,6 +18,9 @@ class GeneralSetting extends Model
         'end_day_bar_printer_id',
         'mail_provider',
         'auth_code_target_email',
+        'auth_code_target_whatsapp',
+        'fonnte_token',
+        'auth_code_delivery_channel',
         'daily_auth_code_access_emails',
     ];
 
@@ -51,6 +54,9 @@ class GeneralSetting extends Model
             'end_day_bar_printer_id' => null,
             'mail_provider' => 'smtp',
             'auth_code_target_email' => null,
+            'auth_code_target_whatsapp' => null,
+            'fonnte_token' => null,
+            'auth_code_delivery_channel' => 'both',
             'daily_auth_code_access_emails' => null,
         ]);
     }

@@ -261,6 +261,58 @@
 
         <div class="p-6">
           <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="auth_code_target_whatsapp">
+            Nomor WhatsApp Tujuan Auth Code
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Nomor WhatsApp tujuan untuk pengiriman auth code via Fonnte (contoh: 08123456789 atau 628123456789).</p>
+          <input type="text"
+                 id="auth_code_target_whatsapp"
+                 name="auth_code_target_whatsapp"
+                 value="{{ old('auth_code_target_whatsapp', $settings->auth_code_target_whatsapp) }}"
+                 placeholder="contoh: 08123456789"
+                 class="w-full border @error('auth_code_target_whatsapp') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+          @error('auth_code_target_whatsapp')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="fonnte_token">
+            Fonnte API Token
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Token API Fonnte Anda. Kosongkan jika token dikonfigurasi di file env (.env).</p>
+          <input type="text"
+                 id="fonnte_token"
+                 name="fonnte_token"
+                 value="{{ old('fonnte_token', $settings->fonnte_token) }}"
+                 placeholder="Masukkan token Fonnte"
+                 class="w-full border @error('fonnte_token') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+          @error('fonnte_token')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="auth_code_delivery_channel">
+            Channel Pengiriman Auth Code
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Pilih saluran pengiriman kode OTP otorisasi harian.</p>
+          <select id="auth_code_delivery_channel"
+                  name="auth_code_delivery_channel"
+                  class="w-full border @error('auth_code_delivery_channel') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+            <option value="both" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'both' ? 'selected' : '' }}>Email & WhatsApp (Kirim ke keduanya)</option>
+            <option value="email" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'email' ? 'selected' : '' }}>Email Saja</option>
+            <option value="whatsapp" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'whatsapp' ? 'selected' : '' }}>WhatsApp Saja</option>
+          </select>
+          @error('auth_code_delivery_channel')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
                  for="daily_auth_code_access_emails">
             Email Akses Daily Auth Code
           </label>
