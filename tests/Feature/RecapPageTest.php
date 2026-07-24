@@ -1166,7 +1166,7 @@ test('recap page hides live lists when selected end day already exists in histor
         ]
     );
 
-    $orderedAt = \Illuminate\Support\Carbon::parse('2026-03-28 10:10:00', 'Asia/Jakarta');
+    $orderedAt = \Illuminate\Support\Carbon::parse('2026-03-28 09:30:00', 'Asia/Jakarta');
 
     $order = makeRecapOrder($admin->id, $orderedAt, 'RCP-CLOSED-001', [
         'payment_method' => 'cash',
@@ -1695,6 +1695,7 @@ test('recap page shows dashboard preview aggregates', function () {
 });
 
 test('recap cashier table shows payment reference and order item details', function () {
+    \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-05-10 14:00:00', 'Asia/Jakarta'));
     $admin = adminUser();
     $start = now()->startOfDay()->addHours(8);
     $end = now()->startOfDay()->addHours(23)->addMinutes(59);
@@ -1721,6 +1722,7 @@ test('recap cashier table shows payment reference and order item details', funct
         'payment_reference_number' => 'REF-TRF-9988',
         'items_total' => 45000,
         'total' => 45000,
+        'status' => 'completed',
     ]);
 
     $item = makeRecapInventoryItem([
@@ -1757,6 +1759,8 @@ test('recap cashier table shows payment reference and order item details', funct
         ->assertSeeText('Subtotal: Rp 45.000')
         ->assertSeeText('PB1: Rp 4.500')
         ->assertSeeText('Service: Rp 3.000');
+
+    \Illuminate\Support\Carbon::setTestNow();
 });
 
 test('recap page shows automatic closing history list and modal content shell', function () {
@@ -1935,9 +1939,11 @@ test('recap history can be reprinted from history flow', function () {
         'last_synced_at' => now()->subMinutes(10),
     ]);
 
+    [$expectedStart, $expectedEnd] = \App\Models\RecapHistory::resolveWindowForDate($historyDate->copy());
+
     $expectedRedirectUrl = route('admin.recap.close-preview', [
-        'start_datetime' => $historyDate->copy()->setTime(9, 0)->format('Y-m-d\TH:i'),
-        'end_datetime' => $historyDate->copy()->addDay()->setTime(8, 59)->format('Y-m-d\TH:i'),
+        'start_datetime' => $expectedStart->format('Y-m-d\TH:i'),
+        'end_datetime' => $expectedEnd->format('Y-m-d\TH:i'),
         'reprint' => 1,
         'recap_history_id' => $history->id,
     ]);

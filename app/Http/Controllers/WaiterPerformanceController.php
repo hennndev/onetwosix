@@ -265,8 +265,7 @@ class WaiterPerformanceController extends Controller
         if ($selectedDate !== null) {
             try {
                 $endDay = Carbon::parse($selectedDate, 'Asia/Jakarta');
-                $start = $endDay->copy()->setTime(9, 0, 0);
-                $end = $start->copy()->addDay()->subSecond();
+                [$start, $end] = \App\Models\RecapHistory::resolveWindowForDate($endDay);
 
                 return [
                     'start' => $start->toDateTimeString(),
@@ -317,35 +316,21 @@ class WaiterPerformanceController extends Controller
 
     private function currentOperationalWindow(): array
     {
-        $now = now('Asia/Jakarta');
-        $anchor = $now->copy()->setTime(9, 0, 0);
-
-        if ($now->lt($anchor)) {
-            $start = $anchor->copy()->subDay();
-
-            return [$start, $anchor->copy()->subSecond()];
-        }
-
-        return [$anchor, $anchor->copy()->addDay()->subSecond()];
+        return \App\Models\RecapHistory::resolveActiveWindow();
     }
 
     private function buildDailyHistory(User $waiter, int $days = 14, ?Carbon $latestEndDay = null): Collection
     {
         $timezone = 'Asia/Jakarta';
         if ($latestEndDay === null) {
-            $now = now($timezone);
-            $todayAnchor = $now->copy()->setTime(9, 0, 0);
-            $latestEndDay = $now->lt($todayAnchor)
-                ? $todayAnchor->copy()->subDay()
-                : $todayAnchor;
+            $latestEndDay = Carbon::parse(\App\Models\RecapHistory::resolveNextEndDay(), $timezone);
         }
 
         $history = collect();
 
         for ($offset = 0; $offset < $days; $offset++) {
             $endDay = $latestEndDay->copy()->timezone($timezone)->subDays($offset);
-            $startAt = $endDay->copy()->setTime(9, 0, 0);
-            $endAt = $startAt->copy()->addDay()->subSecond();
+            [$startAt, $endAt] = \App\Models\RecapHistory::resolveWindowForDate($endDay);
 
             $ordersBase = DB::table('orders')
                 ->join('table_sessions', 'orders.table_session_id', '=', 'table_sessions.id')

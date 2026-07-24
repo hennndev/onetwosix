@@ -65,4 +65,112 @@ class RecapHistory extends Model
         'total_transactions' => 'integer',
         'last_synced_at' => 'datetime',
     ];
+
+    /**
+     * Determine the end_day date label for the next closing.
+     *
+     * Uses the latest RecapHistory to calculate the next day sequentially,
+     * avoiding collision bugs caused by hardcoded hour-based heuristics.
+     */
+    public static function resolveNextEndDay(): string
+    {
+        $now = now('Asia/Jakarta');
+        $maxOperationalDay = $now->hour < 9
+            ? $now->copy()->subDay()->toDateString()
+            : $now->toDateString();
+
+        $latestRecap = self::query()->latest('end_day')->first();
+
+        if ($latestRecap) {
+            $nextDay = $latestRecap->end_day->copy()->addDay()->toDateString();
+
+            if ($nextDay > $maxOperationalDay) {
+                return $maxOperationalDay;
+            }
+
+            return $nextDay;
+        }
+
+        return $maxOperationalDay;
+    }
+
+    /**
+     * Resolve the active operational window based on the latest closed recap.
+     *
+     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
+     */
+    public static function resolveActiveWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $defaultAnchor = $now->copy()->setTime(9, 0, 0);
+
+        // Find the latest closed recap
+        $latestRecap = self::query()->latest('end_day')->first();
+
+        if (! $latestRecap) {
+            // Fallback to default operational window if no history exists
+            if ($now->lt($defaultAnchor)) {
+                return [
+                    $defaultAnchor->copy()->subDay(),
+                    $defaultAnchor->copy()->subSecond(),
+                ];
+            }
+
+            return [
+                $defaultAnchor,
+                $defaultAnchor->copy()->addDay()->subSecond(),
+            ];
+        }
+
+        // Start time is the exact time the previous recap was closed
+        $startAt = $latestRecap->created_at->copy()->timezone('Asia/Jakarta');
+
+        // Calculate expected end time based on next day to close
+        $nextDayToClose = $latestRecap->end_day->copy()->addDay()->timezone('Asia/Jakarta');
+        $expectedEndAt = $nextDayToClose->copy()->setTime(9, 0, 0)->addDay()->subSecond();
+
+        // If now() has passed the expected end (e.g., outlet was closed for holidays),
+        // extend the window to cover today's operational cycle
+        if ($now->gt($expectedEndAt)) {
+            $endAt = $now->lt($defaultAnchor)
+                ? $defaultAnchor->copy()->subSecond()
+                : $defaultAnchor->copy()->addDay()->subSecond();
+        } else {
+            $endAt = $expectedEndAt;
+        }
+
+        return [$startAt, $endAt];
+    }
+
+    /**
+     * Resolve the exact start and end times for any given calendar date's operational cycle.
+     *
+     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
+     */
+    public static function resolveWindowForDate(\Illuminate\Support\Carbon $endDay): array
+    {
+        $endDay = $endDay->copy()->timezone('Asia/Jakarta');
+
+        // Find if the previous day was closed
+        $previousRecap = self::query()
+            ->whereDate('end_day', $endDay->copy()->subDay()->toDateString())
+            ->first();
+
+        // Start time is the previous day's closing time, or fallback to default anchor (09:00 AM on $endDay)
+        $startAt = $previousRecap
+            ? $previousRecap->created_at->copy()->timezone('Asia/Jakarta')
+            : $endDay->copy()->setTime(9, 0, 0);
+
+        // Find if the current day itself was closed
+        $currentRecap = self::query()
+            ->whereDate('end_day', $endDay->toDateString())
+            ->first();
+
+        // End time is the current day's closing time, or fallback to default anchor (08:59:59 AM next day)
+        $endAt = $currentRecap
+            ? $currentRecap->created_at->copy()->timezone('Asia/Jakarta')
+            : $endDay->copy()->setTime(9, 0, 0)->addDay()->subSecond();
+
+        return [$startAt, $endAt];
+    }
 }

@@ -1340,20 +1340,7 @@ class RecapController extends Controller
      */
     private function resolveOperationalWindow(): array
     {
-        $now = now('Asia/Jakarta');
-        $anchor = $now->copy()->setTime(9, 0, 0);
-
-        if ($now->lt($anchor)) {
-            return [
-                $anchor->copy()->subDay(),
-                $anchor->copy()->subSecond(),
-            ];
-        }
-
-        return [
-            $anchor,
-            $anchor->copy()->addDay()->subSecond(),
-        ];
+        return RecapHistory::resolveActiveWindow();
     }
 
     /**
@@ -1361,12 +1348,7 @@ class RecapController extends Controller
      */
     private function resolveEndDayWindow(Carbon $endDay): array
     {
-        $startAt = $endDay->copy()->timezone('Asia/Jakarta')->setTime(9, 0, 0);
-
-        return [
-            $startAt,
-            $startAt->copy()->addDay()->subSecond(),
-        ];
+        return RecapHistory::resolveWindowForDate($endDay);
     }
 
     /**
@@ -1374,21 +1356,16 @@ class RecapController extends Controller
      */
     private function resolveHistoryTransactionWindow(RecapHistory $recapHistory): array
     {
+        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day?->copy() ?? now('Asia/Jakarta'));
+
         if ($recapHistory->last_synced_at) {
-            $syncedAt = $recapHistory->last_synced_at->copy()->timezone('Asia/Jakarta');
-            $anchor = $syncedAt->copy()->setTime(9, 0, 0);
-
-            if ($syncedAt->lt($anchor)) {
-                $anchor = $anchor->copy()->subDay();
-            }
-
             return [
-                $anchor,
-                $syncedAt,
+                $startAt,
+                $recapHistory->last_synced_at->copy()->timezone('Asia/Jakarta'),
             ];
         }
 
-        return $this->resolveEndDayWindow($recapHistory->end_day?->copy() ?? now('Asia/Jakarta'));
+        return [$startAt, $endAt];
     }
 
     private function isSelectedEndDayClosed(Carbon $startAt): bool

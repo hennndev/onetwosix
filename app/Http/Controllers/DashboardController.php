@@ -12,13 +12,12 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Services\DashboardSyncService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        [$windowStart, $windowEnd] = $this->resolveOperationalWindow();
+        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow();
         $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         // --- Revenue & Transactions (paid billings today) ---
@@ -161,26 +160,5 @@ class DashboardController extends Controller
         return redirect()
             ->route('admin.dashboard')
             ->with('success', 'Dashboard berhasil di-sync (hari ini).');
-    }
-
-    /**
-     * @return array{0: Carbon, 1: Carbon}
-     */
-    private function resolveOperationalWindow(): array
-    {
-        $now = now('Asia/Jakarta');
-        $anchor = $now->copy()->setTime(9, 0, 0);
-
-        if ($now->lt($anchor)) {
-            return [
-                $anchor->copy()->subDay(),
-                $anchor,
-            ];
-        }
-
-        return [
-            $anchor,
-            $anchor->copy()->addDay(),
-        ];
     }
 }

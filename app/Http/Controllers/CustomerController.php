@@ -6,7 +6,6 @@ use App\Models\CustomerUser;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -72,19 +71,8 @@ class CustomerController extends Controller
             ->take($leaderboardLimit)
             ->get();
 
-        // Today's leaderboard data (9 AM to 9 AM next day, or 9 AM yesterday to 9 AM today if before 9 AM)
-        $now = Carbon::now();
-        $nineAMToday = $now->clone()->startOfDay()->setHour(9);
-
-        // If current time is before 9 AM, we're in yesterday's 9 AM - today's 9 AM window
-        if ($now->isBefore($nineAMToday)) {
-            $todayStartTime = $nineAMToday->clone()->subDay();
-            $todayEndTime = $nineAMToday;
-        } else {
-            // If current time is 9 AM or after, we're in today's 9 AM - tomorrow's 9 AM window
-            $todayStartTime = $nineAMToday;
-            $todayEndTime = $nineAMToday->clone()->addDay();
-        }
+        // Today's leaderboard data (based on active operational window)
+        [$todayStartTime, $todayEndTime] = \App\Models\RecapHistory::resolveActiveWindow();
 
         $leaderboardToday = $this->customerQueryWithTransactionStatsByDateRange($todayStartTime, $todayEndTime)
             ->with(['user', 'profile'])

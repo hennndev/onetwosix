@@ -10,13 +10,12 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\RecapHistory;
 use App\Models\TableSession;
-use Illuminate\Support\Carbon;
 
 class DashboardSyncService
 {
     public function sync(): Dashboard
     {
-        [$windowStart, $windowEnd] = $this->resolveOperationalWindow();
+        [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow();
         $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         $totals = [
@@ -207,27 +206,6 @@ class DashboardSyncService
                 'last_synced_at' => now(),
             ]
         );
-    }
-
-    /**
-     * @return array{0: Carbon, 1: Carbon}
-     */
-    private function resolveOperationalWindow(): array
-    {
-        $now = now('Asia/Jakarta');
-        $anchor = $now->copy()->setTime(9, 0, 0);
-
-        if ($now->lt($anchor)) {
-            return [
-                $anchor->copy()->subDay(),
-                $anchor,
-            ];
-        }
-
-        return [
-            $anchor,
-            $anchor->copy()->addDay(),
-        ];
     }
 
     private function normalizePaymentMethod(?string $paymentMethod): ?string

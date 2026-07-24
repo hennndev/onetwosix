@@ -16,9 +16,7 @@ class RecapClosingService
     {
         $closingAt ??= now('Asia/Jakarta');
         $closingAt = $closingAt->copy()->timezone('Asia/Jakarta');
-        $endDay = $closingAt->hour < 9
-            ? $closingAt->copy()->subDay()->toDateString()
-            : $closingAt->toDateString();
+        $endDay = RecapHistory::resolveNextEndDay();
 
         return DB::transaction(function () use ($endDay): array {
             $dashboard = Dashboard::query()->firstOrCreate(

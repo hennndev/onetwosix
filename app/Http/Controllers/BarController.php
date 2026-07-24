@@ -346,14 +346,10 @@ class BarController extends Controller
      */
     private function resolveEndDayRange(): array
     {
-        $closingAt = now('Asia/Jakarta');
-        $endDayDate = $closingAt->hour < 9
-            ? $closingAt->copy()->subDay()->toDateString()
-            : $closingAt->toDateString();
+        $endDayDate = \App\Models\RecapHistory::resolveNextEndDay();
 
         $day = Carbon::parse($endDayDate, 'Asia/Jakarta');
-        $startAt = $day->copy()->setTime(9, 0, 0);
-        $endAt = $day->copy()->addDay()->setTime(8, 59, 59);
+        [$startAt, $endAt] = \App\Models\RecapHistory::resolveWindowForDate($day);
 
         return [
             $endDayDate,
