@@ -54,13 +54,18 @@
                   name="location"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
             <option value="">-- Pilih Lokasi --</option>
-            @foreach ($printerLocations as $group => $locations)
-              <optgroup label="{{ $group }}">
-                @foreach ($locations as $value => $label)
-                  <option value="{{ $value }}"
-                          {{ old('location') == $value ? 'selected' : '' }}>{{ $label }}</option>
-                @endforeach
-              </optgroup>
+            @foreach ($printerLocations as $value => $label)
+              @if (is_array($label))
+                <optgroup label="{{ $value }}">
+                  @foreach ($label as $subVal => $subLabel)
+                    <option value="{{ $subVal }}"
+                            {{ old('location') == $subVal ? 'selected' : '' }}>{{ $subLabel }}</option>
+                  @endforeach
+                </optgroup>
+              @else
+                <option value="{{ $value }}"
+                        {{ old('location') == $value ? 'selected' : '' }}>{{ $label }}</option>
+              @endif
             @endforeach
           </select>
         </div>
@@ -79,6 +84,21 @@
             <option value="checker">Checker</option>
           </select>
           <p class="mt-1 text-xs text-gray-400">Menentukan tipe print job yang dikirim ke printer ini.</p>
+        </div>
+
+        <!-- Area Assignment -->
+        <div class="col-span-2 sm:col-span-1">
+          <label for="area_id"
+                 class="block text-sm font-medium text-gray-700 mb-1">Area Spesifik (Opsional)</label>
+          <select id="area_id"
+                  name="area_id"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <option value="">-- Semua Area / Tidak Dibatasi --</option>
+            @foreach ($areas ?? [] as $area)
+              <option value="{{ $area->id }}">{{ $area->name }} ({{ $area->code }})</option>
+            @endforeach
+          </select>
+          <p class="mt-1 text-xs text-gray-400">Otomatis diprioritaskan untuk kasir/waiter di area ini.</p>
         </div>
 
         <!-- Connection Type -->

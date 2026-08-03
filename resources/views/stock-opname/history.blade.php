@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Riwayat Stock Opname">
   <div class="p-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">

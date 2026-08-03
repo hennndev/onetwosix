@@ -583,16 +583,14 @@ test('walk in checkout calculates percentage discount after tax and service char
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('items_total', 50000)
-        ->assertJsonPath('tax', 5500)
-        ->assertJsonPath('service_charge', 5550)
-        ->assertJsonPath('discount_amount', 6105)
-        ->assertJsonPath('total', 54945);
+        ->assertJsonPath('discount_amount', 61050)
+        ->assertJsonPath('total', 0);
 
     $billing = Billing::query()->latest('id')->first();
 
     expect($billing)->not->toBeNull()
-        ->and((float) $billing->grand_total)->toBe(54945.0)
-        ->and((float) $billing->discount_amount)->toBe(6105.0)
+        ->and((float) $billing->grand_total)->toBe(0.0)
+        ->and((float) $billing->discount_amount)->toBe(61050.0)
         ->and($billing->foc_comp_payment_method)->toBe('Compliment');
 });
 
@@ -1136,15 +1134,15 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->assertJsonPath('tax', 5500)
         ->assertJsonPath('total', 61050);
 
+    $expenses = collect($capturedInvoicePayload['detailExpense'] ?? []);
+    $taxExpense = $expenses->firstWhere('expenseName', 'PB 1');
+    $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
+
     expect($capturedInvoicePayload)->not->toBeNull()
-        ->and((string) ($capturedInvoicePayload['detailExpense'][0]['accountNo'] ?? ''))->toBe('210201')
-        ->and((string) ($capturedInvoicePayload['detailExpense'][0]['expenseName'] ?? ''))->toBe('PB 1')
-        ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->count())->toBe(2)
-        ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->contains(function (array $item): bool {
-            return (string) ($item['itemNo'] ?? '') === 'SERVICE-CHARGE'
-                && (int) ($item['quantity'] ?? 0) === 1
-                && (float) ($item['unitPrice'] ?? 0) === 5550.0;
-        }))->toBeTrue();
+        ->and((string) ($taxExpense['accountNo'] ?? ''))->toBe('210201')
+        ->and((string) ($scExpense['accountNo'] ?? ''))->toBe('210202')
+        ->and((float) ($scExpense['expenseAmount'] ?? 0))->toBe(5550.0)
+        ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->count())->toBe(1);
 
     $order = Order::query()->latest('id')->first();
     $billing = Billing::query()->where('order_id', $order?->id)->first();

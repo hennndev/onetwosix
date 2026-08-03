@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
-use Carbon\Carbon;
 
 class Event extends Model
 {
     protected $fillable = [
+        'area_id',
         'name',
         'slug',
         'description',
@@ -22,16 +23,22 @@ class Event extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'start_date' => 'date',
         'end_date' => 'date',
         'is_active' => 'boolean',
         'price_adjustment_value' => 'decimal:2',
     ];
 
+    public function area()
+    {
+        return $this->belongsTo(Area::class);
+    }
+
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($event) {
             if (empty($event->slug)) {
                 $event->slug = Str::slug($event->name);
@@ -47,6 +54,7 @@ class Event extends Model
     public function isToday()
     {
         $today = Carbon::today();
+
         return $this->start_date->lte($today) && $this->end_date->gte($today);
     }
 
@@ -63,9 +71,10 @@ class Event extends Model
     public function getPriceAdjustmentFormatted()
     {
         if ($this->price_adjustment_type === 'percentage') {
-            return '+' . number_format($this->price_adjustment_value, 0) . '%';
+            return '+'.number_format($this->price_adjustment_value, 0).'%';
         }
-        return '+Rp ' . number_format($this->price_adjustment_value, 0, ',', '.');
+
+        return '+Rp '.number_format($this->price_adjustment_value, 0, ',', '.');
     }
 
     public function getPriceAdjustmentDescription()
@@ -73,6 +82,7 @@ class Event extends Model
         if ($this->price_adjustment_type === 'percentage') {
             return 'Dari harga minimum charge normal';
         }
+
         return 'Ditambahkan ke harga minimum charge';
     }
 }

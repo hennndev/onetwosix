@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Customer">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -115,6 +115,7 @@
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Kontak</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Visits</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Total Spent</th>
+                <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Status Accurate</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Last Visit</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Action</th>
               </tr>
@@ -126,7 +127,7 @@
                   <td class="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div class="text-sm font-medium text-gray-900">{{ $customer->user->name }}</div>
-                      <div class="text-xs text-gray-500">{{ $customer->customer_code }}</div>
+                      <div class="text-xs text-gray-500">{{ $customer->customer_code ?? 'Belum ada kode' }}</div>
                     </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
@@ -165,19 +166,52 @@
                     <div class="text-xs text-gray-500">{{ number_format(((float) ($customer->transaction_lifetime_spending ?? 0)) / 1000000, 1) }}jt</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
+                    @if ($customer->customer_code)
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Accurate ID: {{ $customer->accurate_id }}">
+                        <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Synced ({{ $customer->customer_code }})
+                      </span>
+                    @else
+                      <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                          Belum Sync
+                        </span>
+                        <form action="{{ route('admin.customers.sync-accurate', $customer->id) }}" method="POST" class="inline">
+                          @csrf
+                          <button type="submit" class="px-2.5 py-1 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Sync
+                          </button>
+                        </form>
+                      </div>
+                    @endif
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm text-gray-900">{{ $customer->updated_at->format('d M Y') }}</div>
                     <div class="text-xs text-gray-500">{{ $customer->updated_at->format('H:i') }}</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <button onclick="editCustomer({{ $customer->id }})"
-                            class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition">
-                      Edit
-                    </button>
+                    <div class="flex items-center gap-2">
+                      <button onclick="editCustomer({{ $customer->id }})"
+                              class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition">
+                        Edit
+                      </button>
+                      @if (! $customer->customer_code)
+                        <form action="{{ route('admin.customers.sync-accurate', $customer->id) }}" method="POST" class="inline">
+                          @csrf
+                          <button type="submit"
+                                  class="px-3 py-1 text-sm bg-indigo-50 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-100 transition">
+                            Sync Accurate
+                          </button>
+                        </form>
+                      @endif
+                    </div>
                   </td>
                 </tr>
               @empty
                 <tr>
-                  <td colspan="6"
+                  <td colspan="7"
                       class="px-6 py-8 text-center text-sm text-gray-500">Tidak ada data customer untuk ditampilkan.</td>
                 </tr>
               @endforelse
@@ -238,6 +272,28 @@
         }
       }
 
+      function resetCustomerFormButtons() {
+        const submitBtn = document.getElementById('submitCustomerBtn');
+        const cancelBtn = document.getElementById('cancelCustomerBtn');
+        const spinner = document.getElementById('customerSubmitSpinner');
+        const text = document.getElementById('customerSubmitText');
+
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+        if (cancelBtn) {
+          cancelBtn.disabled = false;
+          cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+        if (spinner) {
+          spinner.classList.add('hidden');
+        }
+        if (text) {
+          text.textContent = 'Simpan';
+        }
+      }
+
       function openModal(mode, customerId = null) {
         const modal = document.getElementById('customerModal');
         const form = document.getElementById('customerForm');
@@ -247,6 +303,8 @@
         const passwordHint = document.getElementById('passwordHint');
         const passwordInput = document.getElementById('password');
         const customerDataFields = document.getElementById('customerDataFields');
+
+        resetCustomerFormButtons();
 
         if (mode === 'add') {
           modalTitle.textContent = 'Tambah Customer';
@@ -284,12 +342,36 @@
       }
 
       function closeModal() {
+        resetCustomerFormButtons();
         document.getElementById('customerModal').classList.add('hidden');
       }
 
       function editCustomer(customerId) {
         openModal('edit', customerId);
       }
+
+      // Handle form submission to prevent double-click and show loading spinner
+      document.getElementById('customerForm').addEventListener('submit', function(e) {
+        const submitBtn = document.getElementById('submitCustomerBtn');
+        const cancelBtn = document.getElementById('cancelCustomerBtn');
+        const spinner = document.getElementById('customerSubmitSpinner');
+        const text = document.getElementById('customerSubmitText');
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+        if (cancelBtn) {
+          cancelBtn.disabled = true;
+          cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+        if (spinner) {
+          spinner.classList.remove('hidden');
+        }
+        if (text) {
+          text.textContent = 'Menyimpan...';
+        }
+      });
 
       // Close modal on Escape key
       document.addEventListener('keydown', function(e) {

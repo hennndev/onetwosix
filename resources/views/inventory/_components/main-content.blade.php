@@ -144,6 +144,7 @@
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Produk</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipe Item</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok vs Threshold</th>
@@ -173,6 +174,29 @@
                                     @else bg-gray-100 text-gray-700 @endif">
                   {{ ucfirst($item->category_type) }}
                 </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                @php
+                  $itemType = strtoupper((string) ($item->item_type ?: ($item->is_item_group ? 'GROUP' : 'INVENTORY')));
+                @endphp
+                @if ($itemType === 'GROUP')
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                    <svg class="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    GROUP
+                  </span>
+                @elseif ($itemType === 'NON_INVENTORY')
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md bg-amber-100 text-amber-800 border border-amber-200">
+                    NON-INVENTORY
+                  </span>
+                @elseif ($itemType === 'SERVICE')
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md bg-rose-100 text-rose-800 border border-rose-200">
+                    SERVICE
+                  </span>
+                @else
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md bg-cyan-100 text-cyan-800 border border-cyan-200">
+                    INVENTORY
+                  </span>
+                @endif
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm text-gray-900">Rp {{ number_format($item->price, 0, ',', '.') }}</div>

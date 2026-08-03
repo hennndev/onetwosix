@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Pengaturan Tier Customer">
   <div class="p-6">
 
     <!-- Back -->

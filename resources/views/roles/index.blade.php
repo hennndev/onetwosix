@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Peran & Akses">
   <div class="py-8 px-6">
     <!-- Header -->
     <div class="mb-8">

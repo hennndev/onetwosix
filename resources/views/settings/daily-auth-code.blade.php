@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Kode Otorisasi Harian">
   <div class="p-6">
 
     <!-- Back -->

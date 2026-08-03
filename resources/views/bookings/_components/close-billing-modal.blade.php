@@ -199,14 +199,15 @@
       <!-- Payment mode -->
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-2">Mode Pembayaran</label>
-        <div class="grid grid-cols-2 gap-2">
-          @foreach (['normal' => 'Payment Biasa', 'split' => 'Split Bill'] as $val => $label)
+        <div class="grid grid-cols-3 gap-2">
+          @foreach (['normal' => 'Biasa', 'split' => 'Split Bill', 'partial' => 'Parsial / Hutang'] as $val => $label)
             <label class="flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer
-                          has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
+                          has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition text-center">
               <input type="radio"
                      name="cb_payment_mode"
                      value="{{ $val }}"
                      class="sr-only"
+                     onchange="updatePaymentModeUI()"
                      {{ $val === 'normal' ? 'checked' : '' }}>
               <span class="text-xs font-semibold text-gray-700">{{ $label }}</span>
             </label>
@@ -218,6 +219,7 @@
         <label for="cb_foc_comp_payment_method"
                class="block text-xs font-semibold text-gray-600 mb-1.5">FOC / Compliment</label>
         <select id="cb_foc_comp_payment_method"
+                onchange="updateDiscountUI()"
                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
           <option value="">-</option>
           <option value="FOC">FOC</option>
@@ -271,6 +273,23 @@
                  placeholder="Nomor kartu / approval / referensi QRIS"
                  class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
         </div>
+      </div>
+
+      <!-- Partial payment mode: nominal DP / partial payment -->
+      <div id="cbPartialBlock"
+           class="hidden rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
+        <label for="cb_partial_paid_amount_display"
+               class="block text-xs font-semibold text-blue-900">Nominal Diterima Saat Ini (DP / Parsial)</label>
+        <input id="cb_partial_paid_amount_display"
+               type="text"
+               inputmode="numeric"
+               value="Rp 0"
+               oninput="const val = extractNumber(this.value); document.getElementById('cb_partial_paid_amount').value = val; this.value = formatRupiah(val);"
+               class="w-full px-3 py-2 rounded-lg border border-blue-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+        <input id="cb_partial_paid_amount"
+               type="hidden"
+               value="0">
+        <p class="text-xs text-blue-700">Sisa tagihan akan tercatat sebagai hutang/piutang atas nama customer.</p>
       </div>
 
       <!-- Split mode: payment 1 + payment 2 (+ optional cash) -->
@@ -436,6 +455,7 @@
 
   function updateDiscountUI() {
     const discountType = getDiscountType();
+    const focComp = document.getElementById('cb_foc_comp_payment_method')?.value || '';
     const percentageBlock = document.getElementById('cbDiscountPercentageBlock');
     const nominalBlock = document.getElementById('cbDiscountNominalBlock');
     const authBlock = document.getElementById('cbDiscountAuthBlock');
@@ -443,7 +463,7 @@
 
     percentageBlock.classList.toggle('hidden', discountType !== 'percentage');
     nominalBlock.classList.toggle('hidden', discountType !== 'nominal');
-    authBlock.classList.toggle('hidden', discountType === 'none');
+    authBlock.classList.toggle('hidden', discountType === 'none' && !['FOC', 'Compliment'].includes(focComp));
 
     if (requestBtn) {
       requestBtn.disabled = false;
@@ -642,15 +662,27 @@
     const paymentMethod = document.querySelector('input[name="cb_payment_method"]:checked')?.value || 'cash';
     const normalBlock = document.getElementById('cbNormalMethodBlock');
     const splitBlock = document.getElementById('cbSplitBlock');
+    const partialBlock = document.getElementById('cbPartialBlock');
     const normalReferenceBlock = document.getElementById('cbNormalReferenceBlock');
 
     if (mode === 'split') {
       normalBlock.classList.add('hidden');
       splitBlock.classList.remove('hidden');
+      if (partialBlock) partialBlock.classList.add('hidden');
       normalReferenceBlock.classList.add('hidden');
+    } else if (mode === 'partial') {
+      normalBlock.classList.remove('hidden');
+      splitBlock.classList.add('hidden');
+      if (partialBlock) partialBlock.classList.remove('hidden');
+      if (paymentMethod === 'cash') {
+        normalReferenceBlock.classList.add('hidden');
+      } else {
+        normalReferenceBlock.classList.remove('hidden');
+      }
     } else {
       normalBlock.classList.remove('hidden');
       splitBlock.classList.add('hidden');
+      if (partialBlock) partialBlock.classList.add('hidden');
       if (paymentMethod === 'cash') {
         normalReferenceBlock.classList.add('hidden');
       } else {
@@ -817,7 +849,7 @@
       payload.discount_auth_code = discountAuthCode;
     }
 
-    if (paymentMode === 'normal') {
+    if (paymentMode === 'normal' || paymentMode === 'partial') {
       const paymentMethod = document.querySelector('input[name="cb_payment_method"]:checked')?.value;
       if (!paymentMethod) {
         return;
@@ -831,6 +863,15 @@
           return;
         }
         payload.payment_reference_number = paymentReferenceNumber;
+      }
+
+      if (paymentMode === 'partial') {
+        const partialPaidAmount = Number(document.getElementById('cb_partial_paid_amount').value || 0);
+        if (partialPaidAmount <= 0 || partialPaidAmount >= cbCurrentGrandTotal) {
+          alert('Nominal bayar sebagian (DP) harus lebih besar dari 0 dan kurang dari total tagihan.');
+          return;
+        }
+        payload.partial_paid_amount = partialPaidAmount;
       }
     } else {
       const splitCashAmount = Number(document.getElementById('cb_split_cash').value || 0);

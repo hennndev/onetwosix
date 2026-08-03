@@ -77,6 +77,39 @@ test('creating a booking always starts with pending status', function () {
         ->and($booking->status)->toBe('pending');
 });
 
+test('creating a booking can create a new customer on the fly', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area);
+
+    $response = $this->actingAs($admin)
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_mode' => 'new',
+            'new_customer_name' => 'Customer Baru Test',
+            'phone' => '081234567890',
+            'email' => 'customerbaru@test.com',
+            'reservation_date' => now()->addDays(2)->toDateString(),
+            'reservation_time' => '19:30',
+        ]);
+
+    $response->assertRedirect(route('admin.bookings.index'));
+
+    $newCustomer = User::where('email', 'customerbaru@test.com')->first();
+    expect($newCustomer)->not->toBeNull()
+        ->and($newCustomer->name)->toBe('Customer Baru Test');
+
+    expect($newCustomer->profile?->phone)->toBe('081234567890');
+    expect($newCustomer->customerUser)->not->toBeNull();
+
+    $booking = TableReservation::where('table_id', $table->id)
+        ->where('customer_id', $newCustomer->id)
+        ->first();
+
+    expect($booking)->not->toBeNull()
+        ->and($booking->status)->toBe('pending');
+});
+
 test('creating a booking does not change table status to reserved', function () {
     $admin = adminUser();
     $area = makeArea();

@@ -10,7 +10,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RecapController;
 use App\Http\Controllers\RewardController;
 use App\Http\Controllers\RoleController;
-use App\Http\Controllers\Settings\ClubHoursController;
 use App\Http\Controllers\Settings\DailyAuthCodeController;
 use App\Http\Controllers\Settings\GeneralSettingController;
 use App\Http\Controllers\Settings\PosCategorySettingController;
@@ -83,6 +82,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('admin')->middleware(['database_selected', 'check.admin.role'])->name('admin.')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
         Route::post('/dashboard/sync', [\App\Http\Controllers\DashboardController::class, 'syncToday'])->name('dashboard.sync');
+        Route::post('/switch-area', [\App\Http\Controllers\AreaSwitcherController::class, 'switchArea'])->name('switch-area');
 
         Route::get('/', function () {
             return redirect()->route('admin.dashboard');
@@ -99,6 +99,7 @@ Route::middleware('auth')->group(function () {
         // User Management
         Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
         Route::post('users/sync-accurate', [UserController::class, 'syncAccurateEmployees'])->name('users.sync-accurate');
+        Route::post('users/{user}/sync-accurate', [UserController::class, 'syncAccurate'])->name('users.sync-accurate-single');
 
         // Table Management
         require __DIR__.'/tables.php';
@@ -149,10 +150,13 @@ Route::middleware('auth')->group(function () {
 
         // Customer Management
         Route::resource('customers', CustomerController::class)->except(['show', 'create', 'edit']);
+        Route::post('customers/{customer}/sync-accurate', [CustomerController::class, 'syncAccurate'])->name('customers.sync-accurate');
 
         // Customer Keep
         Route::resource('customer-keep', CustomerKeepController::class)->except(['show', 'create', 'edit']);
         Route::patch('customer-keep/{customerKeep}/mark-used', [CustomerKeepController::class, 'markUsed'])->name('customer-keep.mark-used');
+        Route::post('rewards/redeem', [RewardController::class, 'redeem'])->name('rewards.redeem');
+        Route::delete('rewards/redemptions/{redemption}', [RewardController::class, 'cancelRedemption'])->name('rewards.redemptions.destroy');
         Route::resource('rewards', RewardController::class)->except(['show', 'create', 'edit']);
 
         // Transaction Checker
@@ -164,6 +168,7 @@ Route::middleware('auth')->group(function () {
         Route::get('transaction-history', [TransactionHistoryController::class, 'index'])->name('transaction-history.index');
         Route::post('transaction-history/{order}/print', [TransactionHistoryController::class, 'print'])->name('transaction-history.print');
         Route::post('transaction-history/{order}/payment', [TransactionHistoryController::class, 'updatePayment'])->name('transaction-history.update-payment');
+        Route::post('transaction-history/{order}/settle-debt', [TransactionHistoryController::class, 'settleDebt'])->name('transaction-history.settle-debt');
         Route::post('transaction-history/{order}/re-sync-accurate', [TransactionHistoryController::class, 'reSyncAccurate'])->name('transaction-history.reSyncAccurate');
 
         // End-day Recap
@@ -200,12 +205,6 @@ Route::middleware('auth')->group(function () {
             Route::get('/', [TierSettingsController::class, 'index'])->name('index');
             Route::put('/', [TierSettingsController::class, 'update'])->name('update');
             Route::delete('/reset', [TierSettingsController::class, 'resetToDefault'])->name('reset');
-        });
-
-        // Club Hours
-        Route::prefix('settings/club-hours')->name('settings.club-hours.')->group(function () {
-            Route::get('/', [ClubHoursController::class, 'index'])->name('index');
-            Route::put('/', [ClubHoursController::class, 'update'])->name('update');
         });
 
         // POS Category Settings

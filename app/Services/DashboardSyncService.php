@@ -13,10 +13,13 @@ use App\Models\TableSession;
 
 class DashboardSyncService
 {
-    public function sync(): Dashboard
+    public function sync(?int $areaId = null): Dashboard
     {
-        [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow();
-        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
+        [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow($areaId);
+        $lastCloseAt = RecapHistory::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->latest('created_at')
+            ->value('created_at');
 
         $totals = [
             'total_amount' => 0.0,
@@ -46,23 +49,26 @@ class DashboardSyncService
         ];
 
         $totals['total_kitchen_items'] = (int) KitchenOrderItem::query()
-            ->whereHas('kitchenOrder', function ($query) use ($windowStart, $windowEnd): void {
+            ->whereHas('kitchenOrder', function ($query) use ($windowStart, $windowEnd, $areaId): void {
                 $query->where('created_at', '>=', $windowStart)
-                    ->where('created_at', '<', $windowEnd);
+                    ->where('created_at', '<', $windowEnd)
+                    ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $areaId))));
             })
             ->when($lastCloseAt, fn ($query) => $query->whereHas('kitchenOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
             ->sum('quantity');
 
         $totals['total_bar_items'] = (int) BarOrderItem::query()
-            ->whereHas('barOrder', function ($query) use ($windowStart, $windowEnd): void {
+            ->whereHas('barOrder', function ($query) use ($windowStart, $windowEnd, $areaId): void {
                 $query->where('created_at', '>=', $windowStart)
-                    ->where('created_at', '<', $windowEnd);
+                    ->where('created_at', '<', $windowEnd)
+                    ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $areaId))));
             })
             ->when($lastCloseAt, fn ($query) => $query->whereHas('barOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
             ->sum('quantity');
 
         $paidBillings = Billing::query()
             ->where('billing_status', 'paid')
+            ->when($areaId, fn ($query) => $query->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->where(function ($query) use ($windowStart, $windowEnd): void {
                 $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd): void {
                     $paidAtQuery->whereNotNull('paid_at')
@@ -167,7 +173,7 @@ class DashboardSyncService
         $totals['total_ld_quantity'] = (int) ($categoryMainQuantityMap['ld'] ?? 0);
 
         foreach ($paidBillings as $billing) {
-            $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);
+            $paidAmount = (float) ($billing->paid_amount ?: $billing->grand_total ?: 0);
 
             $totals['total_transactions']++;
             $totals['total_amount'] += $paidAmount;
@@ -199,13 +205,38 @@ class DashboardSyncService
             $this->addPaymentAmount($totals, $this->normalizePaymentMethod($billing->payment_method), $paidAmount);
         }
 
-        return Dashboard::query()->updateOrCreate(
-            ['id' => 1],
-            [
+        $query = Dashboard::query();
+        if ($areaId) {
+            $query->where('area_id', $areaId);
+        } else {
+            $query->whereNull('area_id');
+        }
+
+        $existing = $query->first();
+
+        if ($existing) {
+            $existing->update([
                 ...$totals,
                 'last_synced_at' => now(),
-            ]
-        );
+            ]);
+
+            return $existing;
+        }
+
+        return Dashboard::query()->create([
+            'area_id' => $areaId,
+            ...$totals,
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    public function syncAll(): void
+    {
+        $this->sync(null);
+        $areas = \App\Models\Area::where('is_active', true)->get();
+        foreach ($areas as $area) {
+            $this->sync($area->id);
+        }
     }
 
     private function normalizePaymentMethod(?string $paymentMethod): ?string

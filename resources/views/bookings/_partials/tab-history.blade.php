@@ -19,7 +19,9 @@
   </div>
   <select id="categoryFilter"
           class="px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
-    <option value="">Semua Category</option>
+    @if (($areas ?? collect())->count() > 1)
+      <option value="">Semua Category</option>
+    @endif
     @foreach ($areas as $area)
       <option value="{{ $area->id }}">{{ $area->name }}</option>
     @endforeach
@@ -178,6 +180,7 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Date/Time</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Orders</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Total Spent</th>
+            <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Accurate Info</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Error Message</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
           </tr>
@@ -214,16 +217,19 @@
                 data-category="{{ $booking->table?->area_id }}">
               <td class="px-5 py-4 whitespace-nowrap">
                 @php
-                  $sc = match ($booking->status) {
-                      'completed' => ['bg-green-100 text-green-700', 'Completed'],
-                      'cancelled' => ['bg-red-100 text-red-700', 'Cancelled'],
-                      'rejected' => ['bg-orange-100 text-orange-700', 'Rejected'],
-                      'force_closed' => ['bg-amber-100 text-amber-700', 'Force Closed'],
+                  $histBillingObj = $booking->tableSession?->billing;
+                  $hasRemainingDebt = $histBillingObj && ($histBillingObj->remaining_balance > 0 || $histBillingObj->is_parsial_payment || $histBillingObj->is_debt);
+                  $sc = match (true) {
+                      $hasRemainingDebt => ['bg-orange-100 text-orange-700', 'Parsial (Belum Lunas)'],
+                      $booking->status === 'completed' => ['bg-green-100 text-green-700', 'Completed'],
+                      $booking->status === 'cancelled' => ['bg-red-100 text-red-700', 'Cancelled'],
+                      $booking->status === 'rejected' => ['bg-orange-100 text-orange-700', 'Rejected'],
+                      $booking->status === 'force_closed' => ['bg-amber-100 text-amber-700', 'Force Closed'],
                       default => ['bg-gray-100 text-gray-600', ucfirst($booking->status)],
                   };
                 @endphp
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium {{ $sc[0] }}">
-                  @if ($booking->status === 'completed')
+                  @if ($booking->status === 'completed' && !$hasRemainingDebt)
                     <svg class="w-3 h-3"
                          fill="none"
                          stroke="currentColor"
@@ -298,6 +304,31 @@
                   <span class="text-gray-300 text-sm">-</span>
                 @endif
               </td>
+              <td class="px-5 py-4 text-xs whitespace-nowrap">
+                @if ($booking->tableSession?->billing)
+                  @php
+                    $histBilling = $booking->tableSession->billing;
+                    $histInvNo = $histBilling->accurate_inv_number ?: $histBilling->accurate_so_number;
+                    $histReceipts = $histBilling->payments->pluck('accurate_sales_receipt_number')->filter()->values();
+                  @endphp
+                  @if ($histInvNo)
+                    <div class="font-semibold text-gray-900">
+                      <span class="text-gray-400 font-normal">SI:</span> {{ $histInvNo }}
+                    </div>
+                  @else
+                    <div class="text-gray-400">SI: -</div>
+                  @endif
+                  @if ($histReceipts->isNotEmpty())
+                    <div class="text-slate-700 font-medium mt-0.5">
+                      <span class="text-gray-400 font-normal">SR:</span> {{ $histReceipts->implode(', ') }}
+                    </div>
+                  @else
+                    <div class="text-gray-400 mt-0.5">SR: -</div>
+                  @endif
+                @else
+                  <span class="text-gray-300">-</span>
+                @endif
+              </td>
               <td class="px-5 py-4">
                 @if ($booking->tableSession?->billing?->error_message)
                   <button type="button"
@@ -317,11 +348,18 @@
                     $isAccurateMissing = !$billing->accurate_so_number || !$billing->accurate_inv_number;
                   @endphp
                   <div class="inline-flex items-center gap-2">
+                    @if ($billing->remaining_balance > 0)
+                      <button type="button"
+                              onclick="openSettlePaymentModal({{ $booking->id }}, '{{ addslashes($booking->customer->name) }}', '{{ $booking->table?->table_number ?? '-' }}', {{ (float)$billing->grand_total }}, {{ (float)$billing->paid_amount }}, {{ (float)$billing->remaining_balance }})"
+                              class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-600 text-white hover:bg-orange-500 transition shadow-sm">
+                        Pelunasan
+                      </button>
+                    @endif
                     @if ($isAccurateMissing)
                       <form method="POST"
                             action="{{ route('admin.bookings.reSyncAccurate', $booking) }}"
                             class="inline"
-                            onsubmit="const button = this.querySelector('[data-resync-accurate-button]'); if (button) { button.disabled = true; button.textContent = 'Sync...'; }">
+                            onsubmit="const button = this.querySelector('[data-resync-accurate-button]'); if (button) { button.textContent = 'Sync...'; setTimeout(() => { button.disabled = true; }, 0); }">
                         @csrf
                         <button type="submit"
                                 data-resync-accurate-button
@@ -333,7 +371,7 @@
                     <form method="POST"
                           action="{{ route('admin.bookings.reprintReceipt', $booking) }}"
                           class="inline"
-                          onsubmit="const button = this.querySelector('[data-reprint-button]'); if (button) { button.disabled = true; button.textContent = 'Memproses...'; }">
+                          onsubmit="const button = this.querySelector('[data-reprint-button]'); if (button) { button.textContent = 'Memproses...'; setTimeout(() => { button.disabled = true; }, 0); }">
                       @csrf
                       <button type="submit"
                               data-reprint-button
@@ -492,6 +530,11 @@
           <p class="text-xs text-gray-500">Sisa yang Harus Dibayar</p>
           <p id="historyBillingDetailRemainingPayment"
              class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 sm:col-span-2">
+          <p class="text-xs text-gray-500">Info Accurate (Sales Invoice & Sales Receipt)</p>
+          <div id="historyBillingDetailAccurateInfo"
+               class="font-semibold text-gray-900 mt-0.5 space-y-1 text-xs break-words">-</div>
         </div>
       </div>
 
@@ -779,6 +822,8 @@
                   'split_second_non_cash_method' => strtolower((string) ($billing?->split_second_non_cash_method ?? '')),
                   'split_second_non_cash_reference_number' => (string) ($billing?->split_second_non_cash_reference_number ?? ''),
                   'grand_total' => (float) ($billing?->grand_total ?? 0),
+                  'accurate_inv_number' => (string) ($billing?->accurate_inv_number ?: $billing?->accurate_so_number ?: '-'),
+                  'accurate_receipts' => $billing?->payments?->pluck('accurate_sales_receipt_number')->filter()->values()->all() ?? [],
                   'update_payment_url' => route('admin.bookings.updateHistoryPayment', $booking),
               ],
           ];
@@ -1038,6 +1083,13 @@
 
     if (referenceNumber) {
       referenceNumber.textContent = data.reference_number || '-';
+    }
+
+    const accurateInfo = document.getElementById('historyBillingDetailAccurateInfo');
+    if (accurateInfo) {
+      const invNo = data.accurate_inv_number && data.accurate_inv_number !== '-' ? data.accurate_inv_number : '-';
+      const receipts = (data.accurate_receipts && data.accurate_receipts.length > 0) ? data.accurate_receipts.join(', ') : '-';
+      accurateInfo.innerHTML = `<div><span class="text-gray-500 font-normal">Faktur (Invoice):</span> <span class="font-semibold text-gray-900">${invNo}</span></div><div><span class="text-gray-500 font-normal">Receipt(s):</span> <span class="font-semibold text-slate-700">${receipts}</span></div>`;
     }
 
     modal.classList.remove('hidden');

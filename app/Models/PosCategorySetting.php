@@ -13,7 +13,6 @@ class PosCategorySetting extends Model
     protected $casts = [
         'show_in_pos' => 'boolean',
         'is_menu' => 'boolean',
-        'is_item_group' => 'boolean',
     ];
 
     /** Returns all settings keyed by category_type, cached for 5 minutes. */
@@ -25,10 +24,5 @@ class PosCategorySetting extends Model
     public static function clearCache(): void
     {
         Cache::forget('pos_category_settings');
-    }
-
-    public function usesItemGroupStock(): bool
-    {
-        return (bool) ($this->is_item_group ?? false);
     }
 }

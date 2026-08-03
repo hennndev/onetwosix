@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Services\AccurateService;
 use Exception;
@@ -72,13 +73,22 @@ class SyncAccurateItems extends Command
     }
 
     protected $itemFields = [
-        'id', 'name', 'no', 'unit1Name', 'itemCategory', 'unitPrice',
-        'itemProduced', 'materialProduced',
+        'id',
+        'name',
+        'no',
+        'unit1Name',
+        'itemCategory',
+        'unitPrice',
+        'unit1Price',
+        'unitPrice1',
+        'itemType',
+        'itemProduced',
+        'materialProduced',
     ];
 
     protected function targetWarehouseName(): string
     {
-        return (string) config('accurate.stock_warehouse_name', 'Room 126');
+        return GeneralSetting::instance()->getAccurateWarehouseName();
     }
 
     protected function fetchStockMap(): array
@@ -106,8 +116,6 @@ class SyncAccurateItems extends Command
                 $no = $stock['no'] ?? null;
                 if ($no !== null) {
                     $map[$no] = $stock['quantity']
-                        ?? $stock['unit1Quantity']
-                        ?? $stock['allQuantity']
                         ?? 0;
                 }
             }
@@ -217,22 +225,31 @@ class SyncAccurateItems extends Command
             ? ($stockMap[$itemNo] ?? ($itemData['allQuantity'] ?? 0))
             : ($itemData['allQuantity'] ?? 0);
 
+        $resolvedItemType = strtoupper((string) ($itemData['itemType'] ?? (! empty($detailGroup) ? 'GROUP' : 'INVENTORY')));
+
+        $price = (float) ($itemData['unitPrice'] ?? $itemData['unit1Price'] ?? $itemData['unitPrice1'] ?? $itemData['price'] ?? 0);
+
+        $existingItem = InventoryItem::query()
+            ->where('accurate_id', $accurateId)
+            ->orWhere('code', $itemNo ?? 'UNKNOWN-'.$accurateId)
+            ->first();
+
+        if ($price <= 0 && $existingItem && (float) $existingItem->price > 0) {
+            $price = (float) $existingItem->price;
+        }
+
         $itemDataToSave = [
             'accurate_id' => (int) $accurateId,
             'name' => $itemData['name'] ?? 'Unknown Item',
             'code' => $itemNo ?? 'UNKNOWN-'.$accurateId,
             'unit' => $itemData['unit1Name'] ?? 'Unit',
             'category_type' => $itemData['itemCategory']['name'] ?? 'Uncategorized',
-            'price' => $itemData['unitPrice'] ?? 0,
+            'price' => $price,
             'stock_quantity' => $stockQuantity,
+            'item_type' => $resolvedItemType,
             'is_active' => ($itemData['suspended'] ?? false) === false,
             'detail_group' => $detailGroup,
         ];
-
-        $existingItem = InventoryItem::query()
-            ->where('accurate_id', $accurateId)
-            ->orWhere('code', $itemDataToSave['code'])
-            ->first();
 
         if ($existingItem) {
             $existingItem->update($itemDataToSave);

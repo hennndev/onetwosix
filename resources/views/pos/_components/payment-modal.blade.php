@@ -198,7 +198,7 @@
                    class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
           </div>
 
-          <div x-show="checkoutForm.discount_type !== 'none'"
+          <div x-show="checkoutForm.discount_type !== 'none' || ['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method)"
                style="display: none;">
             <label class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code Diskon (4 digit)</label>
             <input type="password"

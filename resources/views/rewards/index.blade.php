@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Reward">
   <div class="p-6"
        x-data="rewardManager()">
     @if (session('success'))
@@ -36,19 +36,34 @@
           <p class="text-sm text-gray-500">Kelola hadiah dan reward untuk program loyalitas</p>
         </div>
       </div>
-      <button @click="openAddModal()"
-              class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4" />
-        </svg>
-        Tambah Reward
-      </button>
+      <div class="flex items-center gap-3">
+        <button @click="openRedeemModal()"
+                class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          Tukar Reward Manual
+        </button>
+        <button @click="openAddModal()"
+                class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4" />
+          </svg>
+          Tambah Reward
+        </button>
+      </div>
     </div>
 
     <!-- Stats Cards -->
@@ -288,6 +303,102 @@
       @endif
     </div>
 
+    <!-- Riwayat Penukaran Manual -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 mt-8">
+      <div class="px-6 py-5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="font-semibold text-gray-900 text-lg">Riwayat Penukaran Manual</h2>
+            <p class="text-sm text-gray-500">Daftar transaksi penukaran poin reward oleh customer</p>
+          </div>
+        </div>
+        <div class="w-full sm:w-72">
+          <input type="text"
+                 x-model="redemptionSearch"
+                 placeholder="Cari customer, reward, atau ID..."
+                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <tr>
+              <th class="px-6 py-3.5">ID Penukaran</th>
+              <th class="px-6 py-3.5">Customer</th>
+              <th class="px-6 py-3.5">Reward</th>
+              <th class="px-6 py-3.5">Poin Dipotong</th>
+              <th class="px-6 py-3.5">Jumlah</th>
+              <th class="px-6 py-3.5">Tanggal</th>
+              <th class="px-6 py-3.5">Diproses Oleh</th>
+              <th class="px-6 py-3.5 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @if ($redemptions->isEmpty())
+              <tr>
+                <td colspan="8"
+                    class="px-6 py-10 text-center text-gray-400">
+                  Belum ada transaksi penukaran reward manual.
+                </td>
+              </tr>
+            @else
+              @foreach ($redemptions as $redemption)
+                <tr class="hover:bg-gray-50/80 transition redemption-row"
+                    x-show="matchesRedemptionSearch('{{ strtolower($redemption->id . ' ' . ($redemption->customerUser->user->name ?? '') . ' ' . ($redemption->reward->name ?? '')) }}')">
+                  <td class="px-6 py-4 font-mono font-medium text-gray-900">
+                    RDM-{{ str_pad($redemption->id, 4, '0', STR_PAD_LEFT) }}
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="font-semibold text-gray-900">{{ $redemption->customerUser->user->name ?? 'Customer Unknown' }}</div>
+                    <div class="text-xs text-gray-500">{{ $redemption->customerUser->user->profile->phone ?? '-' }}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="font-medium text-gray-900">{{ $redemption->reward->name ?? 'Item Dihapus' }}</div>
+                    @if ($redemption->reward)
+                      <span class="inline-block px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-100 text-purple-700">
+                        {{ $redemption->reward->category }}
+                      </span>
+                    @endif
+                  </td>
+                  <td class="px-6 py-4 font-bold text-amber-600">
+                    -{{ number_format($redemption->points_spent, 0, ',', '.') }} pts
+                  </td>
+                  <td class="px-6 py-4 font-medium text-gray-800">
+                    {{ $redemption->quantity }} pcs
+                  </td>
+                  <td class="px-6 py-4 text-xs text-gray-600">
+                    <div>{{ $redemption->created_at->format('d M Y') }}</div>
+                    <div class="text-gray-400">{{ $redemption->created_at->format('H:i') }}</div>
+                  </td>
+                  <td class="px-6 py-4 text-xs text-gray-600">
+                    {{ $redemption->processor->name ?? 'System/Admin' }}
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <button @click="confirmCancelRedemption({{ $redemption->id }}, '{{ addslashes($redemption->customerUser->user->name ?? 'Customer') }}', '{{ addslashes($redemption->reward->name ?? 'Reward') }}')"
+                            class="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition font-medium">
+                      Batal Penukaran
+                    </button>
+                  </td>
+                </tr>
+              @endforeach
+            @endif
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Add / Edit Modal -->
     <div x-show="showModal"
          x-transition:enter="transition ease-out duration-200"
@@ -464,6 +575,213 @@
         </div>
       </div>
     </div>
+    <!-- Manual Redemption Modal -->
+    <div x-show="showRedeemModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+         style="display: none;">
+      <div @click.stop
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+        <!-- Modal Header -->
+        <div class="px-6 py-5 bg-slate-900 text-white flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center">
+              <svg class="w-5 h-5 text-white"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-base font-bold">Penukaran Reward Manual</h2>
+              <p class="text-xs text-slate-400">Proses tukar poin customer secara langsung</p>
+            </div>
+          </div>
+          <button @click="showRedeemModal = false"
+                  class="text-slate-400 hover:text-white transition">
+            <svg class="w-5 h-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Form Penukaran -->
+        <form action="{{ route('admin.rewards.redeem') }}"
+              method="POST">
+          @csrf
+          <div class="px-6 py-5 space-y-4">
+            <!-- Customer Selector -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Pilih Customer <span class="text-red-500">*</span></label>
+              <select name="customer_user_id"
+                      x-model="redeemForm.customer_user_id"
+                      @change="updateCustomerPoints()"
+                      class="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      required>
+                <option value="">-- Pilih Customer --</option>
+                @foreach ($customerUsers as $cu)
+                  <option value="{{ $cu->id }}"
+                          data-points="{{ $cu->points }}">
+                    {{ $cu->user->name }} (Poin: {{ number_format($cu->points, 0, ',', '.') }} pts)
+                  </option>
+                @endforeach
+              </select>
+              <div x-show="selectedCustomerPoints !== null"
+                   class="mt-1.5 text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                <span>⚡ Saldo Poin Customer:</span>
+                <span x-text="selectedCustomerPoints !== null ? new Intl.NumberFormat('id-ID').format(selectedCustomerPoints) : 0"></span> pts
+              </div>
+            </div>
+
+            <!-- Reward Selector -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Pilih Reward <span class="text-red-500">*</span></label>
+              <select name="reward_id"
+                      x-model="redeemForm.reward_id"
+                      @change="updateRewardDetails()"
+                      class="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      required>
+                <option value="">-- Pilih Reward --</option>
+                @foreach ($rewards as $r)
+                  <option value="{{ $r->id }}"
+                          data-points="{{ $r->points_required }}"
+                          data-stock="{{ $r->stock }}">
+                    {{ $r->name }} ({{ number_format($r->points_required, 0, ',', '.') }} pts | Stok: {{ $r->stock }})
+                  </option>
+                @endforeach
+              </select>
+              <div x-show="selectedRewardStock !== null"
+                   class="mt-1.5 text-xs flex justify-between">
+                <span class="text-purple-600 font-semibold">Harga Poin: <span x-text="selectedRewardPoints !== null ? new Intl.NumberFormat('id-ID').format(selectedRewardPoints) : 0"></span> pts / item</span>
+                <span class="text-blue-600 font-semibold">Stok Tersedia: <span x-text="selectedRewardStock"></span> pcs</span>
+              </div>
+            </div>
+
+            <!-- Quantity & Calculated Points -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">Jumlah (Qty) <span class="text-red-500">*</span></label>
+                <input type="number"
+                       name="quantity"
+                       x-model.number="redeemForm.quantity"
+                       min="1"
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                       required>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">Total Poin Dipotong</label>
+                <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-800 font-bold rounded-lg text-sm text-center">
+                  <span x-text="new Intl.NumberFormat('id-ID').format(totalCalculatedPoints)"></span> pts
+                </div>
+              </div>
+            </div>
+
+            <!-- Warning Error Box -->
+            <div x-show="hasRedeemError"
+                 class="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 font-semibold">
+              <span x-text="redeemErrorMessage"></span>
+            </div>
+
+            <!-- Notes -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Catatan Tambahan (Opsional)</label>
+              <textarea name="notes"
+                        x-model="redeemForm.notes"
+                        placeholder="Contoh: Penukaran fisik langsung di meja VIP 3..."
+                        rows="2"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"></textarea>
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <button type="button"
+                    @click="showRedeemModal = false"
+                    class="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+              Batal
+            </button>
+            <button type="submit"
+                    :disabled="hasRedeemError || !redeemForm.customer_user_id || !redeemForm.reward_id"
+                    class="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg transition shadow-sm">
+              Proses Penukaran
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Cancel Redemption Confirm Modal -->
+    <div x-show="showCancelRedemptionModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+         style="display: none;">
+      <div @click.stop
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+        <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600">
+          <svg class="w-7 h-7"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">Batalkan Penukaran</h3>
+        <p class="text-sm text-gray-500 mb-6">
+          Apakah Anda yakin ingin membatalkan penukaran <strong x-text="cancelRewardName"></strong> oleh <strong x-text="cancelCustomerName"></strong>? Stok reward akan dikembalikan.
+        </p>
+        <div class="flex gap-3">
+          <button @click="showCancelRedemptionModal = false"
+                  class="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+            Batal
+          </button>
+          <form :action="cancelRedemptionAction"
+                method="POST"
+                class="flex-1">
+            @csrf
+            @method('DELETE')
+            <button type="submit"
+                    class="w-full px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition shadow-sm">
+              Ya, Batalkan
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
   @push('scripts')
@@ -472,17 +790,57 @@
         return {
           showModal: false,
           showDeleteModal: false,
+          showRedeemModal: false,
+          showCancelRedemptionModal: false,
           isEdit: false,
           modalTitle: 'Tambah Reward',
           formAction: '{{ route('admin.rewards.store') }}',
           deleteAction: '',
           deleteRewardName: '',
+          cancelRedemptionAction: '',
+          cancelCustomerName: '',
+          cancelRewardName: '',
+          redemptionSearch: '',
+          selectedCustomerPoints: null,
+          selectedRewardPoints: null,
+          selectedRewardStock: null,
           form: {
             name: '',
             category: '',
             description: '',
             points_required: '',
             stock: '',
+          },
+          redeemForm: {
+            customer_user_id: '',
+            reward_id: '',
+            quantity: 1,
+            notes: '',
+          },
+
+          get totalCalculatedPoints() {
+            if (!this.selectedRewardPoints || !this.redeemForm.quantity) return 0;
+            return this.selectedRewardPoints * Math.max(1, parseInt(this.redeemForm.quantity, 10));
+          },
+
+          get hasRedeemError() {
+            if (this.selectedCustomerPoints !== null && this.totalCalculatedPoints > this.selectedCustomerPoints) {
+              return true;
+            }
+            if (this.selectedRewardStock !== null && this.redeemForm.quantity > this.selectedRewardStock) {
+              return true;
+            }
+            return false;
+          },
+
+          get redeemErrorMessage() {
+            if (this.selectedCustomerPoints !== null && this.totalCalculatedPoints > this.selectedCustomerPoints) {
+              return `Poin customer (${new Intl.NumberFormat('id-ID').format(this.selectedCustomerPoints)} pts) tidak mencukupi untuk penukaran ini (${new Intl.NumberFormat('id-ID').format(this.totalCalculatedPoints)} pts dibutuhkan).`;
+            }
+            if (this.selectedRewardStock !== null && this.redeemForm.quantity > this.selectedRewardStock) {
+              return `Stok reward tidak mencukupi (Sisa stok: ${this.selectedRewardStock} pcs).`;
+            }
+            return '';
           },
 
           openAddModal() {
@@ -513,10 +871,57 @@
             this.showModal = true;
           },
 
+          openRedeemModal() {
+            this.redeemForm = {
+              customer_user_id: '',
+              reward_id: '',
+              quantity: 1,
+              notes: '',
+            };
+            this.selectedCustomerPoints = null;
+            this.selectedRewardPoints = null;
+            this.selectedRewardStock = null;
+            this.showRedeemModal = true;
+          },
+
+          updateCustomerPoints() {
+            const select = document.querySelector('select[name="customer_user_id"]');
+            if (select && select.selectedIndex > 0) {
+              const opt = select.options[select.selectedIndex];
+              this.selectedCustomerPoints = parseInt(opt.dataset.points || 0, 10);
+            } else {
+              this.selectedCustomerPoints = null;
+            }
+          },
+
+          updateRewardDetails() {
+            const select = document.querySelector('select[name="reward_id"]');
+            if (select && select.selectedIndex > 0) {
+              const opt = select.options[select.selectedIndex];
+              this.selectedRewardPoints = parseInt(opt.dataset.points || 0, 10);
+              this.selectedRewardStock = parseInt(opt.dataset.stock || 0, 10);
+            } else {
+              this.selectedRewardPoints = null;
+              this.selectedRewardStock = null;
+            }
+          },
+
           confirmDelete(id, name) {
             this.deleteRewardName = name;
             this.deleteAction = `/admin/rewards/${id}`;
             this.showDeleteModal = true;
+          },
+
+          confirmCancelRedemption(id, customerName, rewardName) {
+            this.cancelCustomerName = customerName;
+            this.cancelRewardName = rewardName;
+            this.cancelRedemptionAction = `/admin/rewards/redemptions/${id}`;
+            this.showCancelRedemptionModal = true;
+          },
+
+          matchesRedemptionSearch(text) {
+            if (!this.redemptionSearch) return true;
+            return text.includes(this.redemptionSearch.toLowerCase().trim());
           },
 
           closeModal() {

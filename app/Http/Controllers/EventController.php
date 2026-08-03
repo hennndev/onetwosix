@@ -2,16 +2,32 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Area;
 use App\Models\Event;
 use Carbon\Carbon;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class EventController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): View
     {
-        $query = Event::query();
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        $areaFilter = fn ($q) => $q->when(
+            $selectedAreaId,
+            fn ($sq) => $sq->where(
+                fn ($sub) => $sub->whereNull('area_id')->orWhere('area_id', $selectedAreaId)
+            )
+        );
+
+        $query = Event::with('area')->tap($areaFilter);
 
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
@@ -37,29 +53,34 @@ class EventController extends Controller
         $events = $query->latest()->get();
 
         $today = Carbon::today();
-        $totalEvents = Event::count();
-        $todayEvents = Event::where('start_date', '<=', $today)
+        $totalEvents = Event::tap($areaFilter)->count();
+        $todayEvents = Event::tap($areaFilter)
+            ->where('start_date', '<=', $today)
             ->where('end_date', '>=', $today)
             ->count();
-        $upcomingEvents = Event::where('start_date', '>', $today)->count();
-        $activeEvents = Event::where('is_active', true)->count();
+        $upcomingEvents = Event::tap($areaFilter)->where('start_date', '>', $today)->count();
+        $activeEvents = Event::tap($areaFilter)->where('is_active', true)->count();
 
         return view('events.index', compact(
             'events',
             'totalEvents',
             'todayEvents',
             'upcomingEvents',
-            'activeEvents'
+            'activeEvents',
+            'areas',
+            'selectedAreaId'
         ));
     }
 
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
         $request->merge([
             'is_active' => $request->boolean('is_active'),
+            'area_id' => $request->filled('area_id') ? (int) $request->input('area_id') : null,
         ]);
 
         $validated = $request->validate([
+            'area_id' => 'nullable|exists:areas,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
@@ -84,13 +105,15 @@ class EventController extends Controller
         }
     }
 
-    public function update(Request $request, Event $event)
+    public function update(Request $request, Event $event): RedirectResponse
     {
         $request->merge([
             'is_active' => $request->boolean('is_active'),
+            'area_id' => $request->filled('area_id') ? (int) $request->input('area_id') : null,
         ]);
 
         $validated = $request->validate([
+            'area_id' => 'nullable|exists:areas,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'start_date' => 'required|date',

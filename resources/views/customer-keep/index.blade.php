@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Customer Keep">
   <div class="p-6"
        x-data="keepManager()"
        x-cloak>

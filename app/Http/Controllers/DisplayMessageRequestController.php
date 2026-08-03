@@ -32,7 +32,7 @@ class DisplayMessageRequestController extends Controller
         }
 
         $messages = $query->latest()->get();
-        
+
         $totalMessages = DisplayMessageRequest::count();
         $pendingMessages = DisplayMessageRequest::where('status', 'pending')->count();
         $displayedMessages = DisplayMessageRequest::where('status', 'displayed')->count();
@@ -54,15 +54,27 @@ class DisplayMessageRequestController extends Controller
             'customer_id' => 'required|exists:users,id',
             'message' => 'required|string|max:500',
             'tip' => 'nullable|integer|min:0',
-            'status' => 'required|in:pending,displayed,rejected,cancelled',
+            'status' => 'required|in:pending,displayed,completed,rejected,cancelled',
         ]);
 
         try {
+            if ($validated['status'] === 'displayed') {
+                $activeMsg = DisplayMessageRequest::where('status', 'displayed')->first();
+                if ($activeMsg) {
+                    $formattedId = 'MSG-'.str_pad($activeMsg->id, 4, '0', STR_PAD_LEFT);
+
+                    return back()->withErrors([
+                        'error' => "Gagal menampilkan pesan: Masih ada pesan lain yang sedang aktif ditampilkan di layar LED ({$formattedId}). Silakan matikan atau selesaikan pesan aktif tersebut terlebih dahulu.",
+                    ])->withInput();
+                }
+            }
+
             DisplayMessageRequest::create($validated);
+
             return redirect()->route('admin.display-messages.index')
                 ->with('success', 'Message request berhasil ditambahkan');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal menambahkan message request: ' . $e->getMessage()])
+            return back()->withErrors(['error' => 'Gagal menambahkan message request: '.$e->getMessage()])
                 ->withInput();
         }
     }
@@ -73,15 +85,30 @@ class DisplayMessageRequestController extends Controller
             'customer_id' => 'required|exists:users,id',
             'message' => 'required|string|max:500',
             'tip' => 'nullable|integer|min:0',
-            'status' => 'required|in:pending,displayed,rejected,cancelled',
+            'status' => 'required|in:pending,displayed,completed,rejected,cancelled',
         ]);
 
         try {
+            if ($validated['status'] === 'displayed') {
+                $activeMsg = DisplayMessageRequest::where('status', 'displayed')
+                    ->where('id', '!=', $displayMessage->id)
+                    ->first();
+
+                if ($activeMsg) {
+                    $formattedId = 'MSG-'.str_pad($activeMsg->id, 4, '0', STR_PAD_LEFT);
+
+                    return back()->withErrors([
+                        'error' => "Gagal menampilkan pesan: Masih ada pesan lain yang sedang aktif ditampilkan di layar LED ({$formattedId}). Silakan matikan atau selesaikan pesan aktif tersebut terlebih dahulu.",
+                    ])->withInput();
+                }
+            }
+
             $displayMessage->update($validated);
+
             return redirect()->route('admin.display-messages.index')
                 ->with('success', 'Message request berhasil diupdate');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal mengupdate message request: ' . $e->getMessage()])
+            return back()->withErrors(['error' => 'Gagal mengupdate message request: '.$e->getMessage()])
                 ->withInput();
         }
     }
@@ -90,34 +117,50 @@ class DisplayMessageRequestController extends Controller
     {
         try {
             $displayMessage->delete();
+
             return redirect()->route('admin.display-messages.index')
                 ->with('success', 'Message request berhasil dihapus');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal menghapus message request: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Gagal menghapus message request: '.$e->getMessage()]);
         }
     }
 
     public function updateStatus(Request $request, DisplayMessageRequest $displayMessage)
     {
         $validated = $request->validate([
-            'status' => 'required|in:pending,displayed,rejected,cancelled',
+            'status' => 'required|in:pending,displayed,completed,rejected,cancelled',
         ]);
 
         try {
+            if ($validated['status'] === 'displayed') {
+                $activeMsg = DisplayMessageRequest::where('status', 'displayed')
+                    ->where('id', '!=', $displayMessage->id)
+                    ->first();
+
+                if ($activeMsg) {
+                    $formattedId = 'MSG-'.str_pad($activeMsg->id, 4, '0', STR_PAD_LEFT);
+
+                    return back()->withErrors([
+                        'error' => "Gagal menampilkan pesan: Masih ada pesan lain yang sedang aktif ditampilkan di layar LED ({$formattedId}). Silakan matikan atau selesaikan pesan aktif tersebut terlebih dahulu.",
+                    ]);
+                }
+            }
+
             $displayMessage->update(['status' => $validated['status']]);
-            
+
             $statusMessages = [
                 'displayed' => 'Message berhasil ditampilkan',
+                'completed' => 'Penayangan message selesai',
                 'rejected' => 'Message berhasil ditolak',
                 'cancelled' => 'Message berhasil dibatalkan',
                 'pending' => 'Message dikembalikan ke pending',
             ];
-            
+
             $message = $statusMessages[$validated['status']] ?? 'Status message berhasil diupdate';
-            
+
             return redirect()->route('admin.display-messages.index')->with('success', $message);
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal mengupdate status: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Gagal mengupdate status: '.$e->getMessage()]);
         }
     }
 }

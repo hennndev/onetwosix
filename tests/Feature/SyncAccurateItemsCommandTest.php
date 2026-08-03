@@ -8,7 +8,7 @@ use function Pest\Laravel\mock;
 
 test('accurate sync items saves detail group from list payload without detail fallback', function () {
     config(['accurate.api_token' => 'dummy-token']);
-    config(['accurate.stock_warehouse_name' => 'Room 126']);
+    \App\Models\GeneralSetting::instance()->update(['accurate_stock_warehouse_name' => 'Room 126']);
 
     $itemPayload = [
         'id' => 919,
@@ -73,7 +73,7 @@ test('accurate sync items saves detail group from list payload without detail fa
 
 test('accurate sync items deletes local items removed from accurate', function () {
     config(['accurate.api_token' => 'dummy-token']);
-    config(['accurate.stock_warehouse_name' => 'Room 126']);
+    \App\Models\GeneralSetting::instance()->update(['accurate_stock_warehouse_name' => 'Room 126']);
 
     InventoryItem::create([
         'accurate_id' => 1001,
@@ -137,7 +137,7 @@ test('accurate sync items deletes local items removed from accurate', function (
 
 test('accurate sync items updates existing item when accurate code already exists', function () {
     config(['accurate.api_token' => 'dummy-token']);
-    config(['accurate.stock_warehouse_name' => 'Room 126']);
+    \App\Models\GeneralSetting::instance()->update(['accurate_stock_warehouse_name' => 'Room 126']);
 
     $existing = InventoryItem::create([
         'accurate_id' => 9999,

@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Bar Display">
   <div class="p-6"
        x-data="barOrdersApp()"
        x-init="init()">
@@ -38,22 +38,40 @@
       </button>
     </div>
 
-    <div class="flex items-center gap-2 mb-6">
-      <button @click="activeTab = 'orders'"
-              :class="activeTab === 'orders' ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
-              class="px-4 py-2 rounded-xl text-sm font-medium transition">
-        Order
-      </button>
-      <button @click="activeTab = 'end-day'"
-              :class="activeTab === 'end-day' ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
-              class="px-4 py-2 rounded-xl text-sm font-medium transition">
-        End Day
-      </button>
-      <button @click="activeTab = 'history'"
-              :class="activeTab === 'history' ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
-              class="px-4 py-2 rounded-xl text-sm font-medium transition">
-        History
-      </button>
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div class="flex items-center gap-2">
+        <button @click="activeTab = 'orders'"
+                :class="activeTab === 'orders' ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+                class="px-4 py-2 rounded-xl text-sm font-medium transition">
+          Order
+        </button>
+        <button @click="activeTab = 'end-day'"
+                :class="activeTab === 'end-day' ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+                class="px-4 py-2 rounded-xl text-sm font-medium transition">
+          End Day
+        </button>
+        <button @click="activeTab = 'history'"
+                :class="activeTab === 'history' ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+                class="px-4 py-2 rounded-xl text-sm font-medium transition">
+          History
+        </button>
+      </div>
+
+      <!-- Area Filter Pills -->
+      @if (($areas ?? collect())->count() > 1)
+        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <a href="{{ route('admin.bar.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
+             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-purple-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+            Semua Area
+          </a>
+          @foreach (($areas ?? []) as $area)
+            <a href="{{ route('admin.bar.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
+               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-purple-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      @endif
     </div>
 
     <!-- Stats -->
@@ -295,6 +313,9 @@
         <form action="{{ route('admin.bar.end-day.sync-snapshot') }}"
               method="POST">
           @csrf
+          @if(!empty($selectedAreaId))
+            <input type="hidden" name="area_id" value="{{ $selectedAreaId }}">
+          @endif
           <button type="submit"
                   class="inline-flex items-center rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition">
             Sync Snapshot
@@ -304,10 +325,13 @@
               x-ref="submitEndDayBarForm"
               method="POST">
           @csrf
+          @if(!empty($selectedAreaId))
+            <input type="hidden" name="area_id" value="{{ $selectedAreaId }}">
+          @endif
           <button type="button"
                   @click="openSubmitEndDayBarModal()"
                   class="inline-flex items-center rounded-xl bg-purple-500 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-600 transition">
-            Submit End Day Bar
+            Submit End Day Bar {{ !empty($selectedAreaId) ? '('.($areas->firstWhere('id', $selectedAreaId)?->name ?? '').')' : '' }}
           </button>
         </form>
       </div>

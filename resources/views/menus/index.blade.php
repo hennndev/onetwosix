@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Menu">
   <div class="p-6"
        x-data="menuForm()">
 
@@ -399,6 +399,10 @@
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_service_charge ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400' }}">SC</span>
                           <span data-card-group="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->is_item_group ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400' }}">{{ $menu->is_item_group ? 'GROUP' : 'ITEM' }}</span>
+                          @if ($menu->is_item_group)
+                            <span data-card-groupsoldout="{{ $menu->id }}"
+                                  class="rounded-full px-1.5 py-0.5 text-[10px] font-bold {{ $menu->is_group_sold_out ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200' }}">{{ $menu->is_group_sold_out ? 'SOLD OUT' : 'AVAILABLE' }}</span>
+                          @endif
                           <span data-card-visible="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->is_visible_in_pos ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400' }}">{{ $menu->is_visible_in_pos ? 'VISIBLE' : 'HIDDEN' }}</span>
                           <span class="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{{ $menu->unit ?: '-' }}</span>
@@ -516,6 +520,32 @@
                   class="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition"
                   data-tax-toggle-button="1"
                   data-field="is_visible_in_pos">
+          </button>
+        </div>
+
+        {{-- Item Group Sold Out Row --}}
+        <div id="modalGroupSoldOutContainer"
+             class="flex items-center justify-between rounded-xl border border-red-200 bg-red-50/50 px-4 py-3 mx-5 mt-3">
+          <div class="flex items-center gap-2.5">
+            <svg class="h-4 w-4 text-red-600"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            <div>
+              <p class="text-sm font-bold text-red-800">Status Sold Out (Item Group)</p>
+              <p class="text-xs text-red-600">Tandai menu group ini sebagai Sold Out di POS</p>
+            </div>
+          </div>
+          <button type="button"
+                  id="modalGroupSoldOutToggle"
+                  class="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ring-1 transition"
+                  data-tax-toggle-button="1"
+                  data-field="is_group_sold_out">
           </button>
         </div>
 
@@ -695,6 +725,16 @@
 
       // ── helpers ────────────────────────────────────────────────────────────
       function applyToggleStyle(el, field, isActive) {
+        if (field === 'is_group_sold_out') {
+          if (isActive) {
+            el.className = 'flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ring-1 transition bg-red-600 text-white ring-red-500 shadow-sm';
+            el.textContent = 'SOLD OUT: YES';
+          } else {
+            el.className = 'flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ring-1 transition bg-emerald-100 text-emerald-800 ring-emerald-300';
+            el.textContent = 'SOLD OUT: NO (AVAILABLE)';
+          }
+          return;
+        }
         const activeClasses = field === 'include_tax' ? ['bg-amber-50', 'text-amber-700', 'ring-amber-200'] :
           field === 'include_service_charge' ? ['bg-blue-50', 'text-blue-700', 'ring-blue-200'] :
           field === 'is_count_portion_possible' ? ['bg-emerald-50', 'text-emerald-700', 'ring-emerald-200'] :
@@ -713,17 +753,26 @@
 
       function setCountPortionToggleVisibility(isItemGroup) {
         const wrap = document.getElementById('modalCountPortionWrap');
+        const groupSoldOutWrap = document.getElementById('modalGroupSoldOutContainer');
 
-        if (!(wrap instanceof HTMLElement)) {
-          return;
+        if (wrap instanceof HTMLElement) {
+          if (isItemGroup) {
+            wrap.classList.remove('hidden');
+            wrap.classList.add('flex');
+          } else {
+            wrap.classList.add('hidden');
+            wrap.classList.remove('flex');
+          }
         }
 
-        if (isItemGroup) {
-          wrap.classList.remove('hidden');
-          wrap.classList.add('flex');
-        } else {
-          wrap.classList.add('hidden');
-          wrap.classList.remove('flex');
+        if (groupSoldOutWrap instanceof HTMLElement) {
+          if (isItemGroup) {
+            groupSoldOutWrap.classList.remove('hidden');
+            groupSoldOutWrap.classList.add('flex');
+          } else {
+            groupSoldOutWrap.classList.add('hidden');
+            groupSoldOutWrap.classList.remove('flex');
+          }
         }
       }
 
@@ -774,32 +823,41 @@
             `[data-card-sc="${itemId}"]` :
             field === 'is_visible_in_pos' ?
             `[data-card-visible="${itemId}"]` :
+            field === 'is_group_sold_out' ?
+            `[data-card-groupsoldout="${itemId}"]` :
             `[data-card-group="${itemId}"]`;
           const badge = document.querySelector(cardBadgeSelector);
           if (badge) {
-            if (field === 'is_item_group') {
+            if (field === 'is_group_sold_out') {
+              badge.textContent = isActive ? 'SOLD OUT' : 'AVAILABLE';
+              badge.className = isActive ?
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 border border-red-200' :
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200';
+            } else if (field === 'is_item_group') {
               badge.textContent = isActive ? 'GROUP' : 'ITEM';
             } else if (field === 'is_visible_in_pos') {
               badge.textContent = isActive ? 'VISIBLE' : 'HIDDEN';
             }
 
-            if (isActive) {
-              if (field === 'include_tax') {
-                badge.classList.add('bg-amber-100', 'text-amber-700');
-                badge.classList.remove('bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
-              } else if (field === 'include_service_charge') {
-                badge.classList.add('bg-blue-100', 'text-blue-700');
-                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
-              } else if (field === 'is_visible_in_pos') {
-                badge.classList.add('bg-emerald-100', 'text-emerald-700');
-                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+            if (field !== 'is_group_sold_out') {
+              if (isActive) {
+                if (field === 'include_tax') {
+                  badge.classList.add('bg-amber-100', 'text-amber-700');
+                  badge.classList.remove('bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+                } else if (field === 'include_service_charge') {
+                  badge.classList.add('bg-blue-100', 'text-blue-700');
+                  badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+                } else if (field === 'is_visible_in_pos') {
+                  badge.classList.add('bg-emerald-100', 'text-emerald-700');
+                  badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+                } else {
+                  badge.classList.add('bg-violet-100', 'text-violet-700');
+                  badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-gray-100', 'text-gray-400');
+                }
               } else {
-                badge.classList.add('bg-violet-100', 'text-violet-700');
-                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-gray-100', 'text-gray-400');
+                badge.classList.add('bg-gray-100', 'text-gray-400');
+                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-emerald-100', 'text-emerald-700');
               }
-            } else {
-              badge.classList.add('bg-gray-100', 'text-gray-400');
-              badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-emerald-100', 'text-emerald-700');
             }
           }
         } catch {
@@ -884,6 +942,14 @@
         itemGroupToggle.dataset.value = menu.is_item_group ? '1' : '0';
         itemGroupToggle.setAttribute('aria-pressed', menu.is_item_group ? 'true' : 'false');
         applyToggleStyle(itemGroupToggle, 'is_item_group', Boolean(menu.is_item_group));
+
+        const groupSoldOutToggle = document.getElementById('modalGroupSoldOutToggle');
+        if (groupSoldOutToggle) {
+          groupSoldOutToggle.dataset.itemId = menu.id;
+          groupSoldOutToggle.dataset.value = menu.is_group_sold_out ? '1' : '0';
+          groupSoldOutToggle.setAttribute('aria-pressed', menu.is_group_sold_out ? 'true' : 'false');
+          applyToggleStyle(groupSoldOutToggle, 'is_group_sold_out', Boolean(menu.is_group_sold_out));
+        }
 
         const countPortionToggle = document.getElementById('modalCountPortionToggle');
         countPortionToggle.dataset.itemId = menu.id;

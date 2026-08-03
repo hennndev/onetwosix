@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('song_title');
             $table->string('artist');
             $table->decimal('tip', 10, 2)->nullable();
-            $table->enum('status', ['pending', 'played', 'rejected'])->default('pending');
+            $table->enum('status', ['pending', 'played', 'completed', 'rejected'])->default('pending');
             $table->timestamps();
         });
     }

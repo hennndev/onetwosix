@@ -9,6 +9,7 @@ class RecapHistory extends Model
     protected $table = 'recap_history';
 
     protected $fillable = [
+        'area_id',
         'end_day',
         'total_amount',
         'total_food',
@@ -38,6 +39,7 @@ class RecapHistory extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'end_day' => 'date',
         'total_amount' => 'decimal:2',
         'total_food' => 'decimal:2',
@@ -66,20 +68,25 @@ class RecapHistory extends Model
         'last_synced_at' => 'datetime',
     ];
 
+    public function area(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Area::class);
+    }
+
     /**
      * Determine the end_day date label for the next closing.
-     *
-     * Uses the latest RecapHistory to calculate the next day sequentially,
-     * avoiding collision bugs caused by hardcoded hour-based heuristics.
      */
-    public static function resolveNextEndDay(): string
+    public static function resolveNextEndDay(?int $areaId = null): string
     {
         $now = now('Asia/Jakarta');
         $maxOperationalDay = $now->hour < 9
             ? $now->copy()->subDay()->toDateString()
             : $now->toDateString();
 
-        $latestRecap = self::query()->latest('end_day')->first();
+        $latestRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->latest('end_day')
+            ->first();
 
         if ($latestRecap) {
             $nextDay = $latestRecap->end_day->copy()->addDay()->toDateString();
@@ -99,13 +106,16 @@ class RecapHistory extends Model
      *
      * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
      */
-    public static function resolveActiveWindow(): array
+    public static function resolveActiveWindow(?int $areaId = null): array
     {
         $now = now('Asia/Jakarta');
         $defaultAnchor = $now->copy()->setTime(9, 0, 0);
 
         // Find the latest closed recap
-        $latestRecap = self::query()->latest('end_day')->first();
+        $latestRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->latest('end_day')
+            ->first();
 
         if (! $latestRecap) {
             // Fallback to default operational window if no history exists
@@ -113,6 +123,29 @@ class RecapHistory extends Model
                 return [
                     $defaultAnchor->copy()->subDay(),
                     $defaultAnchor->copy()->subSecond(),
+                ];
+            }
+
+            $hasUnclosedPreAnchorBillings = \App\Models\Billing::query()
+                ->where('billing_status', 'paid')
+                ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
+                ->where(function ($q) use ($defaultAnchor): void {
+                    $q->where(function ($paidAtQuery) use ($defaultAnchor): void {
+                        $paidAtQuery->whereNotNull('paid_at')
+                            ->where('paid_at', '>=', $defaultAnchor->copy()->subDay())
+                            ->where('paid_at', '<', $defaultAnchor);
+                    })->orWhere(function ($fallbackQuery) use ($defaultAnchor): void {
+                        $fallbackQuery->whereNull('paid_at')
+                            ->where('updated_at', '>=', $defaultAnchor->copy()->subDay())
+                            ->where('updated_at', '<', $defaultAnchor);
+                    });
+                })
+                ->exists();
+
+            if ($hasUnclosedPreAnchorBillings) {
+                return [
+                    $defaultAnchor->copy()->subDay(),
+                    $defaultAnchor->copy()->addDay()->subSecond(),
                 ];
             }
 
@@ -147,12 +180,13 @@ class RecapHistory extends Model
      *
      * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
      */
-    public static function resolveWindowForDate(\Illuminate\Support\Carbon $endDay): array
+    public static function resolveWindowForDate(\Illuminate\Support\Carbon $endDay, ?int $areaId = null): array
     {
         $endDay = $endDay->copy()->timezone('Asia/Jakarta');
 
         // Find if the previous day was closed
         $previousRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->whereDate('end_day', $endDay->copy()->subDay()->toDateString())
             ->first();
 
@@ -163,6 +197,7 @@ class RecapHistory extends Model
 
         // Find if the current day itself was closed
         $currentRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->whereDate('end_day', $endDay->toDateString())
             ->first();
 

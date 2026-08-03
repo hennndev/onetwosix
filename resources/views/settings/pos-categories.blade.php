@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Kategori POS">
   <style>
     .settings-toggle {
       position: relative;
@@ -109,7 +109,6 @@
       <ul class="space-y-1 list-disc list-inside">
         <li><strong>Tampil di POS</strong> — aktifkan agar kategori ini muncul di halaman POS.</li>
         <li><strong>Menu</strong> — penanda kategori menu untuk kebutuhan listing/organisasi menu.</li>
-        <li><strong>Item Group</strong> — jika aktif, POS tidak mewajibkan stok item utama dan akan menghitung dari stok bahan/komponen.</li>
       </ul>
     </div>
 
@@ -128,7 +127,6 @@
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Kategori</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Tampil di POS</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Menu</th>
-                <th class="px-5 py-3 text-center font-medium text-slate-600">Item Group</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -165,20 +163,6 @@
                              value="1"
                              class="settings-toggle__input"
                              {{ $s && $s->is_menu ? 'checked' : '' }}>
-                      <span class="settings-toggle__track"></span>
-                    </label>
-                  </td>
-
-                  <td class="px-5 py-3 text-center">
-                    <input type="hidden"
-                           name="categories[{{ $type }}][is_item_group]"
-                           value="0">
-                    <label class="settings-toggle settings-toggle--group">
-                      <input type="checkbox"
-                             name="categories[{{ $type }}][is_item_group]"
-                             value="1"
-                             class="settings-toggle__input"
-                             {{ $s && $s->is_item_group ? 'checked' : '' }}>
                       <span class="settings-toggle__track"></span>
                     </label>
                   </td>

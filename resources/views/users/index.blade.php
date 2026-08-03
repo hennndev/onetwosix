@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen User & Staf">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -164,6 +164,7 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Area</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Accurate</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -207,7 +208,15 @@
                   @endif
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm text-gray-900">{{ $user->internalUser->area->name ?? '-' }}</div>
+                  <div class="text-sm text-gray-900">
+                    @if ($user->internalUser && $user->internalUser->area)
+                      {{ $user->internalUser->area->name }}
+                    @elseif ($user->internalUser && $user->internalUser->area_id === null)
+                      <span class="px-2 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700">Semua Area</span>
+                    @else
+                      -
+                    @endif
+                  </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   @if ($user->internalUser->is_active)
@@ -217,11 +226,29 @@
                   @endif
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
+                  @if ($user->internalUser && $user->internalUser->accurate_id)
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                      </svg>
+                      Synced (ID: {{ $user->internalUser->accurate_id }})
+                    </span>
+                  @else
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                      <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                      </svg>
+                      Belum Sync
+                    </span>
+                  @endif
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm text-gray-900">{{ $user->updated_at ? $user->updated_at->format('d/m/Y, H:i') : '-' }}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div class="flex items-center gap-2">
                     <button onclick="editUser({{ $user->id }})"
+                            title="Edit User"
                             class="text-blue-600 hover:text-blue-900">
                       <svg class="w-5 h-5"
                            fill="none"
@@ -233,7 +260,17 @@
                               d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
+                    @if (! $user->internalUser?->accurate_id)
+                      <form action="{{ route('admin.users.sync-accurate-single', $user->id) }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit"
+                                class="px-2.5 py-1 text-xs font-semibold bg-indigo-50 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-100 transition">
+                          Sync Accurate
+                        </button>
+                      </form>
+                    @endif
                     <button onclick="deleteUser({{ $user->id }})"
+                            title="Hapus User"
                             class="text-red-600 hover:text-red-900">
                       <svg class="w-5 h-5"
                            fill="none"
@@ -323,8 +360,30 @@
   @push('scripts')
     <script>
       const users = @json($users);
+      const roles = @json($roles);
       const userSyncUrl = "{{ route('admin.users.sync-accurate') }}";
       const SYNC_ICON_HTML = document.querySelector('[data-sync-icon]').innerHTML;
+
+      function handleRoleAreaVisibility() {
+        const roleId = document.getElementById('role_id').value;
+        const allAreaOption = document.getElementById('allAreaOption');
+        const selectedRole = roles.find(r => r.id == roleId);
+
+        const isAdmin = selectedRole && (
+          selectedRole.name.toLowerCase().includes('admin') ||
+          selectedRole.name.toLowerCase().includes('super') ||
+          selectedRole.name.toLowerCase().includes('manager')
+        );
+
+        if (isAdmin) {
+          allAreaOption.classList.remove('hidden');
+        } else {
+          allAreaOption.classList.add('hidden');
+          if (document.getElementById('area_id').value === 'all') {
+            document.getElementById('area_id').value = '';
+          }
+        }
+      }
 
       // Check if session has accurate_error_id to show force delete modal
       @if(session('accurate_error_id'))
@@ -424,10 +483,12 @@
           form.action = '{{ route('admin.users.store') }}';
           formMethod.value = 'POST';
           form.reset();
+          document.getElementById('area_id').value = '';
           document.getElementById('is_active').checked = true;
           passwordRequired.style.display = 'inline';
           passwordHint.style.display = 'none';
           passwordInput.required = true;
+          handleRoleAreaVisibility();
         } else if (mode === 'edit' && userId) {
           const user = users.find(u => u.id === userId);
           if (user) {
@@ -441,7 +502,15 @@
             document.getElementById('birth_date').value = user.profile?.birth_date || '';
             document.getElementById('address').value = user.profile?.address || '';
             document.getElementById('role_id').value = user.roles[0]?.id || '';
-            document.getElementById('area_id').value = user.internal_user?.area_id || '';
+
+            handleRoleAreaVisibility();
+
+            if (user.internal_user?.area_id) {
+              document.getElementById('area_id').value = user.internal_user.area_id;
+            } else {
+              document.getElementById('area_id').value = 'all';
+            }
+
             document.getElementById('is_active').checked = user.internal_user?.is_active || false;
 
             passwordRequired.style.display = 'none';

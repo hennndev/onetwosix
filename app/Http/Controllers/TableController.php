@@ -33,9 +33,11 @@ class TableController extends Controller
         ])
             ->where('status', 'active');
 
-        if ($request->has('area_id') && $request->area_id != '') {
-            $query->whereHas('table', function ($q) use ($request) {
-                $q->where('area_id', $request->area_id);
+        $activeAreaId = $request->input('area_id', session('active_area_id'));
+
+        if ($activeAreaId && $activeAreaId !== 'all') {
+            $query->whereHas('table', function ($q) use ($activeAreaId) {
+                $q->where('area_id', $activeAreaId);
             });
         }
 
@@ -68,7 +70,7 @@ class TableController extends Controller
         });
 
         $activeSessionEventAdjustments = $sessions->mapWithKeys(function (TableSession $session): array {
-            $activeEvent = $this->resolveActiveEventForDate($session->reservation?->reservation_date);
+            $activeEvent = $this->resolveActiveEventForDate($session->reservation?->reservation_date, $session->table?->area_id);
 
             if (! $activeEvent) {
                 return [$session->id => null];
@@ -102,7 +104,7 @@ class TableController extends Controller
 
         return [
             'sessions' => $sessions,
-            'areas' => Area::where('is_active', true)->orderBy('sort_order')->get(),
+            'areas' => auth()->user() ? auth()->user()->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get(),
             'totalActiveSessions' => \App\Models\TableSession::where('status', 'active')->count(),
             'totalRevenue' => Billing::whereHas('tableSession', function ($q) {
                 $q->where('status', 'active');
@@ -127,7 +129,7 @@ class TableController extends Controller
         return (float) ($session->billing?->subtotal ?? $session->billing?->orders_total ?? 0);
     }
 
-    protected function resolveActiveEventForDate(mixed $reservationDate): ?Event
+    protected function resolveActiveEventForDate(mixed $reservationDate, ?int $areaId = null): ?Event
     {
         if (blank($reservationDate)) {
             return null;
@@ -141,6 +143,14 @@ class TableController extends Controller
             ->where('is_active', true)
             ->whereDate('start_date', '<=', $dateString)
             ->whereDate('end_date', '>=', $dateString)
+            ->when($areaId, function ($q) use ($areaId) {
+                $q->where(function ($sub) use ($areaId) {
+                    $sub->whereNull('area_id')->orWhere('area_id', $areaId);
+                });
+            }, function ($q) {
+                $q->whereNull('area_id');
+            })
+            ->orderByRaw('CASE WHEN area_id IS NOT NULL THEN 1 ELSE 2 END')
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->first();
@@ -292,7 +302,7 @@ class TableController extends Controller
         $availableTables = Tabel::where('status', 'available')->where('is_active', true)->count();
         $totalCapacity = Tabel::where('is_active', true)->sum('capacity');
 
-        $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
+        $areas = auth()->user() ? auth()->user()->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
         $areaStats = Area::where('is_active', true)
             ->withCount(['tables' => function ($q) {
                 $q->where('is_active', true);
@@ -558,6 +568,7 @@ class TableController extends Controller
             // Step 2: Create billing for this session
             $minimumCharge = $reservation->table->minimum_charge ?? 0;
             $billing = Billing::create([
+                'area_id' => $reservation->table?->area_id,
                 'table_session_id' => $session->id,
                 'minimum_charge' => $minimumCharge,
                 'orders_total' => 0,

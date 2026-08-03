@@ -730,3 +730,38 @@ test('transaction history resync accurate returns success when accurate numbers 
         ->assertRedirect()
         ->assertSessionHas('success', 'SO dan Invoice Accurate sudah tersedia.');
 });
+
+test('transaction history filters orders by area_id', function () {
+    $admin = adminUser();
+
+    $areaA = \App\Models\Area::create(['code' => 'TH-A', 'name' => 'Area TH A', 'is_active' => true, 'sort_order' => 1]);
+    $areaB = \App\Models\Area::create(['code' => 'TH-B', 'name' => 'Area TH B', 'is_active' => true, 'sort_order' => 2]);
+
+    $orderA = Order::create([
+        'area_id' => $areaA->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-TH-AREA-A',
+        'status' => 'completed',
+        'items_total' => 10000,
+        'discount_amount' => 0,
+        'total' => 10000,
+        'ordered_at' => now(),
+    ]);
+
+    $orderB = Order::create([
+        'area_id' => $areaB->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-TH-AREA-B',
+        'status' => 'completed',
+        'items_total' => 20000,
+        'discount_amount' => 0,
+        'total' => 20000,
+        'ordered_at' => now(),
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.transaction-history.index', ['area_id' => $areaA->id]))
+        ->assertOk()
+        ->assertViewHas('selectedAreaId', $areaA->id)
+        ->assertViewHas('orders', fn ($orders) => $orders->contains('id', $orderA->id) && ! $orders->contains('id', $orderB->id));
+});

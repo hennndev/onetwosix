@@ -286,4 +286,54 @@ class CustomerController extends Controller
             ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) as transaction_daily_points')
             ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) + (COALESCE(booking_order_agg.booking_order_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_visits, 0)) as daily_leaderboard_score');
     }
+
+    public function syncAccurate(CustomerUser $customer)
+    {
+        try {
+            $customerNo = $this->ensureAccurateCustomer($customer);
+
+            if (! $customerNo) {
+                return back()->with('error', 'Gagal sinkronisasi Accurate: Nomor customer tidak dikembalikan.');
+            }
+
+            return back()->with('success', "Customer {$customer->user?->name} berhasil disinkronkan ke Accurate ({$customerNo}).");
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal sinkronisasi ke Accurate: '.$e->getMessage());
+        }
+    }
+
+    protected function ensureAccurateCustomer(CustomerUser $customerUser): ?string
+    {
+        $customerUser->loadMissing(['user', 'profile']);
+
+        if ($customerUser->customer_code) {
+            return $customerUser->customer_code;
+        }
+
+        $user = $customerUser->user;
+
+        if (! $user) {
+            return null;
+        }
+
+        $payload = [
+            'name' => $user->name,
+            'email' => $user->email,
+        ];
+
+        $response = $this->accurateService->saveCustomer($payload);
+        $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;
+        $customerNo = $response['r']['customerNo'] ?? $response['d']['customerNo'] ?? null;
+
+        if (! $customerNo) {
+            throw new \RuntimeException('Accurate customer number was not returned.');
+        }
+
+        $customerUser->update([
+            'accurate_id' => $accurateId,
+            'customer_code' => $customerNo,
+        ]);
+
+        return $customerNo;
+    }
 }

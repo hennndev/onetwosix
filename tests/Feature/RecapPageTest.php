@@ -91,6 +91,7 @@ function makeRecapTableSessionWithBilling(int $customerId, array $billingAttribu
         'grand_total' => 0,
         'paid_amount' => 0,
         'billing_status' => 'paid',
+        'paid_at' => now(),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
     ], $billingAttributes));
@@ -1009,13 +1010,18 @@ test('recap close preview print before 9am uses previous end day window', functi
 test('recap page filters cashier kitchen and bar events by selected datetime range', function () {
     $admin = adminUser();
 
+    $frozenNow = \Illuminate\Support\Carbon::parse('2026-07-26 15:00:00');
+    \Illuminate\Support\Carbon::setTestNow($frozenNow);
+
     $today = now()->startOfDay()->addHours(10);
     $yesterday = now()->subDay()->startOfDay()->addHours(11);
     $rangeStart = now()->startOfDay()->addHours(9);
     $rangeEnd = now()->startOfDay()->addHours(23);
 
     $todayOrder = makeRecapOrder($admin->id, $today, 'RCP-TODAY-001');
+    $todayOrder->forceFill(['created_at' => $today, 'updated_at' => $today])->save();
     $yesterdayOrder = makeRecapOrder($admin->id, $yesterday, 'RCP-YEST-001');
+    $yesterdayOrder->forceFill(['created_at' => $yesterday, 'updated_at' => $yesterday])->save();
 
     $foodToday = makeRecapInventoryItem([
         'name' => 'Nasi Goreng Recap',
@@ -1284,6 +1290,7 @@ test('recap page shows total tax total service charge and payment method totals'
         'payment_method' => 'transfer',
         'paid_amount' => 50000,
         'grand_total' => 50000,
+        'paid_at' => $orderedAt,
     ]);
     makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-TRF', [
         'table_session_id' => $sessionTransfer->id,
@@ -1298,6 +1305,7 @@ test('recap page shows total tax total service charge and payment method totals'
         'payment_method' => 'debit',
         'paid_amount' => 40000,
         'grand_total' => 40000,
+        'paid_at' => $orderedAt,
     ]);
     makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-DBT', [
         'table_session_id' => $sessionDebit->id,
@@ -1312,6 +1320,7 @@ test('recap page shows total tax total service charge and payment method totals'
         'payment_method' => 'kredit',
         'paid_amount' => 30000,
         'grand_total' => 30000,
+        'paid_at' => $orderedAt,
     ]);
     makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-KRD', [
         'table_session_id' => $sessionCredit->id,
@@ -1326,6 +1335,7 @@ test('recap page shows total tax total service charge and payment method totals'
         'payment_method' => 'qris',
         'paid_amount' => 20000,
         'grand_total' => 20000,
+        'paid_at' => $orderedAt,
     ]);
     makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-QRS', [
         'table_session_id' => $sessionQris->id,
@@ -1395,6 +1405,7 @@ test('recap page calculates total pembayaran tunai from live split billing data'
         ->update([
             'created_at' => $orderedAt,
             'updated_at' => $orderedAt,
+            'paid_at' => $orderedAt,
         ]);
 
     makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-SPLIT-CASH', [
@@ -2229,9 +2240,12 @@ test('recap close preview hides close end day button in reprint mode', function 
 test('recap kitchen summary follows dashboard aggregate after close', function () {
     $admin = adminUser();
 
+    $frozenNow = \Illuminate\Support\Carbon::parse('2026-07-26 15:00:00');
+    \Illuminate\Support\Carbon::setTestNow($frozenNow);
+
     $beforeCloseAt = now()->subHours(2);
-    $afterCloseAt = now()->subMinutes(30);
-    $closedAt = now()->subHour();
+    $afterCloseAt = now()->subHours(1);
+    $closedAt = now()->subMinutes(10);
 
     $orderBeforeClose = makeRecapOrder($admin->id, $beforeCloseAt, 'RCP-BEFORE-CLOSE');
     $orderAfterClose = makeRecapOrder($admin->id, $afterCloseAt, 'RCP-AFTER-CLOSE');

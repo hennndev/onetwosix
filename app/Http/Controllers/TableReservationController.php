@@ -14,13 +14,16 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
+use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
 use App\Services\PrinterService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -95,6 +98,18 @@ class TableReservationController extends Controller
             if ($request->filled('date_to')) {
                 $query->where('reservation_date', '<=', $request->date_to);
             }
+        } elseif ($tab === 'partial') {
+            $query->with(['tableSession.orders.items', 'tableSession.billing.payments', 'creator.customerUser']);
+            $query->whereHas('tableSession.billing', function ($bQuery) {
+                $bQuery->where('remaining_balance', '>', 0);
+            });
+
+            if ($request->filled('date_from')) {
+                $query->where('reservation_date', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $query->where('reservation_date', '<=', $request->date_to);
+            }
         } elseif ($tab === 'history') {
             $query->with(['tableSession.orders.items', 'creator.customerUser']);
             $query->whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed']);
@@ -119,10 +134,14 @@ class TableReservationController extends Controller
         $pendingBookings = TableReservation::where('status', 'pending')->count();
         $confirmedBookings = TableReservation::where('status', 'confirmed')->count();
         $checkedInBookings = TableReservation::where('status', 'checked_in')->count();
+        $partialBookingsCount = TableReservation::whereHas('tableSession.billing', function ($bQuery) {
+            $bQuery->where('remaining_balance', '>', 0);
+        })->count();
 
         $tables = Tabel::with('area')->where('is_active', true)->orderBy('table_number')->get();
         $customers = User::whereHas('customerUser')->with(['profile', 'customerUser'])->orderBy('name')->get();
-        $areas = \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
 
         // Derive table status counts from the tables themselves (consistent with updateStatus logic)
         $availableTablesCount = $tables->where('status', 'available')->count();
@@ -167,7 +186,7 @@ class TableReservationController extends Controller
 
         $activeSessionEventAdjustments = $activeSessions->mapWithKeys(function (TableSession $session) {
             $reservationDate = $session->reservation?->reservation_date;
-            $activeEvent = $this->resolveActiveEventForDate($reservationDate);
+            $activeEvent = $this->resolveActiveEventForDate($reservationDate, $session->table?->area_id);
 
             if (! $activeEvent) {
                 return [$session->id => null];
@@ -187,7 +206,7 @@ class TableReservationController extends Controller
         });
 
         $activeBookingEventAdjustments = $activeBookingsByTable->mapWithKeys(function (TableReservation $booking) {
-            $activeEvent = $this->resolveActiveEventForDate($booking->reservation_date);
+            $activeEvent = $this->resolveActiveEventForDate($booking->reservation_date, $booking->table?->area_id);
 
             if (! $activeEvent) {
                 return [$booking->id => null];
@@ -290,6 +309,7 @@ class TableReservationController extends Controller
             'pendingBookings',
             'confirmedBookings',
             'checkedInBookings',
+            'partialBookingsCount',
             'tables',
             'customers',
             'areas',
@@ -318,49 +338,118 @@ class TableReservationController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $customerMode = $request->input('customer_mode', 'existing');
+        if ($request->input('customer_id') === 'new') {
+            $customerMode = 'new';
+        }
+
+        $rules = [
             'table_id' => 'required|exists:tables,id',
-            'customer_id' => 'required|exists:users,id',
             'booking_name' => 'nullable|string|max:255',
             'reservation_date' => 'required|date',
             'reservation_time' => 'required',
             'note' => 'nullable|string|max:1000',
             'has_down_payment' => 'nullable|boolean',
             'down_payment_amount' => 'nullable|numeric|min:0',
-        ]);
+        ];
+
+        if ($customerMode === 'new') {
+            $rules['new_customer_name'] = 'required|string|max:255';
+            $rules['phone'] = 'required|string|max:20';
+            $rules['email'] = 'nullable|email';
+        } else {
+            $rules['customer_id'] = 'required|exists:users,id';
+            $rules['phone'] = 'nullable|string|max:20';
+            $rules['email'] = 'nullable|email';
+        }
+
+        $validated = $request->validate($rules);
 
         $validated['down_payment_amount'] = (bool) ($validated['has_down_payment'] ?? false)
             ? (float) ($validated['down_payment_amount'] ?? 0)
             : 0;
 
         unset($validated['has_down_payment']);
-
         $validated['created_by'] = auth()->id();
 
-        $hasActiveSession = TableSession::query()
-            ->where('customer_id', $validated['customer_id'])
-            ->where('status', 'active')
-            ->exists();
-
-        if ($hasActiveSession) {
-            return back()->withErrors([
-                'customer_id' => 'Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.',
-            ])->withInput();
-        }
-
-        // New bookings always start as pending — admin must confirm explicitly
-        $validated['status'] = 'pending';
-
         try {
+            DB::beginTransaction();
+
+            if ($customerMode === 'new') {
+                $name = trim($validated['new_customer_name']);
+                $phone = trim($validated['phone']);
+                $email = ! empty($validated['email'])
+                    ? trim($validated['email'])
+                    : Str::slug($name).'_'.time().'@126club.local';
+
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => Hash::make(Str::random(16)),
+                ]);
+
+                $profile = UserProfile::create([
+                    'user_id' => $user->id,
+                    'phone' => $phone,
+                ]);
+
+                CustomerUser::create([
+                    'user_id' => $user->id,
+                    'user_profile_id' => $profile->id,
+                    'total_visits' => 0,
+                    'lifetime_spending' => 0,
+                ]);
+
+                $customerId = $user->id;
+            } else {
+                $customerId = (int) $validated['customer_id'];
+
+                $user = User::find($customerId);
+                if ($user) {
+                    if (! empty($validated['email']) && empty($user->email)) {
+                        $user->update(['email' => trim($validated['email'])]);
+                    }
+                    if (! empty($validated['phone'])) {
+                        UserProfile::updateOrCreate(
+                            ['user_id' => $user->id],
+                            ['phone' => trim($validated['phone'])]
+                        );
+                    }
+                }
+            }
+
+            unset($validated['new_customer_name'], $validated['phone'], $validated['email']);
+            $validated['customer_id'] = $customerId;
+
+            $hasActiveSession = TableSession::query()
+                ->where('customer_id', $validated['customer_id'])
+                ->where('status', 'active')
+                ->exists();
+
+            if ($hasActiveSession) {
+                DB::rollBack();
+
+                return back()->withErrors([
+                    'customer_id' => 'Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.',
+                ])->withInput();
+            }
+
+            // New bookings always start as pending — admin must confirm explicitly
+            $validated['status'] = 'pending';
+
             // Generate unique booking code
             $lastBooking = TableReservation::latest('id')->first();
             $validated['booking_code'] = $lastBooking ? $lastBooking->booking_code + 1 : 1;
 
             TableReservation::create($validated);
 
+            DB::commit();
+
             return redirect()->route('admin.bookings.index')
                 ->with('success', 'Booking berhasil ditambahkan. Status: Pending — silakan konfirmasi setelah diverifikasi.');
         } catch (\Exception $e) {
+            DB::rollBack();
+
             return back()->withErrors(['error' => 'Gagal menambahkan booking: '.$e->getMessage()])
                 ->withInput();
         }
@@ -514,8 +603,10 @@ class TableReservationController extends Controller
                         $minimumCharge = $this->calculateBookingMinimumCharge(
                             (float) ($booking->table?->minimum_charge ?? 0),
                             $booking->reservation_date,
+                            $booking->table?->area_id,
                         );
                         $billing = Billing::create([
+                            'area_id' => $booking->table?->area_id,
                             'table_session_id' => $session->id,
                             'is_walk_in' => false,
                             'is_booking' => true,
@@ -565,8 +656,9 @@ class TableReservationController extends Controller
     public function closeBilling(Request $request, TableReservation $booking)
     {
         $validated = $request->validate([
-            'payment_mode' => 'required|in:normal,split',
-            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
+            'payment_mode' => 'required|in:normal,split,partial,debt',
+            'payment_method' => 'required_if:payment_mode,normal,partial,debt|nullable|in:cash,kredit,debit,qris,transfer',
+            'partial_paid_amount' => 'nullable|numeric|min:0',
             'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
@@ -633,6 +725,7 @@ class TableReservationController extends Controller
             DB::transaction(function () use ($booking, $session, $billing, $validated) {
                 $session->loadMissing('orders.items.inventoryItem');
 
+                $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
                 $discountType = $validated['discount_type'] ?? null;
                 $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
                 $discountNominal = (float) ($validated['discount_nominal'] ?? 0);
@@ -646,18 +739,25 @@ class TableReservationController extends Controller
                 );
 
                 $discountBaseTotal = (float) ($baseTotals['discount_base_total'] ?? $baseTotals['grand_total_before_down_payment']);
-                $requestedDiscountAmount = match ($discountType) {
-                    'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
-                    'nominal' => round($discountNominal, 2),
-                    default => 0,
-                };
+
+                if ($focCompPaymentMethod === 'Compliment') {
+                    $requestedDiscountAmount = $discountBaseTotal;
+                } else {
+                    $requestedDiscountAmount = match ($discountType) {
+                        'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
+                        'nominal' => round($discountNominal, 2),
+                        default => 0,
+                    };
+                }
 
                 $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
 
-                if ($requestedDiscountAmount > 0) {
+                $requiresAuthCode = $requestedDiscountAmount > 0 || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+
+                if ($requiresAuthCode) {
                     if ($discountAuthCode === '') {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code wajib diisi untuk memberikan diskon.',
+                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
                         ]);
                     }
 
@@ -788,7 +888,28 @@ class TableReservationController extends Controller
                     }
                 }
 
+                $isPartialPayment = in_array($paymentMode, ['partial', 'debt'], true);
+                $partialPaidAmount = (float) ($validated['partial_paid_amount'] ?? 0);
+
+                if ($isPartialPayment) {
+                    if ($partialPaidAmount <= 0 || $partialPaidAmount >= (float) $totals['grand_total']) {
+                        throw ValidationException::withMessages([
+                            'partial_paid_amount' => 'Nominal bayar sebagian/DP harus lebih besar dari 0 dan kurang dari total tagihan.',
+                        ]);
+                    }
+                    $paidAmount = $partialPaidAmount;
+                    $remainingBalance = max(0, (float) $totals['grand_total'] - $partialPaidAmount);
+                    $billingStatus = 'partially_paid';
+                    $isDebt = true;
+                } else {
+                    $paidAmount = (float) $totals['grand_total'];
+                    $remainingBalance = 0;
+                    $billingStatus = 'paid';
+                    $isDebt = false;
+                }
+
                 $billing->update([
+                    'area_id' => $billing->area_id ?? $booking->table?->area_id ?? auth()->user()?->resolveActiveArea()?->id,
                     'orders_total' => (float) $totals['orders_total'],
                     'subtotal' => (float) $totals['subtotal'],
                     'discount_amount' => (float) $totals['discount_amount'],
@@ -797,8 +918,11 @@ class TableReservationController extends Controller
                     'service_charge_percentage' => (float) $totals['service_charge_percentage'],
                     'service_charge' => (float) $totals['service_charge'],
                     'grand_total' => (float) $totals['grand_total'],
-                    'paid_amount' => (float) $totals['grand_total'],
-                    'billing_status' => 'paid',
+                    'paid_amount' => $paidAmount,
+                    'remaining_balance' => $remainingBalance,
+                    'is_debt' => $isDebt,
+                    'is_parsial_payment' => $isPartialPayment,
+                    'billing_status' => $billingStatus,
                     'paid_at' => now('Asia/Jakarta'),
                     'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
@@ -812,6 +936,17 @@ class TableReservationController extends Controller
                     'split_second_non_cash_amount' => $splitSecondNonCashAmount,
                     'split_second_non_cash_method' => $splitSecondNonCashMethod,
                     'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
+                ]);
+
+                \App\Models\BillingPayment::create([
+                    'billing_id' => $billing->id,
+                    'amount_paid' => $paidAmount,
+                    'payment_method' => $paymentMethod ?? 'cash',
+                    'payment_reference_number' => $paymentReferenceNumber,
+                    'payment_type' => $isDebt ? 'initial_partial' : 'full_payment',
+                    'notes' => $isDebt ? 'Pembayaran awal DP/Parsial' : 'Pembayaran lunas saat close billing',
+                    'created_by' => auth()->id(),
+                    'paid_at' => now('Asia/Jakarta'),
                 ]);
 
                 $customerUser = CustomerUser::query()
@@ -935,7 +1070,13 @@ class TableReservationController extends Controller
 
     public function reSyncAccurate(TableReservation $booking)
     {
+        Log::info('Re-sync Accurate triggered for booking', [
+            'booking_id' => $booking->id,
+            'user_id' => auth()->id(),
+        ]);
+
         $booking->loadMissing([
+            'table.area',
             'tableSession.orders.items.inventoryItem',
             'tableSession.billing',
         ]);
@@ -944,6 +1085,8 @@ class TableReservationController extends Controller
         $billing = $session?->billing;
 
         if (! $session || ! $billing) {
+            Log::warning('Re-sync Accurate failed: billing missing', ['booking_id' => $booking->id]);
+
             return back()->with('error', 'Billing tidak ditemukan untuk booking ini.');
         }
 
@@ -955,8 +1098,20 @@ class TableReservationController extends Controller
         $billing->refresh();
 
         if (! $billing->accurate_so_number || ! $billing->accurate_inv_number) {
+            Log::error('Re-sync Accurate failed', [
+                'booking_id' => $booking->id,
+                'billing_id' => $billing->id,
+                'error_message' => $billing->error_message,
+            ]);
+
             return back()->with('error', $billing->error_message ?: 'Re-sync ke Accurate gagal. Silakan coba lagi.');
         }
+
+        Log::info('Re-sync Accurate successful', [
+            'booking_id' => $booking->id,
+            'so_number' => $billing->accurate_so_number,
+            'inv_number' => $billing->accurate_inv_number,
+        ]);
 
         return back()->with('success', 'Re-sync Accurate berhasil.');
     }
@@ -1127,9 +1282,9 @@ class TableReservationController extends Controller
         }
     }
 
-    protected function calculateBookingMinimumCharge(float $baseMinimumCharge, mixed $reservationDate): float
+    protected function calculateBookingMinimumCharge(float $baseMinimumCharge, mixed $reservationDate, ?int $areaId = null): float
     {
-        $activeEvent = $this->resolveActiveEventForDate($reservationDate);
+        $activeEvent = $this->resolveActiveEventForDate($reservationDate, $areaId);
 
         if (! $activeEvent) {
             return $baseMinimumCharge;
@@ -1138,7 +1293,7 @@ class TableReservationController extends Controller
         return $this->applyEventAdjustmentToMinimumCharge($baseMinimumCharge, $activeEvent);
     }
 
-    protected function resolveActiveEventForDate(mixed $reservationDate): ?Event
+    protected function resolveActiveEventForDate(mixed $reservationDate, ?int $areaId = null): ?Event
     {
         if (blank($reservationDate)) {
             return null;
@@ -1152,6 +1307,14 @@ class TableReservationController extends Controller
             ->where('is_active', true)
             ->whereDate('start_date', '<=', $dateString)
             ->whereDate('end_date', '>=', $dateString)
+            ->when($areaId, function ($q) use ($areaId) {
+                $q->where(function ($sub) use ($areaId) {
+                    $sub->whereNull('area_id')->orWhere('area_id', $areaId);
+                });
+            }, function ($q) {
+                $q->whereNull('area_id');
+            })
+            ->orderByRaw('CASE WHEN area_id IS NOT NULL THEN 1 ELSE 2 END')
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->first();
@@ -1322,8 +1485,7 @@ class TableReservationController extends Controller
     protected function pushBillingToAccurate(TableReservation $booking, $session, $billing): void
     {
         try {
-            $customerUser = CustomerUser::where('user_id', $booking->customer_id)->first();
-            $customerNo = $customerUser?->customer_code;
+            $customerNo = $this->ensureAccurateCustomer((int) $booking->customer_id);
 
             if (! $customerNo) {
                 $billing->update([
@@ -1338,7 +1500,7 @@ class TableReservationController extends Controller
 
             // Consolidate all order items across all orders in the session
             $session->loadMissing('orders.items.inventoryItem');
-            $warehouseName = config('accurate.stock_warehouse_name');
+            $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
@@ -1368,11 +1530,13 @@ class TableReservationController extends Controller
                 return;
             }
 
-            // Generate SO number with format ROOM-[BILLING|WALKIN]-[YYYYMMDD]-[5 random digits]
-            $randomNumber = str_pad(random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+            // Generate SO number with format [SO_PREFIX][BILLING|WALKIN]-[YYYYMMDD]-[5 random digits]
+            $area = $booking->table?->area ?? auth()->user()?->resolveActiveArea();
+            $areaPrefix = $area ? $area->so_prefix : 'ROOM-';
+            $randomNumber = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
             $dateString = now()->format('Ymd');
             $prefix = $billing->is_walk_in ? 'WALKIN' : 'BILLING';
-            $soNumber = "ROOM-{$prefix}-{$dateString}-{$randomNumber}";
+            $soNumber = "{$areaPrefix}{$prefix}-{$dateString}-{$randomNumber}";
 
             // 1. Save Sales Order
             $soPayload = [
@@ -1384,16 +1548,16 @@ class TableReservationController extends Controller
             ];
 
             if ($serviceChargeAmount > 0) {
-                $soPayload['detailItem'][] = [
-                    'itemNo' => 'SERVICE-CHARGE',
-                    'quantity' => 1,
-                    'unitPrice' => $serviceChargeAmount,
+                $soPayload['detailExpense'][] = [
+                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'expenseAmount' => $serviceChargeAmount,
+                    'expenseName' => 'Service Charge',
                 ];
             }
 
             if ($taxAmount > 0) {
                 $soPayload['detailExpense'][] = [
-                    'accountNo' => '210201',
+                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
@@ -1434,16 +1598,17 @@ class TableReservationController extends Controller
 
             if ($taxAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => '210201',
+                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
             }
 
             if ($serviceChargeAmount > 0) {
-                $invPayload['detailItem'][] = [
-                    'itemNo' => 'SERVICE-CHARGE',
-                    'unitPrice' => $serviceChargeAmount,
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'expenseAmount' => $serviceChargeAmount,
+                    'expenseName' => 'Service Charge',
                 ];
             }
 
@@ -1458,7 +1623,10 @@ class TableReservationController extends Controller
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
             $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
-            // 3. Persist Accurate numbers on the billing record
+            // 3. Save Sales Receipt (Penerimaan Penjualan) for single or split payments
+            $this->syncSalesReceipts($customerNo, $transDate, $soNumber, $invNumber, $reference, $billing);
+
+            // 4. Persist Accurate numbers on the billing record
             $billing->update([
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
@@ -1475,6 +1643,204 @@ class TableReservationController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
         }
+    }
+
+    protected function syncSalesReceipts(string $customerNo, string $transDate, string $soNumber, ?string $invNumber, string $reference, $billing, $order = null): void
+    {
+        $settings = GeneralSetting::instance();
+        $cashAccountNo = $settings->accurate_cash_account_no ?: '110101';
+        $bankAccountNo = $settings->accurate_bank_account_no ?: '110102';
+
+        $paymentsToSync = [];
+
+        $billingPayments = $billing?->payments ? $billing->payments : collect();
+
+        if ($billingPayments->count() > 1) {
+            foreach ($billingPayments as $paymentRecord) {
+                $amount = (float) $paymentRecord->amount_paid;
+                if ($amount <= 0) {
+                    continue;
+                }
+                $method = strtolower((string) $paymentRecord->payment_method);
+                $isCash = in_array($method, ['cash', 'tunai'], true);
+                $bankNo = $isCash ? $cashAccountNo : $bankAccountNo;
+                $methodLabel = $isCash ? 'Tunai' : strtoupper($method);
+
+                $paymentsToSync[] = [
+                    'amount' => $amount,
+                    'bankNo' => $bankNo,
+                    'method_label' => $methodLabel,
+                ];
+            }
+        } elseif (($billing?->payment_mode ?? null) === 'split') {
+            $splitCash = (float) ($billing->split_cash_amount ?? 0);
+            $splitNonCash1Amount = (float) ($billing->split_debit_amount ?? 0);
+            $splitNonCash1Method = strtolower((string) ($billing->split_non_cash_method ?? 'non_cash_1'));
+
+            $splitNonCash2Amount = (float) ($billing->split_second_non_cash_amount ?? 0);
+            $splitNonCash2Method = strtolower((string) ($billing->split_second_non_cash_method ?? 'non_cash_2'));
+
+            if ($splitCash > 0) {
+                $paymentsToSync[] = [
+                    'amount' => $splitCash,
+                    'bankNo' => $cashAccountNo,
+                    'method_label' => 'Tunai',
+                ];
+            }
+
+            if ($splitNonCash1Amount > 0) {
+                $isCash1 = in_array($splitNonCash1Method, ['cash', 'tunai'], true);
+                $bankNo1 = $isCash1 ? $cashAccountNo : $bankAccountNo;
+                $methodLabel1 = $isCash1 ? 'Tunai' : strtoupper((string) ($billing->split_non_cash_method ?: 'NON-CASH 1'));
+
+                $paymentsToSync[] = [
+                    'amount' => $splitNonCash1Amount,
+                    'bankNo' => $bankNo1,
+                    'method_label' => $methodLabel1,
+                ];
+            }
+
+            if ($splitNonCash2Amount > 0) {
+                $isCash2 = in_array($splitNonCash2Method, ['cash', 'tunai'], true);
+                $bankNo2 = $isCash2 ? $cashAccountNo : $bankAccountNo;
+                $methodLabel2 = $isCash2 ? 'Tunai' : strtoupper((string) ($billing->split_second_non_cash_method ?: 'NON-CASH 2'));
+
+                $paymentsToSync[] = [
+                    'amount' => $splitNonCash2Amount,
+                    'bankNo' => $bankNo2,
+                    'method_label' => $methodLabel2,
+                ];
+            }
+        } else {
+            $paidAmount = (float) ($billing?->paid_amount ?? $billing?->grand_total ?? $order?->total ?? 0);
+            if ($paidAmount > 0) {
+                $method = strtolower((string) ($billing?->payment_method ?? $order?->payment_method ?? 'cash'));
+                $isCash = in_array($method, ['cash', 'tunai'], true);
+                $bankNo = $isCash ? $cashAccountNo : $bankAccountNo;
+                $methodLabel = $isCash ? 'Tunai' : strtoupper($method);
+
+                $paymentsToSync[] = [
+                    'amount' => $paidAmount,
+                    'bankNo' => $bankNo,
+                    'method_label' => $methodLabel,
+                ];
+            }
+        }
+
+        $targetInvoiceNo = $invNumber ?: $soNumber ?: $billing?->accurate_inv_number ?: $billing?->accurate_so_number;
+
+        foreach ($paymentsToSync as $paymentItem) {
+            if ($paymentItem['amount'] <= 0) {
+                continue;
+            }
+
+            try {
+                $receiptPayload = [
+                    'customerNo' => $customerNo,
+                    'transDate' => $transDate,
+                    'bankNo' => $paymentItem['bankNo'],
+                    'chequeAmount' => $paymentItem['amount'],
+                    'description' => "Pembayaran POS ({$paymentItem['method_label']}) — {$reference}",
+                    'detailInvoice' => [
+                        [
+                            'invoiceNo' => $targetInvoiceNo,
+                            'paymentAmount' => $paymentItem['amount'],
+                        ],
+                    ],
+                ];
+                $response = $this->accurateService->saveSalesReceipt($receiptPayload);
+                $receiptNo = $response['r']['number'] ?? $response['d']['number'] ?? null;
+
+                if ($receiptNo && $billing) {
+                    $methodStr = strtolower((string) $paymentItem['method_label']);
+                    $paymentRecord = \App\Models\BillingPayment::query()
+                        ->where('billing_id', $billing->id)
+                        ->where(function ($q) use ($methodStr, $paymentItem) {
+                            $q->where('payment_method', $methodStr)
+                                ->orWhere('amount_paid', $paymentItem['amount']);
+                        })
+                        ->whereNull('accurate_sales_receipt_number')
+                        ->first();
+
+                    if (! $paymentRecord) {
+                        $paymentRecord = \App\Models\BillingPayment::query()
+                            ->where('billing_id', $billing->id)
+                            ->whereNull('accurate_sales_receipt_number')
+                            ->first();
+                    }
+
+                    if ($paymentRecord) {
+                        $paymentRecord->update([
+                            'accurate_sales_receipt_number' => $receiptNo,
+                            'accurate_sync_status' => 'synced',
+                        ]);
+                    } else {
+                        \App\Models\BillingPayment::create([
+                            'billing_id' => $billing->id,
+                            'amount_paid' => $paymentItem['amount'],
+                            'payment_method' => strtolower((string) $paymentItem['method_label']),
+                            'payment_type' => 'full_payment',
+                            'accurate_sales_receipt_number' => $receiptNo,
+                            'accurate_sync_status' => 'synced',
+                            'paid_at' => now('Asia/Jakarta'),
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Accurate Sales Receipt Sync: FAILED', [
+                    'reference' => $reference,
+                    'method' => $paymentItem['method_label'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    protected function ensureAccurateCustomer(int $userId): ?string
+    {
+        $customerUser = CustomerUser::where('user_id', $userId)->first();
+        if ($customerUser?->customer_code) {
+            return $customerUser->customer_code;
+        }
+
+        $user = User::find($userId);
+        if (! $user) {
+            return null;
+        }
+
+        $payload = [
+            'name' => $user->name,
+            'email' => $user->email,
+        ];
+
+        try {
+            $response = $this->accurateService->saveCustomer($payload);
+            $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;
+            $customerNo = $response['r']['customerNo'] ?? $response['d']['customerNo'] ?? null;
+
+            if ($customerNo) {
+                if (! $customerUser) {
+                    $customerUser = CustomerUser::create([
+                        'user_id' => $user->id,
+                        'accurate_id' => $accurateId,
+                        'customer_code' => $customerNo,
+                        'total_visits' => 0,
+                        'lifetime_spending' => 0,
+                    ]);
+                } else {
+                    $customerUser->update([
+                        'accurate_id' => $accurateId,
+                        'customer_code' => $customerNo,
+                    ]);
+                }
+
+                return $customerNo;
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to auto-create Accurate customer in booking sync: '.$e->getMessage());
+        }
+
+        return null;
     }
 
     public function assignWaiter(Request $request, TableReservation $booking)
@@ -2094,7 +2460,7 @@ class TableReservationController extends Controller
     protected function printClosedBillingReceipt(TableSession $session, Billing $billing): bool
     {
         try {
-            $printer = $this->resolveClosedBillingReceiptPrinter();
+            $printer = $this->resolveClosedBillingReceiptPrinter($session->table?->area_id);
 
             if (! $printer) {
                 Log::warning('Close billing receipt auto print skipped because no printer is configured', [
@@ -2131,12 +2497,12 @@ class TableReservationController extends Controller
         }
     }
 
-    protected function resolveClosedBillingReceiptPrinter(): ?Printer
+    protected function resolveClosedBillingReceiptPrinter(?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $configuredPrinterId = (int) ($settings->closed_billing_receipt_printer_id ?? 0);
+        $configuredPrinterId = $settings->getPrinterIdForArea($areaId, 'closed_billing');
 
-        if ($configuredPrinterId > 0) {
+        if ($configuredPrinterId && $configuredPrinterId > 0) {
             $configuredPrinter = Printer::active()->find($configuredPrinterId);
 
             if ($configuredPrinter) {
@@ -2145,5 +2511,106 @@ class TableReservationController extends Controller
         }
 
         return Printer::getForService('cashier') ?? Printer::getDefault();
+    }
+
+    public function settlePayment(Request $request, TableReservation $booking): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount_paid' => 'required|numeric|gt:0',
+            'payment_method' => 'required|in:cash,kredit,debit,qris,transfer',
+            'payment_reference_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        $session = $booking->tableSession;
+        $billing = $session?->billing ?? ($session ? \App\Models\Billing::query()->where('table_session_id', $session->id)->first() : null);
+
+        if (! $billing) {
+            return response()->json(['success' => false, 'message' => 'Billing tidak ditemukan.'], 404);
+        }
+
+        $remainingBalance = (float) $billing->remaining_balance;
+        if ($remainingBalance <= 0) {
+            return response()->json(['success' => false, 'message' => 'Billing ini sudah lunas, tidak ada sisa tagihan/piutang.'], 422);
+        }
+
+        $amountPaid = (float) $validated['amount_paid'];
+        if ($amountPaid > $remainingBalance + 0.01) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jumlah pelunasan (Rp '.number_format($amountPaid, 0, ',', '.').') melebihi sisa tagihan (Rp '.number_format($remainingBalance, 0, ',', '.').').',
+            ], 422);
+        }
+
+        $payment = \App\Models\BillingPayment::create([
+            'billing_id' => $billing->id,
+            'amount_paid' => $amountPaid,
+            'payment_method' => $validated['payment_method'],
+            'payment_reference_number' => $validated['payment_reference_number'] ?? null,
+            'payment_type' => 'debt_settlement',
+            'notes' => $validated['notes'] ?? 'Pelunasan sisa piutang',
+            'created_by' => auth()->id(),
+            'paid_at' => now('Asia/Jakarta'),
+        ]);
+
+        $billing->recalculatePaymentStatus();
+
+        // Accurate Online Sales Receipt sync
+        $targetInvoiceNo = $billing->accurate_inv_number ?: $billing->accurate_so_number;
+        if ($targetInvoiceNo) {
+            try {
+                $customerNo = $this->ensureAccurateCustomer((int) $booking->customer_id);
+                $settlementMethod = strtolower(trim((string) $validated['payment_method']));
+                $isCash = in_array($settlementMethod, ['cash', 'tunai'], true);
+                $settings = GeneralSetting::instance();
+                $bankNo = $isCash
+                    ? ($settings->accurate_cash_account_no ?: '110101')
+                    : ($settings->accurate_bank_account_no ?: '110102');
+
+                $receiptData = [
+                    'customerNo' => $customerNo,
+                    'transDate' => now('Asia/Jakarta')->format('d/m/Y'),
+                    'bankNo' => $bankNo,
+                    'chequeAmount' => $amountPaid,
+                    'description' => 'Pelunasan Piutang POS #'.$billing->transaction_code,
+                    'detailInvoice' => [
+                        [
+                            'invoiceNo' => $targetInvoiceNo,
+                            'paymentAmount' => $amountPaid,
+                        ],
+                    ],
+                ];
+                $response = $this->accurateService->saveSalesReceipt($receiptData);
+                if (! empty($response['r']['number']) || ! empty($response['d']['number'])) {
+                    $receiptNo = $response['r']['number'] ?? $response['d']['number'];
+                    $payment->update([
+                        'accurate_sales_receipt_number' => $receiptNo,
+                        'accurate_sync_status' => 'synced',
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Accurate sales receipt sync error on booking debt settlement', ['error' => $e->getMessage()]);
+                $payment->update(['accurate_sync_status' => 'failed']);
+            }
+        }
+
+        $receiptPrinted = false;
+        try {
+            $receiptPrinted = $this->printClosedBillingReceipt($session, $billing);
+        } catch (\Throwable $e) {
+            Log::error('Debt settlement receipt print failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pelunasan sisa tagihan sebesar Rp '.number_format($amountPaid, 0, ',', '.').' berhasil dicatat!',
+            'receipt_printed' => $receiptPrinted,
+            'billing' => [
+                'billing_status' => $billing->billing_status,
+                'paid_amount' => (float) $billing->paid_amount,
+                'remaining_balance' => (float) $billing->remaining_balance,
+                'is_debt' => (bool) $billing->is_debt,
+            ],
+        ]);
     }
 }

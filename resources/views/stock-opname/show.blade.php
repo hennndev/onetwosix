@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Detail Stock Opname">
   <div class="p-6">
     <!-- Header -->
     <div class="flex items-start justify-between mb-6">

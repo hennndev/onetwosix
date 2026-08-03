@@ -132,22 +132,30 @@ class PrinterService
                 $escpos->text($this->formatClosedBillingPair('Diskon', '- Rp '.number_format($discountAmount, 0, ',', '.'), $width)."\n");
             }
 
-            if ($downPaymentAmount > 0) {
-                $escpos->text($this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width)."\n");
+            $isPartial = (bool) ($payload['is_parsial_payment'] ?? false) || ($payload['payment_mode'] ?? '') === 'partial' || ((float) ($payload['remaining_balance'] ?? 0)) > 0;
+
+            if ($isPartial) {
+                $escpos->text($this->formatClosedBillingPair('Total Tagihan', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
+                $escpos->text($this->formatClosedBillingPair('Dibayar Saat Ini (Parsial)', 'Rp '.number_format((float) ($payload['paid_amount'] ?? 0), 0, ',', '.'), $width)."\n");
+                $escpos->setEmphasis(true);
+                $escpos->text($this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format((float) ($payload['remaining_balance'] ?? 0), 0, ',', '.'), $width)."\n");
+                $escpos->setEmphasis(false);
+            } else {
+                $escpos->setEmphasis(true);
+                $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
+                $escpos->setEmphasis(false);
             }
-            $escpos->setEmphasis(true);
-            $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
-            $escpos->setEmphasis(false);
 
             $escpos->text($separator."\n");
+
+            if ($isPartial) {
+                $escpos->text($this->formatClosedBillingPair('Mode Pembayaran', 'BAYAR PARSIAL / HUTANG', $width)."\n");
+            } elseif ($payload['payment_mode'] === 'split') {
+                $escpos->text($this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width)."\n");
+            }
             $escpos->text($this->formatClosedBillingPair('Metode Pembayaran', $payload['payment_method'], $width)."\n");
 
-            if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
-                $escpos->text($this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width)."\n");
-            }
-
             if ($payload['payment_mode'] === 'split') {
-                $escpos->text($this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width)."\n");
                 if ((float) $payload['split_cash_amount'] > 0) {
                     $escpos->text($this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width)."\n");
                 }
@@ -752,6 +760,9 @@ class PrinterService
             'tax_percentage' => (float) ($billing->tax_percentage ?? 0),
             'down_payment_amount' => (float) ($session->reservation?->down_payment_amount ?? 0),
             'grand_total' => (float) ($billing->grand_total ?? 0),
+            'paid_amount' => (float) ($billing->paid_amount ?? 0),
+            'remaining_balance' => (float) ($billing->remaining_balance ?? 0),
+            'is_parsial_payment' => (bool) ($billing->is_parsial_payment || $billing->is_debt || $paymentMode === 'partial'),
             'payment_mode' => $paymentMode,
             'payment_method' => $paymentMethod,
             'payment_reference_number' => $billing->payment_reference_number,
@@ -894,16 +905,24 @@ class PrinterService
             $lines[] = $this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width);
         }
 
-        $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
-        $lines[] = $separator;
-        $lines[] = $this->formatClosedBillingPair('Metode Pembayaran', (string) $payload['payment_method'], $width);
+        $isPartial = (bool) ($payload['is_parsial_payment'] ?? false) || ($payload['payment_mode'] ?? '') === 'partial' || ((float) ($payload['remaining_balance'] ?? 0)) > 0;
 
-        if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
-            $lines[] = $this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width);
+        if ($isPartial) {
+            $lines[] = $this->formatClosedBillingPair('Total Tagihan', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
+            $lines[] = $this->formatClosedBillingPair('Dibayar Saat Ini (Parsial)', 'Rp '.number_format((float) ($payload['paid_amount'] ?? 0), 0, ',', '.'), $width);
+            $lines[] = $this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format((float) ($payload['remaining_balance'] ?? 0), 0, ',', '.'), $width);
+        } else {
+            $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
         }
 
-        if ($payload['payment_mode'] === 'split') {
+        $lines[] = $separator;
+
+        if ($isPartial) {
+            $lines[] = $this->formatClosedBillingPair('Mode Pembayaran', 'BAYAR PARSIAL / HUTANG', $width);
+        } elseif ($payload['payment_mode'] === 'split') {
             $lines[] = $this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width);
+            $lines[] = $this->formatClosedBillingPair('Metode Pembayaran', (string) $payload['payment_method'], $width);
+
             if ((float) $payload['split_cash_amount'] > 0) {
                 $lines[] = $this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width);
             }

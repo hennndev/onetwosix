@@ -15,10 +15,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureActiveAreaMiddleware::class,
+        ]);
+
         $middleware->alias([
             'database_selected' => EnsureDatabaseIsSelected::class,
             'ensure_waiter' => EnsureWaiterRole::class,
             'check.admin.role' => CheckAdminRole::class,
+            'ensure_active_area' => \App\Http\Middleware\EnsureActiveAreaMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

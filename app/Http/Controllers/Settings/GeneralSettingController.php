@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\Area;
 use App\Models\GeneralSetting;
 use App\Models\Printer;
 use Illuminate\Http\RedirectResponse;
@@ -16,8 +17,9 @@ class GeneralSettingController extends Controller
     {
         $settings = GeneralSetting::instance();
         $printers = Printer::active()->orderBy('name')->get();
+        $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
 
-        return view('settings.general-settings', compact('settings', 'printers'));
+        return view('settings.general-settings', compact('settings', 'printers', 'areas'));
     }
 
     public function update(Request $request): RedirectResponse
@@ -25,12 +27,19 @@ class GeneralSettingController extends Controller
         $validated = $request->validate([
             'tax_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'service_charge_percentage' => ['required', 'integer', 'min:0', 'max:100'],
+            'accurate_tax_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_service_charge_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_bank_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_cash_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_stock_warehouse_name' => ['nullable', 'string', 'max:255'],
             'can_choose_checker' => ['nullable', 'boolean'],
             'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'walk_in_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_kitchen_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_bar_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'area_printer_settings' => ['nullable', 'array'],
+            'area_printer_settings.*.*' => ['nullable', 'integer'],
             'mail_provider' => ['required', 'string', 'in:smtp,resend'],
             'auth_code_target_email' => ['nullable', 'email'],
             'auth_code_target_whatsapp' => ['nullable', 'string', 'max:20'],

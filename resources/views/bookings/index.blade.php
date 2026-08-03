@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Meja & Booking">
   @php
     $tablesJson = $tables->map(
         fn($t) => [
@@ -23,6 +23,12 @@
       </div>
     @endif
 
+    @if (session('error'))
+      <div class="mb-4 px-4 py-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+        {{ session('error') }}
+      </div>
+    @endif
+
     @if ($errors->any())
       <div class="mb-4 px-4 py-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
         <ul class="list-disc list-inside">
@@ -41,10 +47,12 @@
       @include('bookings._partials.tab-pending')
     @elseif ($tab === 'active')
       @include('bookings._partials.tab-active')
-    @elseif ($tab !== 'history')
-      @include('bookings._partials.tab-all')
-    @else
+    @elseif ($tab === 'partial')
+      @include('bookings._partials.tab-partial')
+    @elseif ($tab === 'history')
       @include('bookings._partials.tab-history')
+    @else
+      @include('bookings._partials.tab-all')
     @endif
 
     {{-- Modals --}}
@@ -53,6 +61,7 @@
     @include('bookings._components.status-update-modal')
     @include('bookings._components.booking-info-modal')
     @include('bookings._components.close-billing-modal')
+    @include('bookings._components.settle-payment-modal')
     @include('bookings._components.assign-waiter-modal')
     @include('bookings._components.move-table-modal')
     @include('bookings._components.order-history-modal')

@@ -9,6 +9,7 @@ class Dashboard extends Model
     protected $table = 'dashboard';
 
     protected $fillable = [
+        'area_id',
         'total_amount',
         'total_food',
         'total_alcohol',
@@ -37,6 +38,7 @@ class Dashboard extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'total_amount' => 'decimal:2',
         'total_food' => 'decimal:2',
         'total_alcohol' => 'decimal:2',
@@ -63,4 +65,9 @@ class Dashboard extends Model
         'total_transactions' => 'integer',
         'last_synced_at' => 'datetime',
     ];
+
+    public function area()
+    {
+        return $this->belongsTo(Area::class, 'area_id');
+    }
 }

@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Event">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -49,6 +49,25 @@
         Tambah Event
       </button>
     </div>
+
+    <!-- Area Filter Pills -->
+    @if (($areas ?? collect())->count() > 1)
+      <div class="flex items-center gap-2 mb-6">
+        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Area:</span>
+        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <a href="{{ route('admin.events.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
+             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.events.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
+               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      </div>
+    @endif
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-4 gap-4 mb-6">
@@ -180,6 +199,19 @@
                   Inactive
                 </span>
               @endif
+
+              <span class="px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-700 flex items-center gap-1">
+                <svg class="w-3 h-3"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+                  <path stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
+                {{ $event->area ? $event->area->name : 'Semua Area' }}
+              </span>
             </div>
 
             <!-- Event Name -->
@@ -423,6 +455,7 @@
           form.action = '{{ route('admin.events.store') }}';
           formMethod.value = 'POST';
           form.reset();
+          document.getElementById('area_id').value = '';
           updatePriceLabel();
         } else if (mode === 'edit' && eventId) {
           const event = events.find(e => e.id === eventId);
@@ -431,6 +464,7 @@
             form.action = `/admin/events/${eventId}`;
             formMethod.value = 'PUT';
 
+            document.getElementById('area_id').value = event.area_id || '';
             document.getElementById('name').value = event.name;
             document.getElementById('description').value = event.description || '';
             document.getElementById('start_date').value = event.start_date;

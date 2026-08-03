@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Order extends Model
 {
     protected $fillable = [
+        'area_id',
         'table_session_id',
         'customer_user_id',
         'created_by',
@@ -33,6 +34,7 @@ class Order extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'items_total' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total' => 'decimal:2',
@@ -44,6 +46,11 @@ class Order extends Model
         'bar_print_count' => 'integer',
         'checker_print_count' => 'integer',
     ];
+
+    public function area()
+    {
+        return $this->belongsTo(Area::class, 'area_id');
+    }
 
     // Relationships
     public function tableSession()

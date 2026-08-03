@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Riwayat Transaksi">
   <div class="p-6"
        x-data="transactionHistory()">
 
@@ -21,6 +21,22 @@
           <p class="text-sm text-gray-500">Lihat semua transaksi yang telah dilakukan</p>
         </div>
       </div>
+
+      <!-- Area Filter Pills -->
+      @if (($areas ?? collect())->count() > 1)
+        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
+             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
+               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      @endif
     </div>
 
     <!-- Stat Cards -->
@@ -193,6 +209,7 @@
                   $isBooking = $order->tableSession?->reservation !== null;
                   $tableName = $order->tableSession?->table?->table_number;
                   $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
+                  $orderBilling = $order->billing ?? $order->tableSession?->billing;
                 @endphp
                 <tr x-on:click="openOrderDetailById({{ $order->id }})"
                     class="hover:bg-gray-50 transition-colors cursor-pointer">
@@ -225,6 +242,11 @@
                         </span>
                       @else
                         <span class="text-xs text-gray-500">Walk-in</span>
+                      @endif
+                      @if ($orderBilling && ($orderBilling->is_debt || $orderBilling->billing_status === 'partial_paid'))
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-200 w-fit">
+                          HUTANG (Sisa: Rp {{ number_format($orderBilling->remaining_balance, 0, ',', '.') }})
+                        </span>
                       @endif
                       @if ($tableName)
                         <span class="text-xs text-gray-400">{{ $isBooking ? ($order->tableSession->table->area->name ?? 'VIP') . ' ' . $tableName : 'Table ' . $tableName }}</span>
@@ -437,6 +459,39 @@
             <p class="text-base font-bold text-gray-900"
                x-text="selectedDetailOrder?.total"></p>
           </div>
+
+          <template x-if="selectedDetailOrder?.billing?.isDebt || selectedDetailOrder?.billing?.billingStatus === 'partial_paid'">
+            <div class="rounded-xl border border-red-200 bg-red-50/50 p-4 space-y-2">
+              <div class="flex items-center justify-between text-xs font-semibold text-red-800">
+                <span>STATUS PEMBAYARAN:</span>
+                <span class="rounded bg-red-100 px-2 py-0.5 text-red-700">HUTANG / PARSIAL</span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-red-700 font-medium">Sudah Dibayar:</span>
+                <span class="font-bold text-red-900"
+                      x-text="selectedDetailOrder?.billing?.paidAmountFormatted"></span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-red-700 font-medium">Sisa Hutang:</span>
+                <span class="font-bold text-red-600 text-base"
+                      x-text="selectedDetailOrder?.billing?.remainingBalanceFormatted"></span>
+              </div>
+              <button @click="openDebtModalFromDetail()"
+                      type="button"
+                      class="w-full mt-2 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs tracking-wide shadow-sm transition flex items-center justify-center gap-2">
+                <svg class="w-4 h-4"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+                  <path stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                PELUNASAN SISA HUTANG
+              </button>
+            </div>
+          </template>
 
           <div class="flex gap-3">
             <button @click="openPrintFromDetail()"
@@ -673,6 +728,125 @@
       </div>
     </div>
 
+    <!-- Debt Settlement Modal -->
+    <div x-show="showDebtModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center"
+         style="display: none;">
+      <div class="absolute inset-0 bg-black/50"
+           @click="closeDebtModal()"></div>
+
+      <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 rounded-lg bg-red-100 text-red-600">
+              <svg class="w-5 h-5"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <h3 class="font-bold text-gray-900">Pelunasan Piutang / Hutang</h3>
+          </div>
+          <button type="button"
+                  @click="closeDebtModal()"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">✕</button>
+        </div>
+
+        <form @submit.prevent="submitDebtSettlement()">
+          <div class="px-6 py-4 space-y-4">
+            <div class="rounded-xl bg-slate-50 p-3.5 space-y-1.5 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-500">No. Transaksi</span>
+                <span class="font-semibold text-slate-800"
+                      x-text="selectedDetailOrder?.displayId"></span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Pelanggan</span>
+                <span class="font-semibold text-slate-800"
+                      x-text="selectedDetailOrder?.customer"></span>
+              </div>
+              <div class="flex justify-between border-t border-slate-200 pt-1.5">
+                <span class="text-red-600 font-bold">Sisa Piutang</span>
+                <span class="font-bold text-red-600 text-sm"
+                      x-text="selectedDetailOrder?.billing?.remainingBalanceFormatted"></span>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">Nominal Pelunasan (Rp)</label>
+                <input type="number"
+                       x-model.number="debtForm.amount_paid"
+                       min="1"
+                       :max="selectedDetailOrder?.billing?.remainingBalance"
+                       required
+                       class="w-full rounded-xl border-gray-300 font-bold text-slate-900 focus:border-red-500 focus:ring-red-500">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">Metode Pembayaran</label>
+                <select x-model="debtForm.payment_method"
+                        required
+                        class="w-full rounded-xl border-gray-300 text-sm focus:border-red-500 focus:ring-red-500">
+                  <option value="cash">Cash / Tunai</option>
+                  <option value="qris">QRIS</option>
+                  <option value="debit">Kartu Debit</option>
+                  <option value="kredit">Kartu Kredit</option>
+                  <option value="transfer">Bank Transfer</option>
+                </select>
+              </div>
+
+              <div x-show="debtForm.payment_method !== 'cash'">
+                <label class="block text-xs font-medium text-gray-700 mb-1">Nomor Referensi / Approval Code</label>
+                <input type="text"
+                       x-model="debtForm.payment_reference_number"
+                       placeholder="Contoh: REF-12345"
+                       class="w-full rounded-xl border-gray-300 text-sm focus:border-red-500 focus:ring-red-500">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">Catatan (Opsional)</label>
+                <input type="text"
+                       x-model="debtForm.notes"
+                       placeholder="Contoh: Pelunasan sisa via Transfer"
+                       class="w-full rounded-xl border-gray-300 text-sm focus:border-red-500 focus:ring-red-500">
+              </div>
+            </div>
+
+            <p x-show="debtError"
+               x-text="debtError"
+               class="text-xs text-red-600 font-medium"
+               style="display: none;"></p>
+          </div>
+
+          <div class="flex gap-2 px-6 pb-5 border-t border-gray-100 pt-3">
+            <button type="button"
+                    @click="closeDebtModal()"
+                    class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">Batal</button>
+            <button type="submit"
+                    :disabled="debtSaving"
+                    class="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition disabled:opacity-50">
+              <span x-show="!debtSaving">Simpan Pelunasan</span>
+              <span x-show="debtSaving">Menyimpan...</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </div>
   <script>
     const transactionHistoryOrderPayloads = @js($orderPrintPayloads);
@@ -684,6 +858,15 @@
         showOrderDetailModal: false,
         showPaymentEditModal: false,
         showErrorModal: false,
+        showDebtModal: false,
+        debtSaving: false,
+        debtError: '',
+        debtForm: {
+          amount_paid: 0,
+          payment_method: 'cash',
+          payment_reference_number: '',
+          notes: '',
+        },
         selectedOrder: null,
         selectedDetailOrder: null,
         selectedErrorMessage: '',
@@ -1141,6 +1324,55 @@
             this.toastMessage = 'Terjadi kesalahan. Coba lagi.';
           } finally {
             this.printing = false;
+          }
+        },
+
+        openDebtModalFromDetail() {
+          if (!this.selectedDetailOrder || !this.selectedDetailOrder.billing) return;
+          const remaining = Number(this.selectedDetailOrder.billing.remainingBalance || 0);
+          this.debtForm.amount_paid = remaining;
+          this.debtForm.payment_method = 'cash';
+          this.debtForm.payment_reference_number = '';
+          this.debtForm.notes = '';
+          this.debtError = '';
+          this.showDebtModal = true;
+        },
+
+        closeDebtModal() {
+          this.showDebtModal = false;
+          this.debtError = '';
+        },
+
+        async submitDebtSettlement() {
+          if (!this.selectedDetailOrder || !this.selectedDetailOrder.billing) return;
+          this.debtSaving = true;
+          this.debtError = '';
+
+          try {
+            const url = this.selectedDetailOrder.billing.settleDebtUrl;
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify(this.debtForm),
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(data.message || 'Gagal menyimpan pelunasan piutang.');
+            }
+
+            this.showToast(data.message, true);
+            this.closeDebtModal();
+            this.closeOrderDetailModal();
+            window.location.reload();
+          } catch (err) {
+            this.debtError = err.message;
+          } finally {
+            this.debtSaving = false;
           }
         },
       };

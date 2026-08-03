@@ -23,11 +23,10 @@ class SavePosCategorySettingRequest extends FormRequest
     {
         return [
             'categories' => ['present', 'array'],
-            'categories.*' => ['array:_present,show_in_pos,is_menu,is_item_group'],
+            'categories.*' => ['array:_present,show_in_pos,is_menu'],
             'categories.*._present' => ['required'],
             'categories.*.show_in_pos' => ['nullable', 'boolean'],
             'categories.*.is_menu' => ['nullable', 'boolean'],
-            'categories.*.is_item_group' => ['nullable', 'boolean'],
         ];
     }
 }

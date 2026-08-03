@@ -28,4 +28,18 @@ class Area extends Model
     {
         return $this->hasMany(InternalUser::class);
     }
+
+    /**
+     * Get SO Number Prefix for Accurate / POS invoices (e.g. ROOM- or LOUNGE-).
+     */
+    public function getSoPrefixAttribute(): string
+    {
+        $code = strtoupper(trim($this->code ?? ''));
+
+        if (in_array($code, ['LOUNGE', 'LNG'])) {
+            return 'LOUNGE-';
+        }
+
+        return 'ROOM-';
+    }
 }

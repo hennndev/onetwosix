@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Table Scanner">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">

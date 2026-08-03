@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Master Meja">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -131,20 +131,22 @@
     </div>
 
     <!-- Area Filter Tabs -->
-    <div class="mb-6">
-      <div class="flex gap-2 overflow-x-auto pb-2">
-        <button onclick="filterByArea('all')"
-                class="area-filter-btn px-4 py-2 bg-slate-800 text-white rounded-lg whitespace-nowrap active">
-          Semua Area
-        </button>
-        @foreach ($areaStats as $areaStat)
-          <button onclick="filterByArea({{ $areaStat->id }})"
-                  class="area-filter-btn px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg transition whitespace-nowrap">
-            {{ $areaStat->name }} ({{ $areaStat->tables_count }})
+    @if (($areaStats ?? collect())->count() > 1)
+      <div class="mb-6">
+        <div class="flex gap-2 overflow-x-auto pb-2">
+          <button onclick="filterByArea('all')"
+                  class="area-filter-btn px-4 py-2 bg-slate-800 text-white rounded-lg whitespace-nowrap active">
+            Semua Area
           </button>
-        @endforeach
+          @foreach ($areaStats as $areaStat)
+            <button onclick="filterByArea({{ $areaStat->id }})"
+                    class="area-filter-btn px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg transition whitespace-nowrap">
+              {{ $areaStat->name }} ({{ $areaStat->tables_count }})
+            </button>
+          @endforeach
+        </div>
       </div>
-    </div>
+    @endif
 
     <!-- Table Card -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200">

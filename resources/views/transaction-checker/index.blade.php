@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Transaction Checker">
   <div class="p-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
@@ -54,20 +54,39 @@
       </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="flex items-center gap-2 mb-6">
-      <a href="{{ route('admin.transaction-checker.index', ['tab' => 'all']) }}"
-         class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
-        Semua ({{ $totalOrders }})
-      </a>
-      <a href="{{ route('admin.transaction-checker.index', ['tab' => 'proses']) }}"
-         class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'proses' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
-        Dalam Proses ({{ $baruOrders + $prosesOrders }})
-      </a>
-      <a href="{{ route('admin.transaction-checker.index', ['tab' => 'selesai']) }}"
-         class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'selesai' ? 'bg-green-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
-        Selesai ({{ $selesaiOrders }})
-      </a>
+    <!-- Area Filter Pills + Tabs -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <!-- Tabs -->
+      <div class="flex items-center gap-2">
+        <a href="{{ route('admin.transaction-checker.index', array_merge(request()->query(), ['tab' => 'all'])) }}"
+           class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
+          Semua ({{ $totalOrders }})
+        </a>
+        <a href="{{ route('admin.transaction-checker.index', array_merge(request()->query(), ['tab' => 'proses'])) }}"
+           class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'proses' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
+          Dalam Proses ({{ $baruOrders + $prosesOrders }})
+        </a>
+        <a href="{{ route('admin.transaction-checker.index', array_merge(request()->query(), ['tab' => 'selesai'])) }}"
+           class="px-4 py-2 rounded-xl text-sm font-medium transition {{ $tab === 'selesai' ? 'bg-green-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' }}">
+          Selesai ({{ $selesaiOrders }})
+        </a>
+      </div>
+
+      <!-- Area Filter Pills -->
+      @if (($areas ?? collect())->count() > 1)
+        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <a href="{{ route('admin.transaction-checker.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
+             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.transaction-checker.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
+               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      @endif
     </div>
 
     @if ($orders->isEmpty())

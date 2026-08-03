@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Printer">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg relative"
@@ -248,6 +248,7 @@
           document.getElementById('printerForm').reset();
           document.getElementById('is_active').checked = true;
           document.getElementById('connection_type').value = 'network';
+          document.getElementById('area_id').value = '';
           toggleConnectionFields();
           resetLogoPreview();
         }
@@ -262,6 +263,7 @@
 
         document.getElementById('name').value = printer.name;
         document.getElementById('location').value = printer.location || '';
+        document.getElementById('area_id').value = printer.area_id || '';
         document.getElementById('printer_type').value = printer.printer_type || '';
         document.getElementById('connection_type').value = printer.connection_type;
         document.getElementById('ip').value = printer.ip || '';

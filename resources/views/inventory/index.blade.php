@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Stok & Inventory">
   @include('inventory._components.main-content')
 
   <!-- Threshold Bulk Edit Modal -->

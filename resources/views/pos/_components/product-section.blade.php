@@ -46,9 +46,9 @@
           $isItemGroup = (bool) ($product['is_item_group'] ?? false);
           $gradientClass = $isKitchen ? 'from-orange-500 to-red-600' : 'from-blue-400 to-cyan-500';
           $dotColor = $isKitchen ? 'bg-orange-400' : 'bg-blue-300';
+          $isAvailable = (bool) ($product['is_available'] ?? true);
           $outOfStock = isset($product['type']) && $product['type'] === 'item' && !$isItemGroup && ($product['stock'] ?? 0) <= 0;
-          $unavailable = isset($product['type']) && $product['type'] === 'bom' && !($product['is_available'] ?? true);
-          $disabled = $outOfStock || $unavailable;
+          $disabled = $outOfStock || !$isAvailable;
         @endphp
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col {{ $disabled ? 'opacity-60' : '' }}">
           <div class="px-3 pt-3 pb-1">
@@ -56,14 +56,14 @@
           </div>
           <div class="relative bg-gradient-to-br {{ $gradientClass }} mx-3 rounded-xl overflow-hidden">
             <div class="absolute top-2 right-2 z-10 w-2.5 h-2.5 rounded-full {{ $dotColor }} opacity-80"></div>
-            @if ($unavailable)
-              <div class="absolute inset-0 z-20 flex items-center justify-center bg-black/40 rounded-xl">
-                <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">Habis</span>
+            @if ($disabled)
+              <div class="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-[1px] rounded-xl">
+                <span class="px-2.5 py-1 bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm tracking-wide uppercase">Sold Out</span>
               </div>
             @endif
             @if ($isItemGroup)
               <div class="absolute bottom-2 left-2 z-10">
-                <span class="px-2 py-0.5 bg-emerald-500 text-white text-xs font-bold rounded">Item Group</span>
+                <span class="px-2 py-0.5 bg-emerald-600 text-white text-xs font-bold rounded shadow-sm">Item Group</span>
               </div>
             @elseif (!$isKitchen && isset($product['stock']))
               <div class="absolute bottom-2 left-2 z-10">

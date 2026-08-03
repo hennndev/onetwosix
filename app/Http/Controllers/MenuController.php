@@ -42,7 +42,7 @@ class MenuController extends Controller
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'category_main', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible', 'is_visible_in_pos']);
+                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'category_main', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_group_sold_out', 'is_count_portion_possible', 'is_visible_in_pos', 'item_type']);
 
                 return [$categoryType => $menus];
             });
@@ -150,6 +150,7 @@ class MenuController extends Controller
                     'is_visible_in_pos' => array_key_exists('is_visible_in_pos', $validated)
                         ? (bool) $validated['is_visible_in_pos']
                         : true,
+                    'item_type' => $validated['item_type'] ?? 'INVENTORY',
                     'stock_quantity' => 0,
                     'unit' => $validated['unit'],
                     'is_active' => true,
@@ -178,7 +179,7 @@ class MenuController extends Controller
     public function updateTaxFlags(Request $request, InventoryItem $inventory): JsonResponse
     {
         $validated = $request->validate([
-            'field' => ['required', 'string', 'in:include_tax,include_service_charge,is_item_group,is_count_portion_possible,is_visible_in_pos'],
+            'field' => ['required', 'string', 'in:include_tax,include_service_charge,is_item_group,is_group_sold_out,is_count_portion_possible,is_visible_in_pos'],
             'value' => ['required', 'boolean'],
         ]);
 
@@ -214,6 +215,7 @@ class MenuController extends Controller
             'name' => $inventory->name,
             'pos_name' => $inventory->pos_name,
             'is_visible_in_pos' => (bool) $inventory->is_visible_in_pos,
+            'is_group_sold_out' => (bool) $inventory->is_group_sold_out,
             'printer_ids' => $inventory->printers->pluck('id')->values()->all(),
             'detail_group' => $detailGroup,
         ]);

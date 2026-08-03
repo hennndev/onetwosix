@@ -27,28 +27,23 @@ class PrinterController extends Controller
             ->orderBy('name')
             ->get();
 
-        $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
-        $printerLocations = $this->getPrinterLocations($areas);
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
+        $printerLocations = $this->getPrinterLocations();
 
-        return view('printers.index', compact('printers', 'printerLocations'));
+        return view('printers.index', compact('printers', 'printerLocations', 'areas'));
     }
 
     /**
-     * Get valid printer locations (service + area locations).
+     * Get valid printer service locations.
      */
-    protected function getPrinterLocations($areas): array
+    protected function getPrinterLocations(): array
     {
-        $serviceLocations = [
+        return [
             'kitchen' => 'Kitchen',
             'bar' => 'Bar',
             'cashier' => 'Cashier',
-        ];
-
-        $areaLocations = $areas->pluck('name', 'code')->toArray();
-
-        return [
-            'Service' => $serviceLocations,
-            'Areas' => $areaLocations,
+            'checker' => 'Checker',
         ];
     }
 

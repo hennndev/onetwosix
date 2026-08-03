@@ -51,16 +51,21 @@ class WaiterPosController extends Controller
 
         $cart = session()->get(self::CART_KEY, []);
         $nextQty = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
         $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
         $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-        if ($detailGroupComponents !== []) {
+        if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
+            return response()->json(['success' => false, 'message' => 'Item ini berstatus Sold Out / tidak tersedia.'], 422);
+        }
+
+        if ($detailGroupComponents !== [] && $isCountPortionPossible) {
             $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
 
             if ($nextQty > $possiblePortions) {
                 return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
             }
-        } elseif ($isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
+        } elseif (! $isItemGroup && $isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
             return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
         }
 
@@ -113,16 +118,21 @@ class WaiterPosController extends Controller
                 return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
             }
 
+            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
             $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-            if ($detailGroupComponents !== []) {
+            if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
+                return response()->json(['success' => false, 'message' => 'Item ini berstatus Sold Out / tidak tersedia.'], 422);
+            }
+
+            if ($detailGroupComponents !== [] && $isCountPortionPossible) {
                 $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
 
                 if ($validated['quantity'] > $possiblePortions) {
                     return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
                 }
-            } elseif ($isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
+            } elseif (! $isItemGroup && $isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
                 return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
             }
 
@@ -389,7 +399,34 @@ class WaiterPosController extends Controller
                 continue;
             }
 
-            // Unassigned items go straight to transaction checker (no production order)
+            // Fallback: If no explicit printer type assigned, route based on preparation_location or category type
+            $location = strtolower(trim((string) ($item->preparation_location ?? '')));
+            if ($location === 'bar') {
+                $barItems->push($item);
+
+                continue;
+            }
+
+            if ($location === 'kitchen') {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            $categoryType = strtolower(trim((string) ($item->inventoryItem?->category_type ?? '')));
+            if (in_array($categoryType, ['beverage', 'bar', 'minuman', 'drink', 'cocktail', 'mocktail', 'liquor', 'spirit', 'wine', 'beer', 'softdrink'], true)) {
+                $barItems->push($item);
+
+                continue;
+            }
+
+            if (in_array($categoryType, ['food', 'kitchen', 'makanan', 'snack', 'dessert', 'main course', 'appetizer'], true)) {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            $checkerCashierItems->push($item);
         }
 
         $customerUserId = CustomerUser::where('user_id', $tableSession->customer_id)
@@ -397,8 +434,14 @@ class WaiterPosController extends Controller
 
         $tableId = $tableSession->table_id;
 
+        $resolvedAreaId = $order->area_id
+            ?? $tableSession?->table?->area_id
+            ?? Auth::user()?->getAssignedArea()?->id
+            ?? Auth::user()?->resolveActiveArea()?->id;
+
         if ($kitchenItems->isNotEmpty()) {
             $kitchenOrder = KitchenOrder::create([
+                'area_id' => $resolvedAreaId,
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
                 'customer_user_id' => $customerUserId,
@@ -419,16 +462,23 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
+            // Auto-print kitchen ticket safely
+            try {
+                $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing kitchen ticket: '.$e->getMessage());
+            }
         }
 
         if ($barItems->isNotEmpty()) {
             $barOrder = BarOrder::create([
+                'area_id' => $resolvedAreaId,
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
                 'customer_user_id' => $customerUserId,
                 'table_id' => $tableId,
                 'total_amount' => $barItems->sum('subtotal'),
+                'payment_method' => 'cash',
                 'status' => 'baru',
                 'progress' => 0,
             ]);
@@ -444,17 +494,26 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
+            // Auto-print bar ticket safely
+            try {
+                $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing bar ticket: '.$e->getMessage());
+            }
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
-            $this->printCheckerCashierItemsWithoutPreparationOrder(
-                $order,
-                $checkerCashierItems,
-                $orderNumber,
-                $tableId,
-                $selectedCheckerPrinterIds
-            );
+            try {
+                $this->printCheckerCashierItemsWithoutPreparationOrder(
+                    $order,
+                    $checkerCashierItems,
+                    $orderNumber,
+                    $tableId,
+                    $selectedCheckerPrinterIds
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing checker ticket: '.$e->getMessage());
+            }
         }
 
     }
@@ -541,6 +600,11 @@ class WaiterPosController extends Controller
         callable $callback,
         ?Collection $selectedCheckerPrinterIds = null
     ): void {
+        $user = Auth::user();
+        $contextArea = $user?->getAssignedArea() ?? $order->tableSession?->table?->area ?? $order->table?->area;
+        $contextAreaId = $contextArea?->id;
+        $contextAreaCode = $contextArea ? strtoupper(trim((string) $contextArea->code)) : null;
+
         $groupedByPrinter = [];
 
         foreach ($items as $item) {
@@ -554,6 +618,24 @@ class WaiterPosController extends Controller
 
                     return $selectedCheckerPrinterIds->contains((int) $printer->id);
                 });
+            }
+
+            // Filter printers by user/table area context if area-specific printers exist
+            if ($contextAreaId !== null && $targetPrinters->count() > 1) {
+                $areaMatchingPrinters = $targetPrinters->filter(function (Printer $printer) use ($contextAreaId, $contextAreaCode): bool {
+                    if ($printer->area_id !== null) {
+                        return (int) $printer->area_id === (int) $contextAreaId;
+                    }
+                    if ($printer->location !== null && $contextAreaCode !== null) {
+                        return strtoupper(trim((string) $printer->location)) === $contextAreaCode;
+                    }
+
+                    return false;
+                });
+
+                if ($areaMatchingPrinters->isNotEmpty()) {
+                    $targetPrinters = $areaMatchingPrinters;
+                }
             }
 
             if ($targetPrinters->isEmpty()) {
@@ -626,13 +708,13 @@ class WaiterPosController extends Controller
             ->map(function (Printer $printer): ?string {
                 $type = strtolower(trim((string) $printer->printer_type));
 
-                if (in_array($type, ['kitchen', 'bar'], true)) {
+                if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
                     return $type;
                 }
 
                 $location = strtolower(trim((string) $printer->location));
 
-                return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
+                return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
             })
             ->filter()
             ->values() ?? collect();
@@ -643,6 +725,24 @@ class WaiterPosController extends Controller
 
         if ($assignedTypes->contains('kitchen')) {
             return 'kitchen';
+        }
+
+        if ($assignedTypes->contains('cashier') || $assignedTypes->contains('checker')) {
+            return null;
+        }
+
+        $setting = PosCategorySetting::allKeyed()->get($inventoryItem->category_type);
+        if (! empty($setting?->preparation_location) && in_array($setting->preparation_location, ['kitchen', 'bar'], true)) {
+            return $setting->preparation_location;
+        }
+
+        $categoryType = strtolower(trim((string) $inventoryItem->category_type));
+        if (in_array($categoryType, ['food', 'kitchen', 'makanan'], true)) {
+            return 'kitchen';
+        }
+
+        if (in_array($categoryType, ['beverage', 'bar', 'minuman', 'drink'], true)) {
+            return 'bar';
         }
 
         return null;
@@ -828,6 +928,16 @@ class WaiterPosController extends Controller
     {
         $offset = 0;
         $maxAttempts = 10;
+
+        if (empty($attributes['area_id'])) {
+            if (! empty($attributes['table_session_id'])) {
+                $attributes['area_id'] = TableSession::with('table')->find($attributes['table_session_id'])?->table?->area_id;
+            }
+
+            if (empty($attributes['area_id']) && Auth::check()) {
+                $attributes['area_id'] = Auth::user()->getAssignedArea()?->id ?? Auth::user()->resolveActiveArea()?->id;
+            }
+        }
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $attributes['order_number'] = $attempt === 1

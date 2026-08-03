@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Riwayat Performa Waiter">
   <div class="p-6 space-y-5">
     <div class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
@@ -64,7 +64,7 @@
     <div class="bg-white border border-slate-200 rounded-xl p-5">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-bold text-slate-800">Daftar Riwayat Harian</h3>
-        <span class="text-xs text-slate-500">Window operasional 09:00 - 09:00</span>
+        <span class="text-xs text-slate-500">Window operasional End Day</span>
       </div>
 
       @if ($monthlyHistory->isEmpty())
@@ -89,7 +89,7 @@
                 <tr @click="openHistory = openHistory === {{ $loop->index }} ? null : {{ $loop->index }}"
                     class="hover:bg-slate-50 transition-colors cursor-pointer">
                   <td class="px-4 py-3 font-medium text-slate-800">{{ $history->end_day }}</td>
-                  <td class="px-4 py-3 text-slate-600">09:00 - 08:59</td>
+                  <td class="px-4 py-3 text-slate-600">{{ $history->window_start->format('H:i') }} - {{ $history->window_end->format('H:i') }}</td>
                   <td class="px-4 py-3 text-right text-slate-700">{{ number_format($history->customers_handled) }}</td>
                   <td class="px-4 py-3 text-right text-slate-700">{{ number_format($history->total_transactions) }}</td>
                   <td class="px-4 py-3 text-right font-semibold text-slate-800">

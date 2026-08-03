@@ -26,7 +26,6 @@ test('admin can save menu flag for pos category settings', function () {
                 '_present' => '1',
                 'show_in_pos' => '1',
                 'is_menu' => '1',
-                'is_item_group' => '1',
             ],
         ],
     ]);
@@ -36,6 +35,5 @@ test('admin can save menu flag for pos category settings', function () {
     expect(PosCategorySetting::query()->where('category_type', 'main-course')->first())
         ->not->toBeNull()
         ->show_in_pos->toBeTrue()
-        ->is_menu->toBeTrue()
-        ->is_item_group->toBeTrue();
+        ->is_menu->toBeTrue();
 });

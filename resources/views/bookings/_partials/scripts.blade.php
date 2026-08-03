@@ -30,7 +30,7 @@
 
   function bookingPage(tables, bookedIds, checkedInIds) {
     return {
-      selectedCategory: null,
+      selectedCategory: @js(($areas ?? collect())->count() === 1 ? ($areas->first()->id ?? null) : null),
       selectedTableId: null,
       modalOpen: false,
       tables: tables,
@@ -104,7 +104,11 @@
     form.action = `/admin/bookings/${bookingId}`;
     document.getElementById('formMethod').value = 'PUT';
     document.getElementById('table_id').value = booking.table_id;
-    document.getElementById('customer_id').value = booking.customer_id;
+    if (typeof window.setBookingSelectedCustomer === 'function') {
+      window.setBookingSelectedCustomer(booking.customer_id);
+    } else {
+      document.getElementById('customer_id').value = booking.customer_id;
+    }
     document.getElementById('booking_name').value = booking.booking_name || '';
     document.getElementById('phone').value = booking.customer?.profile?.phone || booking.customer?.phone || '';
     document.getElementById('email').value = booking.customer?.email || '';

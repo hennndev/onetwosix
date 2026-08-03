@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Kinerja Waiter">
   <div class="p-6">
 
     <!-- Header -->
@@ -402,7 +402,7 @@
           <div class="bg-white border border-slate-200 rounded-xl p-5 mt-5">
             <div class="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h3 class="font-bold text-slate-800">Riwayat Harian (09:00 - 09:00)</h3>
+                <h3 class="font-bold text-slate-800">Riwayat Harian (End Day)</h3>
                 <p class="text-xs text-slate-500 mt-0.5">Performa berdasarkan window operasional end day</p>
               </div>
               <div class="flex items-center gap-2">

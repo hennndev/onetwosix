@@ -16,6 +16,19 @@
              id="formMethod">
 
       <div class="space-y-4">
+        <!-- Area -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Area <span class="text-xs text-gray-500">(Opsional - Kosongkan untuk Semua Area)</span></label>
+          <select name="area_id"
+                  id="area_id"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+            <option value="">Semua Area (Global)</option>
+            @foreach (($areas ?? []) as $area)
+              <option value="{{ $area->id }}">{{ $area->name }}</option>
+            @endforeach
+          </select>
+        </div>
+
         <!-- Event Name -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Nama Event <span class="text-red-500">*</span></label>

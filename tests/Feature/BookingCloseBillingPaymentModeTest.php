@@ -195,9 +195,8 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     GeneralSetting::instance()->update([
         'service_charge_percentage' => 5,
         'tax_percentage' => 10,
+        'accurate_stock_warehouse_name' => 'Warehouse Test',
     ]);
-
-    config(['accurate.stock_warehouse_name' => 'Warehouse Test']);
 
     $customer = $booking->customer;
     $profile = UserProfile::create([
@@ -228,15 +227,15 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                $expenses = collect($payload['detailExpense'] ?? []);
+                $taxExpense = $expenses->firstWhere('expenseName', 'PB 1');
+                $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
+
+                if (! $taxExpense || ($taxExpense['accountNo'] ?? null) !== '210201') {
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
-                    return false;
-                }
-
-                if (! collect($payload['detailItem'])->contains(fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE' && (int) ($item['quantity'] ?? 0) === 1 && (float) ($item['unitPrice'] ?? 0) > 0)) {
+                if (! $scExpense || ($scExpense['accountNo'] ?? null) !== '210202' || (float) ($scExpense['expenseAmount'] ?? 0) <= 0) {
                     return false;
                 }
 
@@ -278,19 +277,19 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                $expenses = collect($payload['detailExpense'] ?? []);
+                $taxExpense = $expenses->firstWhere('expenseName', 'PB 1');
+                $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
+
+                if (! $taxExpense || ($taxExpense['accountNo'] ?? null) !== '210201') {
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                if (! $scExpense || ($scExpense['accountNo'] ?? null) !== '210202' || (float) ($scExpense['expenseAmount'] ?? 0) <= 0) {
                     return false;
                 }
 
                 foreach ($detailItems as $detailItem) {
-                    if (($detailItem['itemNo'] ?? null) === 'SERVICE-CHARGE') {
-                        continue;
-                    }
-
                     if (! isset($detailItem['salesOrderNumber'])) {
                         return false;
                     }
@@ -298,16 +297,6 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                     if (($detailItem['warehouseName'] ?? null) !== 'Warehouse Test') {
                         return false;
                     }
-                }
-
-                $serviceChargeItem = collect($detailItems)->firstWhere('itemNo', 'SERVICE-CHARGE');
-
-                if ($serviceChargeItem === null) {
-                    return false;
-                }
-
-                if ((float) ($serviceChargeItem['unitPrice'] ?? 0) <= 0) {
-                    return false;
                 }
 
                 return true;
@@ -322,6 +311,7 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
             'foc_comp_payment_method' => 'FOC',
+            'discount_auth_code' => \App\Models\DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code,
         ])
         ->assertSuccessful()
         ->assertJsonPath('success', true);

@@ -41,4 +41,9 @@ class Reward extends Model
             default => 'gray',
         };
     }
+
+    public function redemptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RewardRedemption::class);
+    }
 }

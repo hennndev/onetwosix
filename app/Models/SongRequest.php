@@ -10,6 +10,8 @@ class SongRequest extends Model
         'customer_user_id',
         'song_title',
         'artist',
+        'cover_image',
+        'preview_url',
         'tip',
         'status',
     ];

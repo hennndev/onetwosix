@@ -20,6 +20,7 @@ class InventoryItem extends Model
         'include_tax' => 'boolean',
         'include_service_charge' => 'boolean',
         'is_item_group' => 'boolean',
+        'is_group_sold_out' => 'boolean',
         'is_count_portion_possible' => 'boolean',
         'detail_group' => 'array',
     ];

@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Pengaturan Sistem">
   <div class="p-6">
     <!-- Header -->
     <div class="flex items-center gap-3 mb-8">
@@ -68,27 +68,6 @@
         <div class="flex-1 min-w-0">
           <h3 class="font-semibold text-slate-800 mb-1">Tier Settings</h3>
           <p class="text-sm text-slate-500 mb-3">Atur nama tier, diskon, dan minimum transaksi</p>
-          <span class="text-sm font-medium text-violet-600 hover:text-violet-700">Lihat Detail →</span>
-        </div>
-      </a>
-
-      <!-- Club Hours -->
-      <a href="{{ route('admin.settings.club-hours.index') }}"
-         class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all">
-        <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0">
-          <svg class="w-6 h-6 text-teal-500"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div class="flex-1 min-w-0">
-          <h3 class="font-semibold text-slate-800 mb-1">Jam Operasional</h3>
-          <p class="text-sm text-slate-500 mb-3">Atur jam buka dan tutup club per hari</p>
           <span class="text-sm font-medium text-violet-600 hover:text-violet-700">Lihat Detail →</span>
         </div>
       </a>

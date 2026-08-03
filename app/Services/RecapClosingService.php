@@ -12,20 +12,31 @@ class RecapClosingService
     /**
      * @return array{status: string, end_day: string, recap_history: ?RecapHistory}
      */
-    public function closeDay(?Carbon $closingAt = null): array
+    public function closeDay(?Carbon $closingAt = null, ?int $areaId = null): array
     {
         $closingAt ??= now('Asia/Jakarta');
         $closingAt = $closingAt->copy()->timezone('Asia/Jakarta');
-        $endDay = RecapHistory::resolveNextEndDay();
+        $endDay = RecapHistory::resolveNextEndDay($areaId);
 
-        return DB::transaction(function () use ($endDay): array {
-            $dashboard = Dashboard::query()->firstOrCreate(
-                ['id' => 1],
-                $this->zeroedDashboardPayload()
-            );
+        return DB::transaction(function () use ($endDay, $areaId): array {
+            $dashboardQuery = Dashboard::query();
+            if ($areaId) {
+                $dashboardQuery->where('area_id', $areaId);
+            } else {
+                $dashboardQuery->whereNull('area_id');
+            }
+            $dashboard = $dashboardQuery->first();
+
+            if (! $dashboard) {
+                $dashboard = Dashboard::query()->create([
+                    'area_id' => $areaId,
+                    ...$this->zeroedDashboardPayload(),
+                ]);
+            }
 
             $existingHistory = RecapHistory::query()
                 ->whereDate('end_day', $endDay)
+                ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
                 ->first();
 
             if ($existingHistory !== null) {
@@ -45,6 +56,7 @@ class RecapClosingService
             }
 
             $recapHistory = RecapHistory::query()->create([
+                'area_id' => $areaId,
                 'end_day' => $endDay,
                 'total_amount' => (float) $dashboard->total_amount,
                 'total_food' => (float) $dashboard->total_food,

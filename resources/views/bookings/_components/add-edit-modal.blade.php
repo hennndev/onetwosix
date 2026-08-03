@@ -150,26 +150,123 @@
                class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
       </div>
 
-      <!-- Customer -->
+      <!-- Customer Mode Select -->
       <div>
-        <label for="customer_id"
-               class="block text-sm font-semibold text-gray-700 mb-2">
-          Customer <span class="text-red-500">*</span>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">
+          Pilih / Tambah Customer <span class="text-red-500">*</span>
         </label>
-        <select name="customer_id"
-                id="customer_id"
-                required
-                @change="selectCustomer($event.target.value)"
-                class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
-          <option value="">Pilih customer</option>
-          @foreach ($customers as $customer)
-            @php
-              $hasActiveSession = collect($activeSessionCustomerIds ?? [])->contains($customer->id);
-              $customerCode = $customer->customerUser?->customer_code ? ' [' . $customer->customerUser->customer_code . ']' : '';
-            @endphp
-            <option value="{{ $customer->id }}">{{ $customer->name }}{{ $customerCode }}{{ $customer->profile?->phone ? ' – ' . $customer->profile->phone : '' }}{{ $hasActiveSession ? ' (Sedang check-in)' : '' }}</option>
-          @endforeach
-        </select>
+        <input type="hidden"
+               name="customer_mode"
+               :value="customerMode">
+
+        <div class="flex items-center p-1 bg-gray-100 rounded-xl mb-3 border border-gray-200">
+          <button type="button"
+                  @click="setCustomerMode('existing')"
+                  :class="customerMode === 'existing' ? 'bg-white text-slate-800 shadow-xs font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'"
+                  class="flex-1 py-1.5 text-xs rounded-lg transition text-center">
+            Pilih Customer Terdaftar
+          </button>
+          <button type="button"
+                  @click="setCustomerMode('new')"
+                  :class="customerMode === 'new' ? 'bg-slate-800 text-white shadow-xs font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'"
+                  class="flex-1 py-1.5 text-xs rounded-lg transition text-center">
+            + Customer Baru
+          </button>
+        </div>
+
+        <!-- Mode Existing (Searchable Dropdown) -->
+        <div x-show="customerMode === 'existing'"
+             class="relative"
+             @click.outside="isCustomerDropdownOpen = false">
+          <input type="hidden"
+                 name="customer_id"
+                 id="customer_id"
+                 :value="selectedCustomerId"
+                 :required="customerMode === 'existing'">
+
+          <!-- Search Input Box -->
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <svg class="w-4 h-4"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input type="text"
+                   x-model="customerSearchQuery"
+                   @focus="isCustomerDropdownOpen = true"
+                   @input="isCustomerDropdownOpen = true"
+                   placeholder="Cari customer (Nama, Kode, No HP)..."
+                   class="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+
+            <!-- Clear button -->
+            <button type="button"
+                    x-show="selectedCustomerId || customerSearchQuery"
+                    @click="clearCustomerSelection()"
+                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition">
+              <svg class="w-4 h-4"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Dropdown Suggestions List -->
+          <div x-show="isCustomerDropdownOpen"
+               x-cloak
+               class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-gray-100">
+            <template x-for="c in filteredCustomers"
+                      :key="c.id">
+              <div @click="chooseCustomer(c)"
+                   class="px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between text-xs">
+                <div>
+                  <div class="font-semibold text-gray-800 flex items-center gap-1.5">
+                    <span x-text="c.name"></span>
+                    <span x-show="c.customer_code"
+                          class="text-slate-500 font-mono text-[11px]"
+                          x-text="'[' + c.customer_code + ']'"></span>
+                  </div>
+                  <div class="text-gray-400 mt-0.5"
+                       x-text="c.phone ? c.phone : 'Tanpa No. HP'"></div>
+                </div>
+                <div>
+                  <span x-show="c.has_active_session"
+                        class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-medium shrink-0">Sedang check-in</span>
+                </div>
+              </div>
+            </template>
+
+            <div x-show="filteredCustomers.length === 0"
+                 class="px-4 py-3 text-xs text-gray-400 text-center">
+              Customer tidak ditemukan
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode New -->
+        <div x-show="customerMode === 'new'"
+             x-cloak
+             class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Customer Baru <span class="text-red-500">*</span></label>
+            <input type="text"
+                   name="new_customer_name"
+                   id="new_customer_name"
+                   :required="customerMode === 'new'"
+                   placeholder="Contoh: Budi Santoso"
+                   class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+          </div>
+        </div>
       </div>
 
       <!-- Phone + Email -->
@@ -314,9 +411,11 @@
       $customers->map(
               fn($c) => [
                   'id' => $c->id,
+                  'name' => $c->name,
                   'phone' => $c->profile?->phone ?? '',
                   'email' => $c->email ?? '',
                   'customer_code' => $c->customerUser?->customer_code ?? '',
+                  'has_active_session' => collect($activeSessionCustomerIds ?? [])->contains($c->id),
               ],
           )->values(),
   ) !!};
@@ -354,10 +453,74 @@
       selectedTable: null,
       today: realtimeDefaults.today,
       currentTime: realtimeDefaults.currentTime,
+      customerMode: 'existing',
+      selectedCustomerId: '',
+      customerSearchQuery: '',
+      isCustomerDropdownOpen: false,
       phoneValue: '',
       emailValue: '',
       hasDownPayment: false,
       downPaymentDisplay: 'Rp 0',
+
+      get filteredCustomers() {
+        if (!this.customerSearchQuery) {
+          return bookingCustomers;
+        }
+        const q = this.customerSearchQuery.toLowerCase();
+
+        return bookingCustomers.filter(c => {
+          return (c.name && c.name.toLowerCase().includes(q)) ||
+                 (c.customer_code && c.customer_code.toLowerCase().includes(q)) ||
+                 (c.phone && c.phone.toLowerCase().includes(q));
+        });
+      },
+
+      setCustomerMode(mode) {
+        this.customerMode = mode;
+        if (mode === 'new') {
+          this.clearCustomerSelection();
+        }
+      },
+
+      chooseCustomer(c) {
+        if (!c) {
+          this.clearCustomerSelection();
+          return;
+        }
+
+        const selectedId = Number(c.id || 0);
+
+        if (this.isCreateMode() && selectedId > 0 && bookingActiveSessionCustomerIds.includes(selectedId)) {
+          this.clearCustomerSelection();
+          alert('Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.');
+
+          return;
+        }
+
+        this.selectedCustomerId = String(c.id);
+        this.customerSearchQuery = c.name + (c.customer_code ? ' [' + c.customer_code + ']' : '');
+        this.phoneValue = c.phone || '';
+        this.emailValue = c.email || '';
+        this.isCustomerDropdownOpen = false;
+      },
+
+      chooseCustomerById(id) {
+        this.setCustomerMode('existing');
+        const customer = bookingCustomers.find(c => String(c.id) === String(id));
+        if (customer) {
+          this.chooseCustomer(customer);
+        } else {
+          this.clearCustomerSelection();
+        }
+      },
+
+      clearCustomerSelection() {
+        this.selectedCustomerId = '';
+        this.customerSearchQuery = '';
+        this.phoneValue = '';
+        this.emailValue = '';
+        this.isCustomerDropdownOpen = false;
+      },
 
       init() {
         document.addEventListener('table-selected', e => {
@@ -415,30 +578,7 @@
       },
 
       selectCustomer(id) {
-        const selectedId = Number(id || 0);
-
-        if (this.isCreateMode() && selectedId > 0 && bookingActiveSessionCustomerIds.includes(selectedId)) {
-          const customerEl = document.getElementById('customer_id');
-
-          if (customerEl) {
-            customerEl.value = '';
-          }
-
-          this.phoneValue = '';
-          this.emailValue = '';
-          alert('Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.');
-
-          return;
-        }
-
-        const customer = bookingCustomers.find(c => String(c.id) === String(id));
-        if (customer) {
-          this.phoneValue = customer.phone || '';
-          this.emailValue = customer.email || '';
-        } else {
-          this.phoneValue = '';
-          this.emailValue = '';
-        }
+        this.chooseCustomerById(id);
       },
 
       setDownPaymentState(enabled, amount) {
@@ -471,6 +611,15 @@
       },
     };
   }
+
+  window.setBookingSelectedCustomer = function(customerId) {
+    const modalEl = document.getElementById('bookingModal');
+    const alpineData = modalEl?.__x?.$data;
+
+    if (alpineData && typeof alpineData.chooseCustomerById === 'function') {
+      alpineData.chooseCustomerById(customerId);
+    }
+  };
 
   window.setBookingDownPayment = function(enabled, amount) {
     const modalEl = document.getElementById('bookingModal');

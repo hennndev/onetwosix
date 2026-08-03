@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class BarOrder extends Model
 {
     protected $fillable = [
+        'area_id',
         'order_id',
         'order_number',
         'customer_user_id',
@@ -20,9 +21,15 @@ class BarOrder extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'total_amount' => 'decimal:2',
         'progress' => 'integer',
     ];
+
+    public function area(): BelongsTo
+    {
+        return $this->belongsTo(Area::class, 'area_id');
+    }
 
     public function order(): BelongsTo
     {

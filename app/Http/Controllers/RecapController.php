@@ -30,11 +30,19 @@ class RecapController extends Controller
             'date' => ['nullable', 'date'],
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+            'area_id' => ['nullable'],
         ]);
 
-        [$startAt, $endAt] = $this->resolveRange($validated);
-        $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false));
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
+        $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
         $recapHistoryTransactionRecaps = RecapHistory::query()
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
             ->latest('end_day')
             ->limit(10)
             ->get()
@@ -51,6 +59,8 @@ class RecapController extends Controller
 
         return view('recap.index', array_merge($recapData, [
             'recapHistoryTransactionRecaps' => $recapHistoryTransactionRecaps,
+            'areas' => $areas,
+            'selectedAreaId' => $selectedAreaId,
         ]));
     }
 
@@ -60,10 +70,16 @@ class RecapController extends Controller
             'date' => ['nullable', 'date'],
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+            'area_id' => ['nullable'],
         ]);
 
-        [$startAt, $endAt] = $this->resolveRange($validated);
-        $recapData = $this->buildRecapData($startAt, $endAt);
+        $user = auth()->user();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
+        $recapData = $this->buildRecapData($startAt, $endAt, false, $selectedAreaId);
 
         return $this->downloadRows(
             $this->buildLiveRecapExportRows($recapData),
@@ -80,22 +96,31 @@ class RecapController extends Controller
             'reprint' => ['nullable', 'boolean'],
             'include_transaction_history' => ['nullable', 'boolean'],
             'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
+            'area_id' => ['nullable'],
         ]);
 
-        [$startAt, $endAt] = $this->resolveRange($validated);
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
         $recapHistory = ! empty($validated['recap_history_id'])
             ? RecapHistory::query()->find((int) $validated['recap_history_id'])
             : null;
 
         $recapData = $recapHistory
             ? $this->buildRecapDataFromHistory($recapHistory)
-            : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false));
+            : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
 
         return view('recap.close-preview', array_merge($recapData, [
             'printedAt' => now(),
             'isReprintPreview' => (bool) ($validated['reprint'] ?? false),
             'includeTransactionHistory' => (bool) ($validated['include_transaction_history'] ?? true),
             'reprintHistoryId' => (int) ($validated['recap_history_id'] ?? 0),
+            'areas' => $areas,
+            'selectedAreaId' => $selectedAreaId,
         ]));
     }
 
@@ -107,20 +132,26 @@ class RecapController extends Controller
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
             'include_transaction_history' => ['nullable', 'boolean'],
             'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
+            'area_id' => ['nullable'],
         ]);
 
-        [$startAt, $endAt] = $this->resolveRange($validated);
+        $user = auth()->user();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
         $recapHistory = ! empty($validated['recap_history_id'])
             ? RecapHistory::query()->find((int) $validated['recap_history_id'])
             : null;
 
         $recapData = $recapHistory
             ? $this->buildRecapDataFromHistory($recapHistory)
-            : $this->buildRecapData($startAt, $endAt);
+            : $this->buildRecapData($startAt, $endAt, false, $selectedAreaId);
 
         $includeTransactionHistory = (bool) ($validated['include_transaction_history'] ?? true);
 
-        $printer = $this->resolveEndDayPrinter();
+        $printer = $this->resolveEndDayPrinter($selectedAreaId);
 
         if (! $printer) {
             return response()->json([
@@ -153,9 +184,14 @@ class RecapController extends Controller
         }
     }
 
-    public function closeAndExport(RecapClosingService $recapClosingService): BinaryFileResponse|RedirectResponse
+    public function closeAndExport(Request $request, RecapClosingService $recapClosingService): BinaryFileResponse|RedirectResponse
     {
-        $result = $recapClosingService->closeDay();
+        $user = auth()->user();
+        $areaId = $user ? $user->resolveActiveAreaId($request->input('area_id')) : ($request->filled('area_id') && $request->input('area_id') !== 'all'
+            ? (int) $request->input('area_id')
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        $result = $recapClosingService->closeDay(null, $areaId);
 
         if ($result['status'] === 'no_data') {
             return back()->with('error', 'Tidak ada data dashboard untuk ditutup.');
@@ -227,14 +263,15 @@ class RecapController extends Controller
         }
     }
 
-    private function buildRecapData(Carbon $startAt, Carbon $endAt, bool $includeClosedEndDayData = false): array
+    private function buildRecapData(Carbon $startAt, Carbon $endAt, bool $includeClosedEndDayData = false, ?int $areaId = null): array
     {
         $isSelectedEndDayClosed = ! $includeClosedEndDayData
-            && $this->isSelectedEndDayClosed($startAt);
+            && $this->isSelectedEndDayClosed($startAt, $areaId);
 
         $orders = Order::query()
-            ->with(['items.inventoryItem', 'tableSession.customer.profile', 'tableSession.reservation', 'customer.user'])
+            ->with(['items.inventoryItem', 'tableSession.table.area', 'tableSession.customer.profile', 'tableSession.reservation', 'customer.user'])
             ->where('status', '!=', 'cancelled')
+            ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->where(function ($query) use ($startAt, $endAt): void {
                 $query->whereBetween('ordered_at', [$startAt, $endAt])
                     ->orWhere(function ($fallbackQuery) use ($startAt, $endAt): void {
@@ -372,9 +409,11 @@ class RecapController extends Controller
             ->values();
 
         $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
-        $liveTotalDownPayment = $this->resolveLiveTotalDownPayment($startAt, $endAt);
+        $liveTotalDownPayment = $this->resolveLiveTotalDownPayment($startAt, $endAt, $areaId);
 
-        $dashboardAggregate = Dashboard::query()->find(1);
+        $dashboardAggregate = Dashboard::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+            ->first() ?? Dashboard::query()->find(1);
         $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
         $dashboardTotalLdQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalComplimentQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);
@@ -389,6 +428,7 @@ class RecapController extends Controller
             : max(0.0, $grossSales - (float) ($dashboardAggregate?->total_tax ?? 0) - (float) ($dashboardAggregate?->total_service_charge ?? 0));
 
         $recapHistories = RecapHistory::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->latest('end_day')
             ->paginate(10)
             ->withQueryString();
@@ -404,10 +444,14 @@ class RecapController extends Controller
         $paymentMethodTotals = $dashboardPaymentMethodTotals;
 
         if (! $isSelectedEndDayClosed) {
-            $livePaymentMethodSummary = $this->resolveLivePaymentMethodTotals($startAt, $endAt);
+            $livePaymentMethodSummary = $this->resolveLivePaymentMethodTotals($startAt, $endAt, $areaId);
 
             if ($livePaymentMethodSummary['has_paid_billings']) {
-                $paymentMethodTotals = $livePaymentMethodSummary['totals'];
+                foreach (['cash', 'transfer', 'debit', 'kredit', 'qris'] as $method) {
+                    if (($paymentMethodTotals[$method] ?? 0) == 0 && ($livePaymentMethodSummary['totals'][$method] ?? 0) > 0) {
+                        $paymentMethodTotals[$method] = $livePaymentMethodSummary['totals'][$method];
+                    }
+                }
             }
         }
 
@@ -415,8 +459,9 @@ class RecapController extends Controller
             ? collect()
             : KitchenOrderItem::query()
                 ->with(['inventoryItem', 'kitchenOrder.order'])
-                ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt): void {
-                    $query->whereBetween('created_at', [$startAt, $endAt]);
+                ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt, $areaId): void {
+                    $query->whereBetween('created_at', [$startAt, $endAt])
+                        ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $areaId))));
                 })
                 ->get()
                 ->map(function (KitchenOrderItem $item): array {
@@ -439,8 +484,9 @@ class RecapController extends Controller
             ? collect()
             : BarOrderItem::query()
                 ->with(['inventoryItem', 'barOrder.order'])
-                ->whereHas('barOrder', function ($query) use ($startAt, $endAt): void {
-                    $query->whereBetween('created_at', [$startAt, $endAt]);
+                ->whereHas('barOrder', function ($query) use ($startAt, $endAt, $areaId): void {
+                    $query->whereBetween('created_at', [$startAt, $endAt])
+                        ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $areaId))));
                 })
                 ->get()
                 ->map(function (BarOrderItem $item): array {
@@ -530,7 +576,7 @@ class RecapController extends Controller
     /**
      * @return array{has_paid_billings: bool, totals: array{cash: float, transfer: float, debit: float, kredit: float, qris: float}}
      */
-    private function resolveLivePaymentMethodTotals(Carbon $startAt, Carbon $endAt): array
+    private function resolveLivePaymentMethodTotals(Carbon $startAt, Carbon $endAt, ?int $areaId = null): array
     {
         $paymentMethodTotals = [
             'cash' => 0.0,
@@ -542,6 +588,7 @@ class RecapController extends Controller
 
         $paidBillings = Billing::query()
             ->where('billing_status', 'paid')
+            ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->where(function ($query): void {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
@@ -594,6 +641,7 @@ class RecapController extends Controller
         $walkInOrders = Order::query()
             ->whereNull('table_session_id')
             ->where('status', '!=', 'cancelled')
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->where(function ($query) use ($startAt, $endAt): void {
                 $query->whereBetween('ordered_at', [$startAt, $endAt])
                     ->orWhere(function ($fallbackQuery) use ($startAt, $endAt): void {
@@ -605,6 +653,7 @@ class RecapController extends Controller
 
         $paidBillingOrderIds = Billing::query()
             ->where('billing_status', 'paid')
+            ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->whereIn('order_id', $walkInOrders->pluck('id')->filter()->values())
             ->pluck('order_id')
             ->filter()
@@ -635,12 +684,13 @@ class RecapController extends Controller
         ];
     }
 
-    private function resolveLiveTotalDownPayment(Carbon $startAt, Carbon $endAt): float
+    private function resolveLiveTotalDownPayment(Carbon $startAt, Carbon $endAt, ?int $areaId = null): float
     {
         $bookingSessionIds = Billing::query()
             ->where('billing_status', 'paid')
             ->where('is_booking', true)
             ->whereNotNull('table_session_id')
+            ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->where(function ($query) use ($startAt, $endAt): void {
                 $query->where(function ($paidAtQuery) use ($startAt, $endAt): void {
                     $paidAtQuery->whereNotNull('paid_at')
@@ -955,12 +1005,13 @@ class RecapController extends Controller
             ->all();
     }
 
-    private function resolveEndDayPrinter(): ?Printer
+    private function resolveEndDayPrinter(?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $configuredPrinterId = (int) ($settings->end_day_receipt_printer_id ?? 0);
+        $contextAreaId = $areaId ?: (session('active_area_id') ?: auth()->user()?->getAssignedArea()?->id);
+        $configuredPrinterId = $settings->getPrinterIdForArea($contextAreaId, 'end_day_receipt');
 
-        if ($configuredPrinterId > 0) {
+        if ($configuredPrinterId && $configuredPrinterId > 0) {
             $configuredPrinter = Printer::active()->where('id', $configuredPrinterId)->first();
 
             if ($configuredPrinter) {
@@ -1319,7 +1370,7 @@ class RecapController extends Controller
      * @param  array{date?: string|null, start_datetime?: string|null, end_datetime?: string|null}  $validated
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function resolveRange(array $validated): array
+    private function resolveRange(array $validated, ?int $areaId = null): array
     {
         if (! empty($validated['start_datetime']) && ! empty($validated['end_datetime'])) {
             return [
@@ -1329,26 +1380,26 @@ class RecapController extends Controller
         }
 
         if (! empty($validated['date'])) {
-            return $this->resolveEndDayWindow(Carbon::parse($validated['date'], 'Asia/Jakarta'));
+            return $this->resolveEndDayWindow(Carbon::parse($validated['date'], 'Asia/Jakarta'), $areaId);
         }
 
-        return $this->resolveOperationalWindow();
+        return $this->resolveOperationalWindow($areaId);
     }
 
     /**
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function resolveOperationalWindow(): array
+    private function resolveOperationalWindow(?int $areaId = null): array
     {
-        return RecapHistory::resolveActiveWindow();
+        return RecapHistory::resolveActiveWindow($areaId);
     }
 
     /**
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function resolveEndDayWindow(Carbon $endDay): array
+    private function resolveEndDayWindow(Carbon $endDay, ?int $areaId = null): array
     {
-        return RecapHistory::resolveWindowForDate($endDay);
+        return RecapHistory::resolveWindowForDate($endDay, $areaId);
     }
 
     /**
@@ -1356,7 +1407,7 @@ class RecapController extends Controller
      */
     private function resolveHistoryTransactionWindow(RecapHistory $recapHistory): array
     {
-        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day?->copy() ?? now('Asia/Jakarta'));
+        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day?->copy() ?? now('Asia/Jakarta'), $recapHistory->area_id);
 
         if ($recapHistory->last_synced_at) {
             return [
@@ -1368,11 +1419,12 @@ class RecapController extends Controller
         return [$startAt, $endAt];
     }
 
-    private function isSelectedEndDayClosed(Carbon $startAt): bool
+    private function isSelectedEndDayClosed(Carbon $startAt, ?int $areaId = null): bool
     {
         $selectedEndDay = $startAt->copy()->timezone('Asia/Jakarta')->toDateString();
 
         return RecapHistory::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
             ->whereDate('end_day', $selectedEndDay)
             ->exists();
     }

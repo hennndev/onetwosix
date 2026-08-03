@@ -27,8 +27,12 @@ class AccurateService
         int $pageSize = 20
     ): Collection {
         try {
+            $fieldsToRequest = ! empty($defaultFields)
+                ? implode(',', array_unique(array_merge(['id', 'name', 'no', 'unitPrice', 'unit1Price', 'itemCategory', 'notes', 'detailGroup', 'itemUnit', 'suspended', 'availableToSellInAllUnit', 'allQuantity', 'quantity'], $defaultFields)))
+                : 'id,name,no,unitPrice,unit1Price,itemCategory,notes,detailGroup,itemUnit,suspended,availableToSellInAllUnit,allQuantity,quantity';
+
             $params = [
-                'fields' => 'id,name,no,unitPrice,itemCategory,notes,detailGroup,itemUnit,suspended,availableToSellInAllUnit,allQuantity,quantity',
+                'fields' => $fieldsToRequest,
                 'sort' => $sortBy,
                 'sp.page' => $request->get('page', 1),
                 'sp.pageSize' => $request->get('pageSize', $pageSize),
@@ -715,6 +719,11 @@ class AccurateService
     public function deleteSalesInvoice(int $id): array
     {
         return $this->deleteData('sales-invoice', $id);
+    }
+
+    public function saveSalesReceipt(array $data): array
+    {
+        return $this->saveData('sales-receipt', $data, 'save');
     }
 
     // INBOUND

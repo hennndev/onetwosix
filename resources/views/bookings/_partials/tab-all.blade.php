@@ -101,12 +101,14 @@
 @endphp
 
 <div class="flex flex-wrap gap-2 mb-6">
-  <button @click="selectedCategory = null"
-          :class="selectedCategory === null ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all">
-    Semua
-    <span class="text-xs font-bold opacity-70">{{ $tables->count() }}</span>
-  </button>
+  @if (($areas ?? collect())->count() > 1)
+    <button @click="selectedCategory = null"
+            :class="selectedCategory === null ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all">
+      Semua
+      <span class="text-xs font-bold opacity-70">{{ $tables->count() }}</span>
+    </button>
+  @endif
 
   @foreach ($areas as $area)
     @php

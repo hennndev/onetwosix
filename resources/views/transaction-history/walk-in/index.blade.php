@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Riwayat Walk-In">
   <div class="p-6"
        x-data="walkInTransactionHistory()">
 
@@ -21,6 +21,22 @@
           <p class="text-sm text-gray-500">Lihat semua transaksi walk in yang telah dilakukan</p>
         </div>
       </div>
+
+      <!-- Area Filter Pills -->
+      @if (($areas ?? collect())->count() > 1)
+        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
+             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
+               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      @endif
     </div>
 
     <!-- Stat Cards -->
@@ -322,7 +338,7 @@
                         <form method="POST"
                               action="{{ route('admin.transaction-history.reSyncAccurate', $order) }}"
                               class="inline"
-                              onsubmit="const button = this.querySelector('[data-transaction-resync-button]'); if (button) { button.disabled = true; button.textContent = 'Sync...'; }">
+                              onsubmit="const button = this.querySelector('[data-transaction-resync-button]'); if (button) { button.textContent = 'Sync...'; setTimeout(() => { button.disabled = true; }, 0); }">
                           @csrf
                           <button type="submit"
                                   data-transaction-resync-button

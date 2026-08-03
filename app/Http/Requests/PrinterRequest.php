@@ -13,14 +13,18 @@ class PrinterRequest extends FormRequest
 
     public function rules(): array
     {
-        $serviceLocations = ['kitchen', 'bar', 'cashier'];
-        $areaCodes = \App\Models\Area::where('is_active', true)->pluck('code')->toArray();
-        $validLocations = array_merge($serviceLocations, $areaCodes);
+        $serviceLocations = ['kitchen', 'bar', 'cashier', 'checker'];
+        $areaCodes = \App\Models\Area::where('is_active', true)->pluck('code')->filter()->map(fn ($c) => (string) $c)->toArray();
+        $areaCodesLower = array_map('strtolower', $areaCodes);
+        $areaCodesUpper = array_map('strtoupper', $areaCodes);
+        $validLocations = array_unique(array_merge($serviceLocations, $areaCodes, $areaCodesLower, $areaCodesUpper));
 
         return [
             'name' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'in:'.implode(',', $validLocations)],
-            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker'],            'connection_type' => ['required', 'in:network,file,windows,log'],
+            'area_id' => ['nullable', 'exists:areas,id'],
+            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker'],
+            'connection_type' => ['required', 'in:network,file,windows,log'],
             'ip' => ['required_if:connection_type,network', 'nullable', 'ip'],
             'port' => ['required_if:connection_type,network', 'nullable', 'integer', 'min:1', 'max:65535'],
             'path' => ['required_if:connection_type,file,windows', 'nullable', 'string', 'max:255'],

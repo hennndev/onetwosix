@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class KitchenOrder extends Model
 {
     protected $fillable = [
+        'area_id',
         'order_id',
         'order_number',
         'customer_user_id',
@@ -18,9 +19,15 @@ class KitchenOrder extends Model
     ];
 
     protected $casts = [
+        'area_id' => 'integer',
         'total_amount' => 'decimal:2',
         'progress' => 'integer',
     ];
+
+    public function area()
+    {
+        return $this->belongsTo(Area::class, 'area_id');
+    }
 
     public function order()
     {

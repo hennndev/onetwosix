@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Manajemen Area">
   <div class="p-6">
     <!-- Success/Error Messages -->
     @if (session('success'))

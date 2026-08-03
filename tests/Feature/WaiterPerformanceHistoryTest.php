@@ -273,7 +273,7 @@ test('waiter performance shows daily history using 09:00 to 09:00 operational wi
             'waiter_id' => $waiter->id,
         ]))
         ->assertSuccessful()
-        ->assertSeeText('Riwayat Harian (09:00 - 09:00)')
+        ->assertSeeText('Riwayat Harian (End Day)')
         ->assertSeeText('2026-04-09')
         ->assertSeeText('100.000')
         ->assertSeeText('Customer History')

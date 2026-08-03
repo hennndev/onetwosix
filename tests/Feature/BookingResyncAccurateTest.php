@@ -3,6 +3,7 @@
 use App\Models\Area;
 use App\Models\Billing;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -171,15 +172,15 @@ test('history re-sync accurate creates sales order and invoice when accurate num
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                $expenses = collect($payload['detailExpense'] ?? []);
+                $taxExpense = $expenses->firstWhere('expenseName', 'PB 1');
+                $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
+
+                if (! $taxExpense || ($taxExpense['accountNo'] ?? null) !== '210201') {
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
-                    return false;
-                }
-
-                if (! collect($payload['detailItem'])->contains(fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE' && (int) ($item['quantity'] ?? 0) === 1 && (float) ($item['unitPrice'] ?? 0) === 6600.0)) {
+                if (! $scExpense || ($scExpense['accountNo'] ?? null) !== '210202' || (float) ($scExpense['expenseAmount'] ?? 0) !== 6600.0) {
                     return false;
                 }
 
@@ -196,18 +197,19 @@ test('history re-sync accurate creates sales order and invoice when accurate num
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                $expenses = collect($payload['detailExpense'] ?? []);
+                $taxExpense = $expenses->firstWhere('expenseName', 'PB 1');
+                $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
+
+                if (! $taxExpense || ($taxExpense['accountNo'] ?? null) !== '210201') {
                     return false;
                 }
 
-                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                if (! $scExpense || ($scExpense['accountNo'] ?? null) !== '210202' || (float) ($scExpense['expenseAmount'] ?? 0) !== 6600.0) {
                     return false;
                 }
 
-                return collect($payload['detailItem'])->contains(
-                    fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE'
-                        && (float) ($item['unitPrice'] ?? 0) === 6600.0
-                );
+                return true;
             })
             ->andReturnUsing(function (array $payload) {
                 return ['r' => ['number' => $payload['number']]];
@@ -256,4 +258,39 @@ test('history re-sync accurate clears existing error message after successful sy
     expect((string) $billing->accurate_so_number)->toMatch('/^ROOM-BILLING-\d{8}-\d{5}$/')
         ->and((string) $billing->accurate_inv_number)->toMatch('/^ROOM-BILLING-\d{8}-\d{5}$/')
         ->and($billing->error_message)->toBeNull();
+});
+
+test('history re-sync accurate uses warehouse name from general settings', function () {
+    GeneralSetting::instance()->update(['accurate_stock_warehouse_name' => 'GD. BAR UTAMA']);
+
+    [$admin, $booking, $billing] = makeHistoryBookingFixture([
+        'accurate_so_number' => null,
+        'accurate_inv_number' => null,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveSalesOrder')
+            ->once()
+            ->withArgs(function (array $payload): bool {
+                return ($payload['detailItem'][0]['warehouseName'] ?? null) === 'GD. BAR UTAMA';
+            })
+            ->andReturn(['r' => ['number' => 'SO-TEST-123']]);
+
+        $mock->shouldReceive('saveSalesInvoice')
+            ->once()
+            ->withArgs(function (array $payload): bool {
+                return ($payload['detailItem'][0]['warehouseName'] ?? null) === 'GD. BAR UTAMA';
+            })
+            ->andReturn(['r' => ['number' => 'INV-TEST-123']]);
+    });
+
+    actingAs($admin)
+        ->from(route('admin.bookings.index', ['tab' => 'history']))
+        ->post(route('admin.bookings.reSyncAccurate', $booking))
+        ->assertRedirect(route('admin.bookings.index', ['tab' => 'history']));
+
+    $billing->refresh();
+
+    expect((string) $billing->accurate_so_number)->toMatch('/^ROOM-BILLING-\d{8}-\d{5}$/')
+        ->and((string) $billing->accurate_inv_number)->toBe('INV-TEST-123');
 });

@@ -107,13 +107,19 @@
 
       <div class="flex justify-end gap-3 mt-6">
         <button type="button"
+                id="cancelCustomerBtn"
                 onclick="closeModal()"
                 class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
           Batal
         </button>
         <button type="submit"
-                class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition">
-          Simpan
+                id="submitCustomerBtn"
+                class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center justify-center gap-2 font-medium">
+          <svg id="customerSubmitSpinner" class="hidden w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span id="customerSubmitText">Simpan</span>
         </button>
       </div>
     </form>

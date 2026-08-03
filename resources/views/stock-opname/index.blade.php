@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Stock Opname">
   <div class="p-6"
        x-data="stockOpname()"
        x-init="init()">

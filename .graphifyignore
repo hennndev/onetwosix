@@ -1,0 +1,57 @@
+# Version control
+.git/
+
+# Dependencies
+vendor/
+node_modules/
+
+# Laravel build & cache
+bootstrap/cache/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+storage/logs/
+storage/app/public/
+public/build/
+public/hot
+public/storage/
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Database & dumps
+*.sql
+*.sqlite
+*.dump
+database/database.sqlite
+
+# Logs & backups
+*.log
+*.bak
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.gz
+*.rar
+
+# Testing artifacts
+.phpunit.cache/
+coverage/
+.phpunit.result.cache
+
+# Frontend build (kalau pakai Vite/Mix)
+public/hot
+public/mix-manifest.json
+
+# Editor / OS junk
+.DS_Store
+.idea/
+.vscode/
+
+# Graphify's own output
+graphify-out/

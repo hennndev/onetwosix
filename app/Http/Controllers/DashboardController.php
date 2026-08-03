@@ -15,14 +15,26 @@ use Illuminate\Http\RedirectResponse;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(\Illuminate\Http\Request $request)
     {
-        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow();
-        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
+        $lastCloseAt = RecapHistory::query()
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->latest('created_at')
+            ->value('created_at');
 
         // --- Revenue & Transactions (paid billings today) ---
         $todayBillings = Billing::query()
             ->where('billing_status', 'paid')
+            ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
+                $query->whereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId));
+            })
             ->where(function ($query) {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
@@ -58,6 +70,7 @@ class DashboardController extends Controller
             'barOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
+                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -65,6 +78,7 @@ class DashboardController extends Controller
             'kitchenOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
+                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -79,8 +93,13 @@ class DashboardController extends Controller
             ->count();
 
         // --- Tables ---
-        $totalTables = Tabel::where('is_active', true)->count();
-        $availableTables = Tabel::where('is_active', true)->where('status', 'available')->count();
+        $totalTables = Tabel::where('is_active', true)
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->count();
+        $availableTables = Tabel::where('is_active', true)
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->where('status', 'available')
+            ->count();
 
         // --- Inventory ---
         $totalProducts = InventoryItem::count();
@@ -88,7 +107,10 @@ class DashboardController extends Controller
         $outOfStockCount = InventoryItem::where('stock_quantity', 0)->count();
 
         // --- Dashboard aggregate totals ---
-        $dashboardAggregate = Dashboard::query()->find(1);
+        $dashboardAggregate = Dashboard::query()
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId), fn ($q) => $q->whereNull('area_id'))
+            ->first();
+
         $dashboardTotalFood = (float) ($dashboardAggregate?->total_food ?? 0);
         $dashboardTotalAlcohol = (float) ($dashboardAggregate?->total_alcohol ?? 0);
         $dashboardTotalBeverage = (float) ($dashboardAggregate?->total_beverage ?? 0);
@@ -115,6 +137,8 @@ class DashboardController extends Controller
         $dashboardTotalBarItems = (int) ($dashboardAggregate?->total_bar_items ?? 0);
 
         return view('dashboard', compact(
+            'areas',
+            'selectedAreaId',
             'revenueToday',
             'transactionsToday',
             'itemsSoldToday',
@@ -149,16 +173,16 @@ class DashboardController extends Controller
             'dashboardTotalKredit',
             'dashboardTotalQris',
             'dashboardTotalKitchenItems',
-            'dashboardTotalBarItems',
+            'dashboardTotalBarItems'
         ));
     }
 
     public function syncToday(DashboardSyncService $dashboardSyncService): RedirectResponse
     {
-        $dashboardSyncService->sync();
+        $dashboardSyncService->syncAll();
 
         return redirect()
             ->route('admin.dashboard')
-            ->with('success', 'Dashboard berhasil di-sync (hari ini).');
+            ->with('success', 'Dashboard berhasil di-sync (seluruh area).');
     }
 }

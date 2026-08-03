@@ -71,6 +71,6 @@ it('shows dp line and subtotal net of dp in simulation', function () {
 
     $lines = $service->simulationLines($payload, 42, $printer);
 
-    expect(collect($lines)->contains(fn (string $line): bool => str_contains($line, 'Subtotal') && str_contains($line, 'Rp 8.000.000')))->toBeTrue()
+    expect(collect($lines)->contains(fn (string $line): bool => str_contains($line, 'Sisa Bayar') && str_contains($line, 'Rp 8.000.000')))->toBeTrue()
         ->and(collect($lines)->contains(fn (string $line): bool => str_contains($line, 'DP') && str_contains($line, 'Rp 2.000.000')))->toBeTrue();
 });

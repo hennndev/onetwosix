@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Recap & End Day">
   <x-slot name="header">
     <h2 class="font-semibold text-xl text-gray-800 leading-tight">
       Rekapan End Day
@@ -27,13 +27,32 @@
             <p class="text-sm text-gray-500 mt-1">Pantau recap hari ini dan lihat history closing otomatis dari dashboard.</p>
           </div>
 
-          <a href="{{ route('admin.recap.close-preview', ['start_datetime' => $selectedStartDatetime, 'end_datetime' => $selectedEndDatetime]) }}"
-             target="_blank"
-             rel="noopener noreferrer"
-             class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 text-sm font-medium min-h-[42px] whitespace-nowrap">
-            Preview Print Struk
-          </a>
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <a href="{{ route('admin.recap.close-preview', array_merge(['start_datetime' => $selectedStartDatetime, 'end_datetime' => $selectedEndDatetime], $selectedAreaId ? ['area_id' => $selectedAreaId] : [])) }}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 text-sm font-medium min-h-[42px] whitespace-nowrap">
+              Preview Print Struk
+            </a>
+          </div>
         </div>
+
+        {{-- Area Selector Pills --}}
+        @if (($areas ?? collect())->count() > 1)
+          <div class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Area:</span>
+            <a href="{{ route('admin.recap.index', array_merge(request()->except('area_id'), ['area_id' => 'all'])) }}"
+               class="px-3 py-1 text-xs rounded-full font-medium transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+              Semua Area
+            </a>
+            @foreach ($areas as $a)
+              <a href="{{ route('admin.recap.index', array_merge(request()->except('area_id'), ['area_id' => $a->id])) }}"
+                 class="px-3 py-1 text-xs rounded-full font-medium transition {{ $selectedAreaId === $a->id ? 'bg-slate-800 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+                {{ $a->name }}
+              </a>
+            @endforeach
+          </div>
+        @endif
 
         <div class="flex flex-col gap-4">
           <div class="flex border-b border-gray-200 gap-2">

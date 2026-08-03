@@ -29,7 +29,6 @@ class PosCategorySettingController extends Controller
             $setting->fill([
                 'show_in_pos' => (bool) ($data['show_in_pos'] ?? false),
                 'is_menu' => (bool) ($data['is_menu'] ?? false),
-                'is_item_group' => (bool) ($data['is_item_group'] ?? false),
                 'preparation_location' => $setting->preparation_location ?? 'bar',
             ]);
 

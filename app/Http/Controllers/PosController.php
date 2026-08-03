@@ -69,6 +69,15 @@ class PosController extends Controller
         $products = $inventoryQuery->get()->map(function ($item) use ($posSettings) {
             $setting = $posSettings->get($item->category_type);
             $isItemGroup = (bool) ($item->is_item_group ?? false);
+            $isGroupSoldOut = (bool) ($item->is_group_sold_out ?? false);
+            $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
+            $possiblePortions = null;
+            $isAvailable = $item->is_visible_in_pos !== false && (bool) $item->is_active && ! ($isItemGroup && $isGroupSoldOut);
+
+            if ($isItemGroup && $isCountPortionPossible) {
+                $possiblePortions = $this->resolvePossiblePortions($item);
+                $isAvailable = $isAvailable && $possiblePortions > 0;
+            }
 
             return [
                 'id' => 'item_'.$item->id,
@@ -77,6 +86,8 @@ class PosController extends Controller
                 'category' => $item->category_type,
                 'price' => $this->resolveZeroPricedItemAmount($item),
                 'stock' => $isItemGroup ? null : ($item->stock_quantity ?? 0),
+                'possible_portions' => $possiblePortions,
+                'is_available' => $isAvailable,
                 'is_menu' => (bool) $setting?->is_menu,
                 'is_item_group' => $isItemGroup,
                 'include_tax' => (bool) $item->include_tax,
@@ -114,11 +125,15 @@ class PosController extends Controller
             return $item['price'] * $item['quantity'];
         });
 
+        $user = Auth::user();
+        $assignedAreaId = ($user && ! $user->hasMultiAreaAccess()) ? $user->getAssignedArea()?->id : null;
+
         // Get active table sessions for booking customers
         $tableSessions = TableSession::with(['customer.profile', 'customer.customerUser', 'table.area', 'billing', 'waiter.profile', 'reservation'])
             ->where('status', 'active')
             ->whereNotNull('checked_in_at')
             ->whereNull('checked_out_at')
+            ->when($assignedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $assignedAreaId)))
             ->get();
 
         // Get tiers for discount calculation (highest level first)
@@ -140,6 +155,7 @@ class PosController extends Controller
         $activetableIds = TableSession::where('status', 'active')->pluck('table_id');
         $availableTables = Tabel::with('area')
             ->where('is_active', true)
+            ->when($assignedAreaId, fn ($q) => $q->where('area_id', $assignedAreaId))
             ->whereNotIn('id', $activetableIds)
             ->orderBy('table_number')
             ->get()
@@ -228,24 +244,15 @@ class PosController extends Controller
     }
 
     /**
-     * Get valid printer locations (service + area locations).
+     * Get valid printer service locations.
      */
     protected function getPrinterLocations(): array
     {
-        $serviceLocations = [
+        return [
             'kitchen' => 'Kitchen',
             'bar' => 'Bar',
             'cashier' => 'Cashier',
-        ];
-
-        $areaLocations = Area::where('is_active', true)
-            ->orderBy('sort_order')
-            ->pluck('name', 'code')
-            ->toArray();
-
-        return [
-            'Service' => $serviceLocations,
-            'Areas' => $areaLocations,
+            'checker' => 'Checker',
         ];
     }
 
@@ -340,7 +347,16 @@ class PosController extends Controller
         $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
         $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-        if ($detailGroupComponents !== []) {
+        if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Item ini berstatus Sold Out / tidak tersedia.',
+            ], 422);
+        }
+
+        $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
+
+        if ($detailGroupComponents !== [] && $isCountPortionPossible) {
             $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
 
             if ($nextQuantity > $possiblePortions) {
@@ -405,7 +421,16 @@ class PosController extends Controller
                 $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
                 $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-                if ($detailGroupComponents !== []) {
+                if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Item ini berstatus Sold Out / tidak tersedia.',
+                    ], 422);
+                }
+
+                $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
+
+                if ($detailGroupComponents !== [] && $isCountPortionPossible) {
                     $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
 
                     if ($nextQuantity > $possiblePortions) {
@@ -487,7 +512,8 @@ class PosController extends Controller
             'discount_auth_code' => 'nullable|digits:4',
             'payment_method' => 'nullable|in:cash,debit,kredit,qris,transfer',
             'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
-            'payment_mode' => 'nullable|in:normal,split',
+            'payment_mode' => 'nullable|in:normal,split,partial,debt',
+            'partial_paid_amount' => 'nullable|numeric|min:0',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_amount' => 'nullable|numeric|min:0',
@@ -570,8 +596,31 @@ class PosController extends Controller
 
                 $orderNumber = (string) $order->order_number;
                 $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
-
                 $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
+                $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
+
+                if ($focCompPaymentMethod === 'Compliment') {
+                    $discountPercentage = 100;
+                }
+
+                $requiresAuthCode = $discountPercentage > 0 || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+
+                if ($requiresAuthCode) {
+                    if ($discountAuthCode === '') {
+                        throw ValidationException::withMessages([
+                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
+                        ]);
+                    }
+
+                    $today = now()->format('Y-m-d');
+                    $authRecord = DailyAuthCode::forDate($today);
+
+                    if ($discountAuthCode !== $authRecord->active_code) {
+                        throw ValidationException::withMessages([
+                            'discount_auth_code' => 'Auth code diskon tidak valid.',
+                        ]);
+                    }
+                }
 
                 $itemsTotal = 0;
                 $serviceChargeBase = 0;
@@ -673,6 +722,7 @@ class PosController extends Controller
                     );
 
                     $billing->update([
+                        'area_id' => $billing->area_id ?? $tableSession->table?->area_id ?? auth()->user()?->resolveActiveArea()?->id,
                         'orders_total' => (float) $sessionTotals['orders_total'],
                         'subtotal' => (float) $sessionTotals['subtotal'],
                         'tax_percentage' => (float) $sessionTotals['tax_percentage'],
@@ -735,8 +785,15 @@ class PosController extends Controller
                 $discountNominal = 0;
                 $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
 
+                if ($focCompPaymentMethod === 'Compliment') {
+                    $discountType = 'percentage';
+                    $discountPercentage = 100;
+                }
+
                 if ($discountType === 'percentage') {
-                    $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
+                    if ($discountPercentage <= 0) {
+                        $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
+                    }
 
                     if ($discountPercentage <= 0 || $discountPercentage > 100) {
                         throw ValidationException::withMessages([
@@ -755,10 +812,12 @@ class PosController extends Controller
                     }
                 }
 
-                if ($discountType !== 'none') {
+                $requiresAuthCode = $discountType !== 'none' || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+
+                if ($requiresAuthCode) {
                     if ($discountAuthCode === '') {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code wajib diisi untuk memberikan diskon.',
+                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
                         ]);
                     }
 
@@ -971,6 +1030,26 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                 ]);
 
+                $isPartialPayment = in_array($paymentMode, ['partial', 'debt'], true);
+                $partialPaidAmount = (float) ($validated['partial_paid_amount'] ?? 0);
+
+                if ($isPartialPayment) {
+                    if ($partialPaidAmount <= 0 || $partialPaidAmount >= (float) $totals['grand_total']) {
+                        throw ValidationException::withMessages([
+                            'partial_paid_amount' => 'Nominal bayar sebagian/DP harus lebih besar dari 0 dan kurang dari total tagihan.',
+                        ]);
+                    }
+                    $paidAmount = $partialPaidAmount;
+                    $remainingBalance = max(0, (float) $totals['grand_total'] - $partialPaidAmount);
+                    $billingStatus = 'partial_paid';
+                    $isDebt = true;
+                } else {
+                    $paidAmount = (float) $totals['grand_total'];
+                    $remainingBalance = 0;
+                    $billingStatus = 'paid';
+                    $isDebt = false;
+                }
+
                 $transactionCode = $this->createWalkInBillingWithRetry([
                     'table_session_id' => null,
                     'order_id' => $order->id,
@@ -985,10 +1064,12 @@ class PosController extends Controller
                     'service_charge_percentage' => (float) $totals['service_charge_percentage'],
                     'discount_amount' => (float) $totals['discount_amount'],
                     'grand_total' => (float) $totals['grand_total'],
-                    'paid_amount' => (float) $totals['grand_total'],
-                    'billing_status' => 'paid',
+                    'paid_amount' => $paidAmount,
+                    'remaining_balance' => $remainingBalance,
+                    'is_debt' => $isDebt,
+                    'billing_status' => $billingStatus,
                     'paid_at' => now('Asia/Jakarta'),
-                    'payment_method' => $paymentMethod,
+                    'payment_method' => $paymentMethod ?? 'cash',
                     'foc_comp_payment_method' => $focCompPaymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
@@ -1000,6 +1081,20 @@ class PosController extends Controller
                     'split_second_non_cash_method' => $splitSecondNonCashMethod,
                     'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
                 ]);
+
+                $createdBilling = Billing::where('transaction_code', $transactionCode)->first();
+                if ($createdBilling) {
+                    \App\Models\BillingPayment::create([
+                        'billing_id' => $createdBilling->id,
+                        'amount_paid' => $paidAmount,
+                        'payment_method' => $paymentMethod ?? 'cash',
+                        'payment_reference_number' => $paymentReferenceNumber,
+                        'payment_type' => $isDebt ? 'initial_partial' : 'full_payment',
+                        'notes' => $isDebt ? 'Pembayaran DP/Parsial saat checkout POS' : 'Pembayaran lunas saat checkout POS',
+                        'created_by' => Auth::id(),
+                        'paid_at' => now('Asia/Jakarta'),
+                    ]);
+                }
 
                 if ($customerUser) {
                     $customerUser->increment('total_visits');
@@ -1548,6 +1643,16 @@ class PosController extends Controller
         $offset = 0;
         $maxAttempts = 10;
 
+        if (empty($attributes['area_id'])) {
+            if (! empty($attributes['table_session_id'])) {
+                $attributes['area_id'] = TableSession::with('table')->find($attributes['table_session_id'])?->table?->area_id;
+            }
+
+            if (empty($attributes['area_id']) && Auth::check()) {
+                $attributes['area_id'] = Auth::user()->getAssignedArea()?->id ?? Auth::user()->resolveActiveArea()?->id;
+            }
+        }
+
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $attributes['order_number'] = $attempt === 1
                 ? $this->generateDailyOrderNumberWithOffset($prefix, $scope, $offset)
@@ -1582,6 +1687,18 @@ class PosController extends Controller
     {
         $offset = 0;
         $maxAttempts = 5;
+
+        if (empty($attributes['area_id'])) {
+            if (! empty($attributes['order_id'])) {
+                $attributes['area_id'] = Order::find($attributes['order_id'])?->area_id;
+            } elseif (! empty($attributes['table_session_id'])) {
+                $attributes['area_id'] = TableSession::with('table')->find($attributes['table_session_id'])?->table?->area_id;
+            }
+
+            if (empty($attributes['area_id']) && Auth::check()) {
+                $attributes['area_id'] = Auth::user()->getAssignedArea()?->id ?? Auth::user()->resolveActiveArea()?->id;
+            }
+        }
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $transactionCode = $this->generateWalkInTransactionCode($offset);
@@ -1785,16 +1902,19 @@ class PosController extends Controller
         }
     }
 
-    protected function resolveReceiptPrinter(string $receiptType): ?Printer
+    protected function resolveReceiptPrinter(string $receiptType, ?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
+        $contextAreaId = $areaId ?? auth()->user()?->getAssignedArea()?->id;
 
-        $configuredPrinterId = match ($receiptType) {
-            'walk_in' => (int) ($settings->walk_in_receipt_printer_id ?? 0),
-            default => (int) ($settings->closed_billing_receipt_printer_id ?? 0),
+        $targetType = match ($receiptType) {
+            'walk_in' => 'walk_in',
+            default => 'closed_billing',
         };
 
-        if ($configuredPrinterId > 0) {
+        $configuredPrinterId = $settings->getPrinterIdForArea($contextAreaId, $targetType);
+
+        if ($configuredPrinterId && $configuredPrinterId > 0) {
             $configuredPrinter = Printer::active()->find($configuredPrinterId);
 
             if ($configuredPrinter) {
@@ -1821,7 +1941,7 @@ class PosController extends Controller
         $barItems = collect();
         $checkerCashierItems = collect();
 
-        // Prioritize printer type assignment. Fallback to preparation location.
+        // Prioritize explicit Kitchen / Bar destination, fallback to prep location or category type
         foreach ($order->items as $item) {
             $assignedTypes = $item->inventoryItem?->printers
                 ?->filter(fn (Printer $printer): bool => $printer->is_active)
@@ -1857,7 +1977,34 @@ class PosController extends Controller
                 continue;
             }
 
-            // Unassigned items go straight to transaction checker (no production order)
+            // Fallback: If no explicit printer type assigned, route based on preparation_location or category type
+            $location = strtolower(trim((string) ($item->preparation_location ?? '')));
+            if ($location === 'bar') {
+                $barItems->push($item);
+
+                continue;
+            }
+
+            if ($location === 'kitchen') {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            $categoryType = strtolower(trim((string) ($item->inventoryItem?->category_type ?? '')));
+            if (in_array($categoryType, ['beverage', 'bar', 'minuman', 'drink', 'cocktail', 'mocktail', 'liquor', 'spirit', 'wine', 'beer', 'softdrink'], true)) {
+                $barItems->push($item);
+
+                continue;
+            }
+
+            if (in_array($categoryType, ['food', 'kitchen', 'makanan', 'snack', 'dessert', 'main course', 'appetizer'], true)) {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            $checkerCashierItems->push($item);
         }
 
         // Resolve customer_user_id: from session (booking) or from walk-in param
@@ -1870,9 +2017,14 @@ class PosController extends Controller
 
         $tableId = $tableSession?->table_id;
 
+        $resolvedAreaId = $order->area_id
+            ?? $tableSession?->table?->area_id
+            ?? (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null);
+
         // Create Kitchen Order if there are kitchen items
         if ($kitchenItems->isNotEmpty()) {
             $kitchenOrder = KitchenOrder::create([
+                'area_id' => $resolvedAreaId,
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
                 'customer_user_id' => $customerUserId,
@@ -1894,18 +2046,24 @@ class PosController extends Controller
                 ]);
             }
 
-            // Auto-print kitchen ticket if a printer is configured for 'kitchen' location
-            $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
+            // Auto-print kitchen ticket safely
+            try {
+                $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing kitchen ticket: '.$e->getMessage());
+            }
         }
 
         // Create Bar Order if there are bar items
         if ($barItems->isNotEmpty()) {
             $barOrder = BarOrder::create([
+                'area_id' => $resolvedAreaId,
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
                 'customer_user_id' => $customerUserId,
                 'table_id' => $tableId,
                 'total_amount' => $barItems->sum('subtotal'),
+                'payment_method' => 'cash',
                 'status' => 'baru',
                 'progress' => 0,
             ]);
@@ -1922,18 +2080,26 @@ class PosController extends Controller
                 ]);
             }
 
-            // Auto-print bar ticket if a printer is configured for 'bar' location
-            $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
+            // Auto-print bar ticket safely
+            try {
+                $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing bar ticket: '.$e->getMessage());
+            }
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
-            $this->printCheckerCashierItemsWithoutPreparationOrder(
-                $order,
-                $checkerCashierItems,
-                $orderNumber,
-                $tableId,
-                $selectedCheckerPrinterIds
-            );
+            try {
+                $this->printCheckerCashierItemsWithoutPreparationOrder(
+                    $order,
+                    $checkerCashierItems,
+                    $orderNumber,
+                    $tableId,
+                    $selectedCheckerPrinterIds
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Failed auto-printing checker ticket: '.$e->getMessage());
+            }
         }
     }
 
@@ -2027,6 +2193,11 @@ class PosController extends Controller
         callable $callback,
         ?Collection $selectedCheckerPrinterIds = null
     ): bool {
+        $user = Auth::user();
+        $contextArea = $user?->getAssignedArea() ?? $order->tableSession?->table?->area ?? $order->table?->area;
+        $contextAreaId = $contextArea?->id;
+        $contextAreaCode = $contextArea ? strtoupper(trim((string) $contextArea->code)) : null;
+
         $groupedByPrinter = [];
 
         foreach ($items as $item) {
@@ -2040,6 +2211,24 @@ class PosController extends Controller
 
                     return $selectedCheckerPrinterIds->contains((int) $printer->id);
                 });
+            }
+
+            // Filter printers by user/table area context if area-specific printers exist
+            if ($contextAreaId !== null && $targetPrinters->count() > 1) {
+                $areaMatchingPrinters = $targetPrinters->filter(function (Printer $printer) use ($contextAreaId, $contextAreaCode): bool {
+                    if ($printer->area_id !== null) {
+                        return (int) $printer->area_id === (int) $contextAreaId;
+                    }
+                    if ($printer->location !== null && $contextAreaCode !== null) {
+                        return strtoupper(trim((string) $printer->location)) === $contextAreaCode;
+                    }
+
+                    return false;
+                });
+
+                if ($areaMatchingPrinters->isNotEmpty()) {
+                    $targetPrinters = $areaMatchingPrinters;
+                }
             }
 
             if ($targetPrinters->isEmpty()) {
@@ -2160,6 +2349,24 @@ class PosController extends Controller
             return 'kitchen';
         }
 
+        if ($assignedTypes->contains('cashier') || $assignedTypes->contains('checker')) {
+            return null;
+        }
+
+        $setting = PosCategorySetting::allKeyed()->get($inventoryItem->category_type);
+        if (! empty($setting?->preparation_location) && in_array($setting->preparation_location, ['kitchen', 'bar'], true)) {
+            return $setting->preparation_location;
+        }
+
+        $categoryType = strtolower(trim((string) $inventoryItem->category_type));
+        if (in_array($categoryType, ['food', 'kitchen', 'makanan'], true)) {
+            return 'kitchen';
+        }
+
+        if (in_array($categoryType, ['beverage', 'bar', 'minuman', 'drink'], true)) {
+            return 'bar';
+        }
+
         return null;
     }
 
@@ -2247,9 +2454,10 @@ class PosController extends Controller
 
             $setting = $posSettings->get($inventoryItem->category_type);
             $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+            $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-            if ($detailGroupComponents !== []) {
+            if ($detailGroupComponents !== [] && $isCountPortionPossible) {
                 $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
                 $isAvailable = $possiblePortions >= $requestedQuantity;
 
@@ -2270,6 +2478,30 @@ class PosController extends Controller
                         'possible_portions' => $possiblePortions,
                         'requested_quantity' => $requestedQuantity,
                         'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$this->formatStockNumber($possiblePortions)} porsi.",
+                    ];
+                }
+
+                continue;
+            }
+
+            if ($isItemGroup) {
+                $isAvailable = $inventoryItem->is_visible_in_pos !== false && (bool) $inventoryItem->is_active && ! (bool) $inventoryItem->is_group_sold_out;
+
+                $menuItems[] = [
+                    'product_id' => $productId,
+                    'item_id' => $inventoryItem->id,
+                    'name' => $inventoryItem->name,
+                    'requested_quantity' => $requestedQuantity,
+                    'possible_portions' => null,
+                    'is_available' => $isAvailable,
+                ];
+
+                if (! $isAvailable) {
+                    $stockIssues[] = [
+                        'type' => 'manual_sold_out',
+                        'product_id' => $productId,
+                        'name' => $inventoryItem->name,
+                        'message' => "Item {$inventoryItem->name} berstatus Sold Out / tidak tersedia.",
                     ];
                 }
 
@@ -2417,7 +2649,7 @@ class PosController extends Controller
             $taxAmount = (float) ($billing?->tax ?? 0);
             $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
 
-            $warehouseName = config('accurate.stock_warehouse_name');
+            $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
 
             $detailItem = $order->items->map(function ($item) use ($warehouseName) {
                 return [
@@ -2438,16 +2670,16 @@ class PosController extends Controller
             ];
 
             if ($serviceChargeAmount > 0) {
-                $soBasePayload['detailItem'][] = [
-                    'itemNo' => 'SERVICE-CHARGE',
-                    'quantity' => 1,
-                    'unitPrice' => $serviceChargeAmount,
+                $soBasePayload['detailExpense'][] = [
+                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'expenseAmount' => $serviceChargeAmount,
+                    'expenseName' => 'Service Charge',
                 ];
             }
 
             if ($taxAmount > 0) {
                 $soBasePayload['detailExpense'][] = [
-                    'accountNo' => '210201',
+                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
@@ -2455,7 +2687,9 @@ class PosController extends Controller
 
             $soNumber = null;
             $maxAttempts = 3;
-            $soPrefix = 'ROOM-WALKIN-'.now()->format('Ymd').'-';
+            $activeArea = auth()->user()?->resolveActiveArea();
+            $areaPrefix = $activeArea ? $activeArea->so_prefix : 'ROOM-';
+            $soPrefix = "{$areaPrefix}WALKIN-".now()->format('Ymd').'-';
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
                 $randomNumber = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
                 $soNumberWithPrefix = $soPrefix.$randomNumber;
@@ -2492,30 +2726,27 @@ class PosController extends Controller
 
             if ($taxAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => '210201',
+                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
             }
 
             if ($serviceChargeAmount > 0) {
-                $serviceChargeItem = [
-                    'itemNo' => 'SERVICE-CHARGE',
-                    'quantity' => 1,
-                    'unitPrice' => $serviceChargeAmount,
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'expenseAmount' => $serviceChargeAmount,
+                    'expenseName' => 'Service Charge',
                 ];
-
-                if ($soNumber) {
-                    $serviceChargeItem['salesOrderNumber'] = $soNumber;
-                }
-
-                $invPayload['detailItem'][] = $serviceChargeItem;
             }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
             $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
-            // 3. Persist Accurate numbers on the order record
+            // 3. Save Sales Receipt (Penerimaan Penjualan) for single or split payments
+            $this->syncSalesReceipts($customerNo, $transDate, $soNumber, $invNumber, $order->order_number, $billing, $order);
+
+            // 4. Persist Accurate numbers on the order record
             $order->update([
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
@@ -2536,6 +2767,157 @@ class PosController extends Controller
                 'billing_id' => $billing?->id,
                 'message' => $e->getMessage(),
             ]);
+        }
+    }
+
+    protected function syncSalesReceipts(string $customerNo, string $transDate, string $soNumber, ?string $invNumber, string $reference, $billing, $order = null): void
+    {
+        $settings = GeneralSetting::instance();
+        $cashAccountNo = $settings->accurate_cash_account_no ?: '110101';
+        $bankAccountNo = $settings->accurate_bank_account_no ?: '110102';
+
+        $paymentsToSync = [];
+
+        $billingPayments = $billing?->payments ? $billing->payments : collect();
+
+        if ($billingPayments->count() > 1) {
+            foreach ($billingPayments as $paymentRecord) {
+                $amount = (float) $paymentRecord->amount_paid;
+                if ($amount <= 0) {
+                    continue;
+                }
+                $method = strtolower((string) $paymentRecord->payment_method);
+                $isCash = in_array($method, ['cash', 'tunai'], true);
+                $bankNo = $isCash ? $cashAccountNo : $bankAccountNo;
+                $methodLabel = $isCash ? 'Tunai' : strtoupper($method);
+
+                $paymentsToSync[] = [
+                    'amount' => $amount,
+                    'bankNo' => $bankNo,
+                    'method_label' => $methodLabel,
+                ];
+            }
+        } elseif (($billing?->payment_mode ?? null) === 'split') {
+            $splitCash = (float) ($billing->split_cash_amount ?? 0);
+            $splitNonCash1Amount = (float) ($billing->split_debit_amount ?? 0);
+            $splitNonCash1Method = strtolower((string) ($billing->split_non_cash_method ?? 'non_cash_1'));
+
+            $splitNonCash2Amount = (float) ($billing->split_second_non_cash_amount ?? 0);
+            $splitNonCash2Method = strtolower((string) ($billing->split_second_non_cash_method ?? 'non_cash_2'));
+
+            if ($splitCash > 0) {
+                $paymentsToSync[] = [
+                    'amount' => $splitCash,
+                    'bankNo' => $cashAccountNo,
+                    'method_label' => 'Tunai',
+                ];
+            }
+
+            if ($splitNonCash1Amount > 0) {
+                $isCash1 = in_array($splitNonCash1Method, ['cash', 'tunai'], true);
+                $bankNo1 = $isCash1 ? $cashAccountNo : $bankAccountNo;
+                $methodLabel1 = $isCash1 ? 'Tunai' : strtoupper((string) ($billing->split_non_cash_method ?: 'NON-CASH 1'));
+
+                $paymentsToSync[] = [
+                    'amount' => $splitNonCash1Amount,
+                    'bankNo' => $bankNo1,
+                    'method_label' => $methodLabel1,
+                ];
+            }
+
+            if ($splitNonCash2Amount > 0) {
+                $isCash2 = in_array($splitNonCash2Method, ['cash', 'tunai'], true);
+                $bankNo2 = $isCash2 ? $cashAccountNo : $bankAccountNo;
+                $methodLabel2 = $isCash2 ? 'Tunai' : strtoupper((string) ($billing->split_second_non_cash_method ?: 'NON-CASH 2'));
+
+                $paymentsToSync[] = [
+                    'amount' => $splitNonCash2Amount,
+                    'bankNo' => $bankNo2,
+                    'method_label' => $methodLabel2,
+                ];
+            }
+        } else {
+            $paidAmount = (float) ($billing?->paid_amount ?? $billing?->grand_total ?? $order?->total ?? 0);
+            if ($paidAmount > 0) {
+                $method = strtolower((string) ($billing?->payment_method ?? $order?->payment_method ?? 'cash'));
+                $isCash = in_array($method, ['cash', 'tunai'], true);
+                $bankNo = $isCash ? $cashAccountNo : $bankAccountNo;
+                $methodLabel = $isCash ? 'Tunai' : strtoupper($method);
+
+                $paymentsToSync[] = [
+                    'amount' => $paidAmount,
+                    'bankNo' => $bankNo,
+                    'method_label' => $methodLabel,
+                ];
+            }
+        }
+
+        $targetInvoiceNo = $invNumber ?: $soNumber ?: $billing?->accurate_inv_number ?: $billing?->accurate_so_number ?: $order?->accurate_inv_number ?: $order?->accurate_so_number;
+
+        foreach ($paymentsToSync as $paymentItem) {
+            if ($paymentItem['amount'] <= 0) {
+                continue;
+            }
+
+            try {
+                $receiptPayload = [
+                    'customerNo' => $customerNo,
+                    'transDate' => $transDate,
+                    'bankNo' => $paymentItem['bankNo'],
+                    'chequeAmount' => $paymentItem['amount'],
+                    'description' => "Pembayaran Walk-in POS ({$paymentItem['method_label']}) — {$reference}",
+                    'detailInvoice' => [
+                        [
+                            'invoiceNo' => $targetInvoiceNo,
+                            'paymentAmount' => $paymentItem['amount'],
+                        ],
+                    ],
+                ];
+                $response = $this->accurateService->saveSalesReceipt($receiptPayload);
+                $receiptNo = $response['r']['number'] ?? $response['d']['number'] ?? null;
+
+                if ($receiptNo && $billing) {
+                    $methodStr = strtolower((string) $paymentItem['method_label']);
+                    $paymentRecord = \App\Models\BillingPayment::query()
+                        ->where('billing_id', $billing->id)
+                        ->where(function ($q) use ($methodStr, $paymentItem) {
+                            $q->where('payment_method', $methodStr)
+                                ->orWhere('amount_paid', $paymentItem['amount']);
+                        })
+                        ->whereNull('accurate_sales_receipt_number')
+                        ->first();
+
+                    if (! $paymentRecord) {
+                        $paymentRecord = \App\Models\BillingPayment::query()
+                            ->where('billing_id', $billing->id)
+                            ->whereNull('accurate_sales_receipt_number')
+                            ->first();
+                    }
+
+                    if ($paymentRecord) {
+                        $paymentRecord->update([
+                            'accurate_sales_receipt_number' => $receiptNo,
+                            'accurate_sync_status' => 'synced',
+                        ]);
+                    } else {
+                        \App\Models\BillingPayment::create([
+                            'billing_id' => $billing->id,
+                            'amount_paid' => $paymentItem['amount'],
+                            'payment_method' => strtolower((string) $paymentItem['method_label']),
+                            'payment_type' => 'full_payment',
+                            'accurate_sales_receipt_number' => $receiptNo,
+                            'accurate_sync_status' => 'synced',
+                            'paid_at' => now('Asia/Jakarta'),
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Accurate Walk-in Sales Receipt Sync: FAILED', [
+                    'reference' => $reference,
+                    'method' => $paymentItem['method_label'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

@@ -30,6 +30,42 @@
     </div>
 
     <div class="flex items-center space-x-4">
+      <!-- Area Switcher -->
+      @auth
+        @if(Auth::user()->hasMultiAreaAccess())
+          @php
+            $allAreas = \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
+            $currentAreaId = session('active_area_id');
+          @endphp
+          <form method="POST" action="{{ route('admin.switch-area') }}" class="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-xl px-3 py-1.5 border border-slate-200 transition-colors">
+            @csrf
+            <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:inline">Area:</span>
+            <select name="area_id" onchange="this.form.submit()" class="bg-transparent text-xs font-bold text-slate-800 border-none focus:ring-0 py-0.5 pl-1 pr-6 cursor-pointer">
+              @foreach($allAreas as $areaItem)
+                <option value="{{ $areaItem->id }}" {{ (string)$currentAreaId === (string)$areaItem->id ? 'selected' : '' }}>
+                  {{ $areaItem->name }} ({{ rtrim($areaItem->so_prefix, '-') }})
+                </option>
+              @endforeach
+              <option value="all" {{ $currentAreaId === 'all' ? 'selected' : '' }}>Semua Area (Combined)</option>
+            </select>
+          </form>
+        @else
+          @php
+            $assignedArea = Auth::user()->resolveActiveArea();
+          @endphp
+          @if($assignedArea)
+            <div class="flex items-center space-x-1.5 bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200">
+              <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wide">{{ $assignedArea->name }}</span>
+            </div>
+          @endif
+        @endif
+      @endauth
+
       <!-- User Menu -->
       <div class="relative">
         <button class="flex items-center space-x-3 hover:bg-gray-100 rounded-lg px-3 py-2">

@@ -110,9 +110,12 @@
           <form method="POST"
                 action="{{ route('admin.recap.close-export') }}">
             @csrf
+            @if ($selectedAreaId ?? null)
+              <input type="hidden" name="area_id" value="{{ $selectedAreaId }}">
+            @endif
             <button type="submit"
                     class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-              Tutup End Day
+              Tutup End Day {{ $selectedAreaId ? '(' . ($areas->firstWhere('id', $selectedAreaId)?->name ?? 'Area') . ')' : '' }}
             </button>
           </form>
         @endunless

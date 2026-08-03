@@ -1,5 +1,5 @@
-<x-app-layout>
-  <div class="p-6">
+<x-app-layout title="Pengaturan Umum">
+  <div class="p-6 w-full max-w-full">
 
     <!-- Back -->
     <a href="{{ route('admin.settings.index') }}"
@@ -30,331 +30,406 @@
     <!-- Header -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Pengaturan Umum</h1>
-      <p class="text-sm text-slate-500 mt-1">Konfigurasi pajak, service charge, opsi pilih checker, dan printer default</p>
+      <p class="text-sm text-slate-500 mt-1">Konfigurasi pajak, service charge, integrasi Accurate, opsi checker, dan printer target default per area</p>
     </div>
 
     <form method="POST"
           action="{{ route('admin.settings.general.update') }}"
-          class="max-w-lg">
+          class="w-full max-w-full space-y-6">
       @csrf
       @method('PUT')
 
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        <!-- Tax Percentage -->
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="tax_percentage">
-            PB1 / Pajak (%)
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Persentase pajak yang ditambahkan ke subtotal billing customer.</p>
-          <div class="flex items-center gap-3">
-            <input type="number"
-                   id="tax_percentage"
-                   name="tax_percentage"
-                   value="{{ old('tax_percentage', $settings->tax_percentage) }}"
-                   min="0"
-                   max="100"
-                   step="1"
-                   class="w-28 border @error('tax_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
-            <span class="text-sm text-slate-500">%</span>
+        <!-- Card 1: Finansial & Accurate -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <h2 class="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
+            <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            Finansial & Integrasi Accurate
+          </h2>
+
+          <!-- Tax Percentage -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="tax_percentage">
+              PB1 / Pajak (%)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Persentase pajak yang ditambahkan ke subtotal billing customer.</p>
+            <div class="flex items-center gap-3">
+              <input type="number"
+                     id="tax_percentage"
+                     name="tax_percentage"
+                     value="{{ old('tax_percentage', $settings->tax_percentage) }}"
+                     min="0"
+                     max="100"
+                     step="1"
+                     class="w-full border @error('tax_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+              <span class="text-sm text-slate-500 font-semibold">%</span>
+            </div>
+            @error('tax_percentage')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
           </div>
-          @error('tax_percentage')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
 
-        <!-- Service Charge Percentage -->
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="service_charge_percentage">
-            Service Charge (%)
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Persentase service charge yang ditambahkan ke subtotal billing customer.</p>
-          <div class="flex items-center gap-3">
-            <input type="number"
-                   id="service_charge_percentage"
-                   name="service_charge_percentage"
-                   value="{{ old('service_charge_percentage', $settings->service_charge_percentage) }}"
-                   min="0"
-                   max="100"
-                   step="1"
-                   class="w-28 border @error('service_charge_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
-            <span class="text-sm text-slate-500">%</span>
+          <!-- Service Charge Percentage -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="service_charge_percentage">
+              Service Charge (%)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Persentase service charge yang ditambahkan ke subtotal billing customer.</p>
+            <div class="flex items-center gap-3">
+              <input type="number"
+                     id="service_charge_percentage"
+                     name="service_charge_percentage"
+                     value="{{ old('service_charge_percentage', $settings->service_charge_percentage) }}"
+                     min="0"
+                     max="100"
+                     step="1"
+                     class="w-full border @error('service_charge_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+              <span class="text-sm text-slate-500 font-semibold">%</span>
+            </div>
+            @error('service_charge_percentage')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
           </div>
-          @error('service_charge_percentage')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
+
+          <!-- Accurate Stock Warehouse Name -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_stock_warehouse_name">
+              Nama Gudang Stok / Warehouse Name (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nama gudang di Accurate Online untuk pengurangan stok item transaksi (Default: GD. OUTLET).</p>
+            <input type="text"
+                   id="accurate_stock_warehouse_name"
+                   name="accurate_stock_warehouse_name"
+                   value="{{ old('accurate_stock_warehouse_name', $settings->accurate_stock_warehouse_name ?? 'GD. OUTLET') }}"
+                   placeholder="GD. OUTLET"
+                   class="w-full border @error('accurate_stock_warehouse_name') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_stock_warehouse_name')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Tax Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_tax_account_no">
+              Nomor Akun Pajak PB1 (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun kewajiban/beban pajak PB1 di Accurate Online (Default: 210201).</p>
+            <input type="text"
+                   id="accurate_tax_account_no"
+                   name="accurate_tax_account_no"
+                   value="{{ old('accurate_tax_account_no', $settings->accurate_tax_account_no ?? '210201') }}"
+                   placeholder="210201"
+                   class="w-full border @error('accurate_tax_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_tax_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Service Charge Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_service_charge_account_no">
+              Nomor Akun Service Charge (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun kewajiban/pendapatan service charge di Accurate Online (Default: 210202).</p>
+            <input type="text"
+                   id="accurate_service_charge_account_no"
+                   name="accurate_service_charge_account_no"
+                   value="{{ old('accurate_service_charge_account_no', $settings->accurate_service_charge_account_no ?? '210202') }}"
+                   placeholder="210202"
+                   class="w-full border @error('accurate_service_charge_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_service_charge_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Bank Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_bank_account_no">
+              Nomor Akun Bank (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun bank penerima pembayaran non-tunai (Transfer/QRIS/Card) di Accurate Online (Default: 110102).</p>
+            <input type="text"
+                   id="accurate_bank_account_no"
+                   name="accurate_bank_account_no"
+                   value="{{ old('accurate_bank_account_no', $settings->accurate_bank_account_no ?? '110102') }}"
+                   placeholder="110102"
+                   class="w-full border @error('accurate_bank_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_bank_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Cash Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_cash_account_no">
+              Nomor Akun Kas / Tunai (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun kas/tunai penerima pembayaran tunai di Accurate Online (Default: 110101).</p>
+            <input type="text"
+                   id="accurate_cash_account_no"
+                   name="accurate_cash_account_no"
+                   value="{{ old('accurate_cash_account_no', $settings->accurate_cash_account_no ?? '110101') }}"
+                   placeholder="110101"
+                   class="w-full border @error('accurate_cash_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_cash_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Can Choose Checker -->
+          <div class="pt-2" x-data="{ canChooseChecker: @js((bool) old('can_choose_checker', $settings->can_choose_checker)) }">
+            <p class="text-sm font-semibold text-slate-700 mb-1">Can Choose Checker</p>
+            <p class="text-xs text-slate-400 mb-3">Aktifkan agar kasir bisa memilih printer checker saat tersedia lebih dari satu.</p>
+            <label for="can_choose_checker" class="inline-flex items-center gap-3 text-sm text-slate-700 cursor-pointer select-none">
+              <input type="hidden" name="can_choose_checker" value="0">
+              <input type="checkbox"
+                     id="can_choose_checker"
+                     name="can_choose_checker"
+                     value="1"
+                     {{ old('can_choose_checker', $settings->can_choose_checker) ? 'checked' : '' }}
+                     x-model="canChooseChecker"
+                     class="peer sr-only">
+              <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+              <span class="font-medium">Izinkan pilih checker</span>
+            </label>
+            <p class="text-xs text-slate-500 mt-2">
+              Status: <span class="font-semibold" x-text="canChooseChecker ? 'Aktif' : 'Nonaktif'">{{ old('can_choose_checker', $settings->can_choose_checker) ? 'Aktif' : 'Nonaktif' }}</span>
+            </p>
+            @error('can_choose_checker')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
         </div>
 
-        <div class="p-6"
-             x-data="{ canChooseChecker: @js((bool) old('can_choose_checker', $settings->can_choose_checker)) }">
-          <p class="text-sm font-semibold text-slate-700 mb-1">Can Choose Checker</p>
-          <p class="text-xs text-slate-400 mb-3">Aktifkan agar kasir bisa memilih printer checker saat tersedia lebih dari satu.</p>
-          <label for="can_choose_checker"
-                 class="inline-flex items-center gap-3 text-sm text-slate-700 cursor-pointer select-none">
-            <input type="hidden"
-                   name="can_choose_checker"
-                   value="0">
-            <input type="checkbox"
-                   id="can_choose_checker"
-                   name="can_choose_checker"
-                   value="1"
-                   {{ old('can_choose_checker', $settings->can_choose_checker) ? 'checked' : '' }}
-                   x-model="canChooseChecker"
-                   class="peer sr-only">
-            <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
-            <span class="font-medium">Izinkan pilih checker</span>
-          </label>
-          <p class="text-xs text-slate-500 mt-2">
-            Status: <span class="font-semibold"
-                  x-text="canChooseChecker ? 'Aktif' : 'Nonaktif'">{{ old('can_choose_checker', $settings->can_choose_checker) ? 'Aktif' : 'Nonaktif' }}</span>
-          </p>
-          @error('can_choose_checker')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+        <!-- Card 2: Email, WhatsApp & Auth Code -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <h2 class="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
+            <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+            Email, WhatsApp & Auth Code
+          </h2>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="closed_billing_receipt_printer_id">
-            Printer Struk Closed Billing
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih printer default untuk cetak struk otomatis saat billing booking ditutup.</p>
-          <select id="closed_billing_receipt_printer_id"
-                  name="closed_billing_receipt_printer_id"
-                  class="w-full border @error('closed_billing_receipt_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="">Kasir Default (otomatis)</option>
-            @foreach ($printers as $printer)
-              <option value="{{ $printer->id }}"
-                      {{ (string) old('closed_billing_receipt_printer_id', $settings->closed_billing_receipt_printer_id) === (string) $printer->id ? 'selected' : '' }}>
-                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
-              </option>
-            @endforeach
-          </select>
-          @error('closed_billing_receipt_printer_id')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+          <!-- Mail Provider -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="mail_provider">
+              Metode Pengiriman Email
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Provider email sistem (untuk pengiriman Auth Code/Notifikasi).</p>
+            <select id="mail_provider"
+                    name="mail_provider"
+                    class="w-full border @error('mail_provider') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+              <option value="smtp" {{ old('mail_provider', $settings->mail_provider) === 'smtp' ? 'selected' : '' }}>SMTP (Default / Gmail)</option>
+              <option value="resend" {{ old('mail_provider', $settings->mail_provider) === 'resend' ? 'selected' : '' }}>Resend API</option>
+            </select>
+            @error('mail_provider')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="walk_in_receipt_printer_id">
-            Printer Struk Walk-in
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih printer default untuk cetak struk otomatis transaksi walk-in.</p>
-          <select id="walk_in_receipt_printer_id"
-                  name="walk_in_receipt_printer_id"
-                  class="w-full border @error('walk_in_receipt_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="">Kasir Default (otomatis)</option>
-            @foreach ($printers as $printer)
-              <option value="{{ $printer->id }}"
-                      {{ (string) old('walk_in_receipt_printer_id', $settings->walk_in_receipt_printer_id) === (string) $printer->id ? 'selected' : '' }}>
-                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
-              </option>
-            @endforeach
-          </select>
-          @error('walk_in_receipt_printer_id')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+          <!-- Auth Code Target Email -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="auth_code_target_email">
+              Email Tujuan Auth Code
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Email approval tujuan untuk pengiriman auth code.</p>
+            <input type="email"
+                   id="auth_code_target_email"
+                   name="auth_code_target_email"
+                   value="{{ old('auth_code_target_email', $settings->auth_code_target_email) }}"
+                   placeholder="manager@company.com"
+                   class="w-full border @error('auth_code_target_email') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('auth_code_target_email')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="end_day_receipt_printer_id">
-            Printer Struk End Day
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih printer default untuk cetak hasil recap End Day.</p>
-          <select id="end_day_receipt_printer_id"
-                  name="end_day_receipt_printer_id"
-                  class="w-full border @error('end_day_receipt_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="">Kasir Default (otomatis)</option>
-            @foreach ($printers as $printer)
-              <option value="{{ $printer->id }}"
-                      {{ (string) old('end_day_receipt_printer_id', $settings->end_day_receipt_printer_id) === (string) $printer->id ? 'selected' : '' }}>
-                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
-              </option>
-            @endforeach
-          </select>
-          @error('end_day_receipt_printer_id')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+          <!-- Auth Code Target WhatsApp -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="auth_code_target_whatsapp">
+              Nomor WhatsApp Tujuan Auth Code
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor WhatsApp tujuan untuk pengiriman auth code via Fonnte.</p>
+            <input type="text"
+                   id="auth_code_target_whatsapp"
+                   name="auth_code_target_whatsapp"
+                   value="{{ old('auth_code_target_whatsapp', $settings->auth_code_target_whatsapp) }}"
+                   placeholder="08123456789"
+                   class="w-full border @error('auth_code_target_whatsapp') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('auth_code_target_whatsapp')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="end_day_kitchen_printer_id">
-            Printer End Day Kitchen
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih printer target khusus untuk output End Day Kitchen.</p>
-          <select id="end_day_kitchen_printer_id"
-                  name="end_day_kitchen_printer_id"
-                  class="w-full border @error('end_day_kitchen_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="">Kasir Default (otomatis)</option>
-            @foreach ($printers as $printer)
-              <option value="{{ $printer->id }}"
-                      {{ (string) old('end_day_kitchen_printer_id', $settings->end_day_kitchen_printer_id) === (string) $printer->id ? 'selected' : '' }}>
-                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
-              </option>
-            @endforeach
-          </select>
-          @error('end_day_kitchen_printer_id')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+          <!-- Fonnte Token -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="fonnte_token">
+              Fonnte API Token
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Token API Fonnte. Kosongkan jika sudah di-set di file .env.</p>
+            <input type="text"
+                   id="fonnte_token"
+                   name="fonnte_token"
+                   value="{{ old('fonnte_token', $settings->fonnte_token) }}"
+                   placeholder="Masukkan token Fonnte"
+                   class="w-full border @error('fonnte_token') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('fonnte_token')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="end_day_bar_printer_id">
-            Printer End Day Bar
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih printer target khusus untuk output End Day Bar.</p>
-          <select id="end_day_bar_printer_id"
-                  name="end_day_bar_printer_id"
-                  class="w-full border @error('end_day_bar_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="">Kasir Default (otomatis)</option>
-            @foreach ($printers as $printer)
-              <option value="{{ $printer->id }}"
-                      {{ (string) old('end_day_bar_printer_id', $settings->end_day_bar_printer_id) === (string) $printer->id ? 'selected' : '' }}>
-                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
-              </option>
-            @endforeach
-          </select>
-          @error('end_day_bar_printer_id')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
+          <!-- Auth Code Delivery Channel -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="auth_code_delivery_channel">
+              Channel Pengiriman Auth Code
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Pilih saluran pengiriman kode OTP otorisasi harian.</p>
+            <select id="auth_code_delivery_channel"
+                    name="auth_code_delivery_channel"
+                    class="w-full border @error('auth_code_delivery_channel') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+              <option value="both" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'both' ? 'selected' : '' }}>Email & WhatsApp (Keduanya)</option>
+              <option value="email" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'email' ? 'selected' : '' }}>Email Saja</option>
+              <option value="whatsapp" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'whatsapp' ? 'selected' : '' }}>WhatsApp Saja</option>
+            </select>
+            @error('auth_code_delivery_channel')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
 
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="mail_provider">
-            Metode Pengiriman Email
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih provider email untuk pengiriman sistem (seperti pengiriman Auth Code).</p>
-          <select id="mail_provider"
-                  name="mail_provider"
-                  class="w-full border @error('mail_provider') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="smtp" {{ old('mail_provider', $settings->mail_provider) === 'smtp' ? 'selected' : '' }}>SMFTP (Default / Gmail)</option>
-            <option value="resend" {{ old('mail_provider', $settings->mail_provider) === 'resend' ? 'selected' : '' }}>Resend API</option>
-          </select>
-          @error('mail_provider')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
-
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="auth_code_target_email">
-            Email Tujuan Auth Code
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Email approval tujuan untuk pengiriman auth code (kebutuhan general).</p>
-          <input type="email"
-                 id="auth_code_target_email"
-                 name="auth_code_target_email"
-                 value="{{ old('auth_code_target_email', $settings->auth_code_target_email) }}"
-                 placeholder="contoh: manager@company.com"
-                 class="w-full border @error('auth_code_target_email') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
-          @error('auth_code_target_email')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
-
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="auth_code_target_whatsapp">
-            Nomor WhatsApp Tujuan Auth Code
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Nomor WhatsApp tujuan untuk pengiriman auth code via Fonnte (contoh: 08123456789 atau 628123456789).</p>
-          <input type="text"
-                 id="auth_code_target_whatsapp"
-                 name="auth_code_target_whatsapp"
-                 value="{{ old('auth_code_target_whatsapp', $settings->auth_code_target_whatsapp) }}"
-                 placeholder="contoh: 08123456789"
-                 class="w-full border @error('auth_code_target_whatsapp') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
-          @error('auth_code_target_whatsapp')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
-
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="fonnte_token">
-            Fonnte API Token
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Token API Fonnte Anda. Kosongkan jika token dikonfigurasi di file env (.env).</p>
-          <input type="text"
-                 id="fonnte_token"
-                 name="fonnte_token"
-                 value="{{ old('fonnte_token', $settings->fonnte_token) }}"
-                 placeholder="Masukkan token Fonnte"
-                 class="w-full border @error('fonnte_token') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
-          @error('fonnte_token')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
-
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="auth_code_delivery_channel">
-            Channel Pengiriman Auth Code
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Pilih saluran pengiriman kode OTP otorisasi harian.</p>
-          <select id="auth_code_delivery_channel"
-                  name="auth_code_delivery_channel"
-                  class="w-full border @error('auth_code_delivery_channel') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
-            <option value="both" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'both' ? 'selected' : '' }}>Email & WhatsApp (Kirim ke keduanya)</option>
-            <option value="email" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'email' ? 'selected' : '' }}>Email Saja</option>
-            <option value="whatsapp" {{ old('auth_code_delivery_channel', $settings->auth_code_delivery_channel) === 'whatsapp' ? 'selected' : '' }}>WhatsApp Saja</option>
-          </select>
-          @error('auth_code_delivery_channel')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
-        </div>
-
-        <div class="p-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-                 for="daily_auth_code_access_emails">
-            Email Akses Daily Auth Code
-          </label>
-          <p class="text-xs text-slate-400 mb-3">Daftar akun/email yang boleh membuka dan memakai menu Daily Auth Code. Tulis satu email per baris atau pisahkan dengan koma.</p>
-          <textarea id="daily_auth_code_access_emails"
-                    name="daily_auth_code_access_emails"
-                    rows="4"
-                    placeholder="manager@company.com&#10;ops@company.com"
-                    class="w-full border @error('daily_auth_code_access_emails') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none">{{ old('daily_auth_code_access_emails', implode("\n", $settings->dailyAuthCodeAccessEmails())) }}</textarea>
-          @error('daily_auth_code_access_emails')
-            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
-          @enderror
+          <!-- Daily Auth Code Access Emails -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="daily_auth_code_access_emails">
+              Email Akses Daily Auth Code
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Akun yang boleh membuka/mengakses menu Daily Auth Code (1 email per baris).</p>
+            <textarea id="daily_auth_code_access_emails"
+                      name="daily_auth_code_access_emails"
+                      rows="3"
+                      placeholder="manager@company.com&#10;ops@company.com"
+                      class="w-full border @error('daily_auth_code_access_emails') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none">{{ old('daily_auth_code_access_emails', implode("\n", $settings->dailyAuthCodeAccessEmails())) }}</textarea>
+            @error('daily_auth_code_access_emails')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
         </div>
 
       </div>
 
-      <!-- Info box -->
-      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4 text-sm text-blue-700">
-        <p class="font-semibold mb-1 flex items-center gap-1.5">
-          <svg class="w-4 h-4 flex-shrink-0"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Catatan
-        </p>
-        <p>Pengaturan ini mengatur persentase charge, opsi pilih checker, printer default, email tujuan auth code, dan akun yang boleh membuka Daily Auth Code.</p>
+      <!-- Section: Printer Target Default Mapped Per Area -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+        <div class="border-b border-slate-100 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+              <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+              Printer Target Default (Mapping Berdasarkan Area)
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">Tentukan printer target default untuk setiap area transaksi (ROOM, LOUNGE, dll).</p>
+          </div>
+          <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200 self-start md:self-auto">
+            {{ $areas->count() }} Area Aktif Terdaftar
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          @foreach ($areas as $area)
+            @php
+              $areaSettings = old('area_printer_settings.' . $area->id, $settings->area_printer_settings[$area->id] ?? []);
+            @endphp
+            <div class="bg-slate-50/80 rounded-xl border border-slate-200 p-5 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                <h3 class="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                  <span class="px-2.5 py-0.5 rounded-md bg-indigo-600 text-white text-xs font-bold">{{ $area->code }}</span>
+                  <span>Area: {{ $area->name }}</span>
+                </h3>
+              </div>
+
+              <div class="space-y-3">
+                <!-- Closed Billing -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Printer Struk Closed Billing</label>
+                  <select name="area_printer_settings[{{ $area->id }}][closed_billing]" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-slate-400 outline-none bg-white">
+                    <option value="">Kasir Area / Default Otomatis</option>
+                    @foreach ($printers as $printer)
+                      <option value="{{ $printer->id }}" {{ (string) ($areaSettings['closed_billing'] ?? '') === (string) $printer->id ? 'selected' : '' }}>
+                        {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+
+                <!-- Walk-in -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Printer Struk Walk-in</label>
+                  <select name="area_printer_settings[{{ $area->id }}][walk_in]" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-slate-400 outline-none bg-white">
+                    <option value="">Kasir Area / Default Otomatis</option>
+                    @foreach ($printers as $printer)
+                      <option value="{{ $printer->id }}" {{ (string) ($areaSettings['walk_in'] ?? '') === (string) $printer->id ? 'selected' : '' }}>
+                        {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+
+                <!-- End Day Receipt -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Printer Struk End Day</label>
+                  <select name="area_printer_settings[{{ $area->id }}][end_day_receipt]" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-slate-400 outline-none bg-white">
+                    <option value="">Kasir Area / Default Otomatis</option>
+                    @foreach ($printers as $printer)
+                      <option value="{{ $printer->id }}" {{ (string) ($areaSettings['end_day_receipt'] ?? '') === (string) $printer->id ? 'selected' : '' }}>
+                        {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+
+                <!-- End Day Kitchen -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Printer End Day Kitchen</label>
+                  <select name="area_printer_settings[{{ $area->id }}][end_day_kitchen]" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-slate-400 outline-none bg-white">
+                    <option value="">Printer Kitchen Area / Default Otomatis</option>
+                    @foreach ($printers as $printer)
+                      <option value="{{ $printer->id }}" {{ (string) ($areaSettings['end_day_kitchen'] ?? '') === (string) $printer->id ? 'selected' : '' }}>
+                        {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+
+                <!-- End Day Bar -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Printer End Day Bar</label>
+                  <select name="area_printer_settings[{{ $area->id }}][end_day_bar]" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-slate-400 outline-none bg-white">
+                    <option value="">Printer Bar Area / Default Otomatis</option>
+                    @foreach ($printers as $printer)
+                      <option value="{{ $printer->id }}" {{ (string) ($areaSettings['end_day_bar'] ?? '') === (string) $printer->id ? 'selected' : '' }}>
+                        {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+
+              </div>
+            </div>
+          @endforeach
+        </div>
       </div>
 
-      <div class="mt-6 flex items-center gap-3">
-        <button type="submit"
-                class="px-6 py-2.5 bg-slate-800 text-white text-sm font-semibold rounded-xl hover:bg-slate-700 transition">
-          Simpan Pengaturan
-        </button>
-        <a href="{{ route('admin.settings.index') }}"
-           class="px-6 py-2.5 bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-200 transition">
-          Batal
-        </a>
+      <!-- Footer Action & Info -->
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span>Pengaturan ini langsung berlaku untuk perhitungan pajak/service charge, sinkronisasi gudang Accurate, printer target per area, dan saluran OTP.</span>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0 self-end md:self-auto">
+          <a href="{{ route('admin.settings.index') }}"
+             class="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition">
+            Batal
+          </a>
+          <button type="submit"
+                  class="px-6 py-2.5 bg-slate-800 text-white text-sm font-semibold rounded-xl hover:bg-slate-700 transition shadow-sm">
+            Simpan Pengaturan
+          </button>
+        </div>
       </div>
     </form>
 

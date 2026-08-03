@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Display Messages">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -48,6 +48,118 @@
         </svg>
         Message Baru
       </button>
+    </div>
+
+    <style>
+      @keyframes marqueeSeamless {
+        0% {
+          transform: translateX(0%);
+        }
+        100% {
+          transform: translateX(-50%);
+        }
+      }
+      .marquee-wrapper {
+        overflow: hidden;
+        width: 100%;
+        white-space: nowrap;
+      }
+      .marquee-content {
+        display: inline-flex;
+        width: max-content;
+        animation: marqueeSeamless 16s linear infinite;
+      }
+      .marquee-content:hover {
+        animation-play-state: paused;
+      }
+    </style>
+
+    <!-- Live LED Display Marquee Banner -->
+    @php
+      $activeDisplayedMessage = $messages->firstWhere('status', 'displayed');
+    @endphp
+    <div class="mb-6 bg-slate-950 rounded-2xl p-5 border border-slate-800 shadow-2xl relative overflow-hidden text-white">
+      <!-- Glow Background -->
+      <div class="absolute -top-24 -left-24 w-64 h-64 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -right-24 w-64 h-64 bg-amber-500/15 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-800/80 mb-4">
+        <div class="flex items-center gap-3">
+          @if ($activeDisplayedMessage)
+            <div class="flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/40 rounded-full">
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+              </span>
+              <span class="text-xs font-bold uppercase tracking-wider text-red-400">LIVE ON LED DISPLAY</span>
+            </div>
+            <span class="text-xs text-slate-400 font-mono">ID: MSG-{{ str_pad($activeDisplayedMessage->id, 4, '0', STR_PAD_LEFT) }}</span>
+          @else
+            <div class="flex items-center gap-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-full">
+              <span class="h-2.5 w-2.5 rounded-full bg-slate-500"></span>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">LED DISPLAY IDLE</span>
+            </div>
+            <span class="text-xs text-slate-400">Tidak ada pesan yang sedang ditampilkan</span>
+          @endif
+        </div>
+
+        @if ($activeDisplayedMessage)
+          <div class="flex items-center gap-3">
+            <div class="text-xs text-right">
+              <span class="text-slate-400">Pengirim:</span>
+              <span class="font-semibold text-white ml-1">{{ $activeDisplayedMessage->customer->name }}</span>
+              @if ($activeDisplayedMessage->tip)
+                <span class="ml-2 px-2 py-0.5 bg-amber-400/20 border border-amber-400/40 text-amber-300 font-bold rounded">💰 Tip: Rp {{ number_format($activeDisplayedMessage->tip, 0, ',', '.') }}</span>
+              @endif
+            </div>
+            <button onclick="updateStatus({{ $activeDisplayedMessage->id }}, 'completed')"
+                    class="px-3 py-1 text-xs bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-lg hover:bg-blue-500/30 transition flex items-center gap-1 font-semibold">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              Selesaikan Display
+            </button>
+          </div>
+        @endif
+      </div>
+
+      <!-- Marquee LED Screen -->
+      <div class="relative w-full bg-slate-900/95 border border-slate-800 rounded-xl py-3 px-4 overflow-hidden shadow-inner">
+        @if ($activeDisplayedMessage)
+          <div class="marquee-wrapper">
+            <div class="marquee-content font-mono text-xl sm:text-2xl tracking-widest text-amber-400 font-extrabold uppercase drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]">
+              <span class="inline-flex items-center gap-8 pr-16">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+              <span class="inline-flex items-center gap-8 pr-16" aria-hidden="true">
+                <span>{{ $activeDisplayedMessage->message }}</span>
+              </span>
+            </div>
+          </div>
+        @else
+          <div class="text-center font-mono text-xs sm:text-sm tracking-wider text-slate-500 py-1 uppercase">
+            --- LED DISPLAY SIAP - HANYA 1 PESAN BERSTATUS "DISPLAYED" DAPAT DITAMPILKAN ---
+          </div>
+        @endif
+      </div>
     </div>
 
     <!-- Stats Cards -->
@@ -138,6 +250,7 @@
           <option value="">Semua Status</option>
           <option value="pending">Pending</option>
           <option value="displayed">Displayed</option>
+          <option value="completed">Completed (Selesai Tampil)</option>
           <option value="rejected">Rejected</option>
           <option value="cancelled">Cancelled</option>
         </select>
@@ -185,6 +298,17 @@
                               clip-rule="evenodd" />
                       </svg>
                       Displayed
+                    </span>
+                  @elseif($message->status === 'completed')
+                    <span class="px-3 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700 flex items-center gap-1 w-fit">
+                      <svg class="w-3 h-3"
+                           fill="currentColor"
+                           viewBox="0 0 20 20">
+                        <path fill-rule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                              clip-rule="evenodd" />
+                      </svg>
+                      Completed
                     </span>
                   @elseif($message->status === 'rejected')
                     <span class="px-3 py-1 text-xs font-medium rounded bg-red-100 text-red-700 flex items-center gap-1 w-fit">
@@ -286,6 +410,21 @@
                         Tolak
                       </button>
                     @endif
+                    @if ($message->status === 'displayed')
+                      <button onclick="updateStatus({{ $message->id }}, 'completed')"
+                              class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-1 font-semibold">
+                        <svg class="w-3 h-3"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+                          <path stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M5 13l4 4L19 7" />
+                        </svg>
+                        Selesai
+                      </button>
+                    @endif
                     <button onclick="editMessage({{ $message->id }})"
                             class="px-3 py-1 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition">
                       Edit
@@ -310,9 +449,61 @@
   <!-- Delete Modal -->
   @include('display-messages._components.delete-confirmation-modal')
 
+  <!-- Status Confirm Modal -->
+  @include('display-messages._components.status-confirmation-modal')
+
+  <!-- Active Display Warning Modal -->
+  <div id="displayedWarningModal"
+       class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden transition-all border border-amber-200">
+      <div class="p-6 text-center">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-amber-100 border border-amber-200 text-amber-600">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+        </div>
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Pesan Aktif Sedang Berjalan</h3>
+        <p id="displayedWarningText" class="text-sm text-gray-600 mb-6">
+          Saat ini terdapat pesan yang sedang aktif ditampilkan di layar LED. Silakan matikan atau selesaikan pesan aktif tersebut terlebih dahulu sebelum menampilkan pesan baru.
+        </p>
+        <button type="button"
+                onclick="closeDisplayedWarningModal()"
+                class="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition">
+          Saya Mengerti
+        </button>
+      </div>
+    </div>
+  </div>
+
   @push('scripts')
     <script>
       const messages = @json($messages);
+      const activeDisplayedId = @json($activeDisplayedMessage ? $activeDisplayedMessage->id : null);
+      let pendingStatusUpdate = { messageId: null, status: null };
+
+      function showActiveWarningModal(activeId) {
+        const formattedId = 'MSG-' + String(activeId).padStart(4, '0');
+        document.getElementById('displayedWarningText').textContent =
+          `Saat ini pesan ${formattedId} sedang aktif ditampilkan di layar LED. Silakan matikan atau selesaikan pesan aktif tersebut terlebih dahulu sebelum menampilkan pesan baru.`;
+        document.getElementById('displayedWarningModal').classList.remove('hidden');
+      }
+
+      function closeDisplayedWarningModal() {
+        document.getElementById('displayedWarningModal').classList.add('hidden');
+      }
+
+      function formatTipRupiah(input) {
+        let value = input.value.replace(/\D/g, '');
+        if (value === '') {
+          input.value = '';
+          document.getElementById('tip').value = '';
+          return;
+        }
+
+        const numericValue = parseInt(value, 10);
+        input.value = new Intl.NumberFormat('id-ID').format(numericValue);
+        document.getElementById('tip').value = numericValue;
+      }
 
       function openModal(mode, messageId = null) {
         const modal = document.getElementById('messageModal');
@@ -325,6 +516,8 @@
           form.action = '{{ route('admin.display-messages.store') }}';
           formMethod.value = 'POST';
           form.reset();
+          document.getElementById('tip').value = '';
+          document.getElementById('tip_display').value = '';
           document.getElementById('status').value = 'pending';
           updateCharCount();
         } else if (mode === 'edit' && messageId) {
@@ -336,7 +529,13 @@
 
             document.getElementById('customer_id').value = message.customer_id;
             document.getElementById('message').value = message.message;
-            document.getElementById('tip').value = message.tip || '';
+            if (message.tip) {
+              document.getElementById('tip').value = message.tip;
+              document.getElementById('tip_display').value = new Intl.NumberFormat('id-ID').format(message.tip);
+            } else {
+              document.getElementById('tip').value = '';
+              document.getElementById('tip_display').value = '';
+            }
             document.getElementById('status').value = message.status;
             updateCharCount();
           }
@@ -364,33 +563,86 @@
       }
 
       function updateStatus(messageId, status) {
-        if (confirm('Apakah Anda yakin ingin mengubah status message ini?')) {
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = `/admin/display-messages/${messageId}/status`;
-
-          const csrfToken = document.createElement('input');
-          csrfToken.type = 'hidden';
-          csrfToken.name = '_token';
-          csrfToken.value = '{{ csrf_token() }}';
-
-          const methodField = document.createElement('input');
-          methodField.type = 'hidden';
-          methodField.name = '_method';
-          methodField.value = 'PATCH';
-
-          const statusField = document.createElement('input');
-          statusField.type = 'hidden';
-          statusField.name = 'status';
-          statusField.value = status;
-
-          form.appendChild(csrfToken);
-          form.appendChild(methodField);
-          form.appendChild(statusField);
-
-          document.body.appendChild(form);
-          form.submit();
+        if (status === 'displayed' && activeDisplayedId && activeDisplayedId != messageId) {
+          showActiveWarningModal(activeDisplayedId);
+          return;
         }
+
+        pendingStatusUpdate = { messageId, status };
+
+        const modal = document.getElementById('statusConfirmModal');
+        const iconBg = document.getElementById('statusConfirmIconBg');
+        const icon = document.getElementById('statusConfirmIcon');
+        const title = document.getElementById('statusConfirmTitle');
+        const msg = document.getElementById('statusConfirmMessage');
+        const confirmBtn = document.getElementById('confirmStatusBtn');
+
+        if (status === 'displayed') {
+          iconBg.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-emerald-100';
+          icon.className = 'w-7 h-7 text-emerald-600';
+          icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>`;
+          title.textContent = 'Tampilkan Pesan';
+          msg.textContent = 'Apakah Anda yakin ingin menyetujui dan menampilkan pesan ini ke layar LED?';
+          confirmBtn.className = 'flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition flex items-center justify-center gap-2';
+        } else if (status === 'completed') {
+          iconBg.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-blue-100';
+          icon.className = 'w-7 h-7 text-blue-600';
+          icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>`;
+          title.textContent = 'Selesaikan Penayangan Pesan';
+          msg.textContent = 'Apakah Anda yakin penayangan pesan ini telah selesai dan ingin mematikan display?';
+          confirmBtn.className = 'flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition flex items-center justify-center gap-2';
+        } else if (status === 'rejected') {
+          iconBg.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-red-100';
+          icon.className = 'w-7 h-7 text-red-600';
+          icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>`;
+          title.textContent = 'Tolak Pesan';
+          msg.textContent = 'Apakah Anda yakin ingin menolak pesan ini?';
+          confirmBtn.className = 'flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold transition flex items-center justify-center gap-2';
+        } else {
+          iconBg.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-slate-100';
+          icon.className = 'w-7 h-7 text-slate-600';
+          icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>`;
+          title.textContent = 'Konfirmasi Status';
+          msg.textContent = 'Apakah Anda yakin ingin mengubah status pesan ini?';
+          confirmBtn.className = 'flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-semibold transition flex items-center justify-center gap-2';
+        }
+
+        modal.classList.remove('hidden');
+      }
+
+      function closeStatusConfirmModal() {
+        document.getElementById('statusConfirmModal').classList.add('hidden');
+        pendingStatusUpdate = { messageId: null, status: null };
+      }
+
+      function submitStatusChange() {
+        if (!pendingStatusUpdate.messageId || !pendingStatusUpdate.status) return;
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/display-messages/${pendingStatusUpdate.messageId}/status`;
+
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = '_token';
+        csrfToken.value = '{{ csrf_token() }}';
+
+        const methodField = document.createElement('input');
+        methodField.type = 'hidden';
+        methodField.name = '_method';
+        methodField.value = 'PATCH';
+
+        const statusField = document.createElement('input');
+        statusField.type = 'hidden';
+        statusField.name = 'status';
+        statusField.value = pendingStatusUpdate.status;
+
+        form.appendChild(csrfToken);
+        form.appendChild(methodField);
+        form.appendChild(statusField);
+
+        document.body.appendChild(form);
+        form.submit();
       }
 
       function updateCharCount() {
@@ -407,6 +659,25 @@
           charCount.classList.add('text-gray-500');
         }
       }
+
+      // Add/Edit Form submit validation
+      document.getElementById('messageForm').addEventListener('submit', function(e) {
+        const statusVal = document.getElementById('status').value;
+        const currentFormMethod = document.getElementById('formMethod').value;
+        const formAction = this.action;
+        let editingId = null;
+
+        if (currentFormMethod === 'PUT') {
+          const parts = formAction.split('/');
+          editingId = parseInt(parts[parts.length - 1], 10);
+        }
+
+        if (statusVal === 'displayed' && activeDisplayedId && activeDisplayedId != editingId) {
+          e.preventDefault();
+          closeModal();
+          showActiveWarningModal(activeDisplayedId);
+        }
+      });
 
       // Search functionality
       document.getElementById('searchInput').addEventListener('input', function(e) {
@@ -436,6 +707,8 @@
         if (e.key === 'Escape') {
           closeModal();
           closeDeleteModal();
+          closeStatusConfirmModal();
+          closeDisplayedWarningModal();
         }
       });
 
@@ -446,6 +719,14 @@
 
       document.getElementById('deleteModal').addEventListener('click', function(e) {
         if (e.target === this) closeDeleteModal();
+      });
+
+      document.getElementById('statusConfirmModal').addEventListener('click', function(e) {
+        if (e.target === this) closeStatusConfirmModal();
+      });
+
+      document.getElementById('displayedWarningModal').addEventListener('click', function(e) {
+        if (e.target === this) closeDisplayedWarningModal();
       });
     </script>
   @endpush

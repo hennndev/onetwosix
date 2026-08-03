@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Permintaan Kode Otorisasi">
   <div class="p-6 max-w-2xl mx-auto">
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">

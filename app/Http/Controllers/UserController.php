@@ -62,16 +62,34 @@ class UserController extends Controller
             'address' => 'nullable|string',
             'birth_date' => 'nullable|date',
             'role_id' => 'required|exists:roles,id',
-            'area_id' => 'nullable|exists:areas,id',
             'is_active' => 'boolean',
         ]);
+
+        $role = Role::findById($validated['role_id']);
+        $roleNameLower = strtolower($role->name);
+        $isAdminRole = str_contains($roleNameLower, 'admin') || str_contains($roleNameLower, 'manager');
+
+        if ($request->input('area_id') === 'all') {
+            if (! $isAdminRole) {
+                return back()->withErrors(['area_id' => 'Pilihan Semua Area hanya diperbolehkan untuk Administrator.'])->withInput();
+            }
+            $resolvedAreaId = null;
+        } else {
+            $request->validate([
+                'area_id' => 'required|exists:areas,id',
+            ], [
+                'area_id.required' => 'Area wajib dipilih.',
+            ]);
+            $resolvedAreaId = (int) $request->input('area_id');
+        }
+
         $accurateId = null;
         try {
             DB::beginTransaction();
             $response = $this->accurateService->saveEmployee([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
-                'position' => Role::findById($validated['role_id'])->name,
+                'position' => $role->name,
             ]);
             $accurateId = $response['r']['id'];
 
@@ -90,10 +108,9 @@ class UserController extends Controller
                 'accurate_id' => $accurateId,
                 'user_id' => $user->id,
                 'user_profile_id' => $profile->id,
-                'area_id' => $validated['area_id'] ?? null,
+                'area_id' => $resolvedAreaId,
                 'is_active' => $validated['is_active'] ?? true,
             ]);
-            $role = Role::findById($validated['role_id']);
             $user->assignRole($role);
             DB::commit();
 
@@ -120,9 +137,26 @@ class UserController extends Controller
             'address' => 'nullable|string',
             'birth_date' => 'nullable|date',
             'role_id' => 'required|exists:roles,id',
-            'area_id' => 'nullable|exists:areas,id',
             'is_active' => 'boolean',
         ]);
+
+        $role = Role::findById($validated['role_id']);
+        $roleNameLower = strtolower($role->name);
+        $isAdminRole = str_contains($roleNameLower, 'admin') || str_contains($roleNameLower, 'manager');
+
+        if ($request->input('area_id') === 'all') {
+            if (! $isAdminRole) {
+                return back()->withErrors(['area_id' => 'Pilihan Semua Area hanya diperbolehkan untuk Administrator.'])->withInput();
+            }
+            $resolvedAreaId = null;
+        } else {
+            $request->validate([
+                'area_id' => 'required|exists:areas,id',
+            ], [
+                'area_id.required' => 'Area wajib dipilih.',
+            ]);
+            $resolvedAreaId = (int) $request->input('area_id');
+        }
 
         try {
             DB::beginTransaction();
@@ -140,7 +174,7 @@ class UserController extends Controller
                     'id' => (int) $accurateId,
                     'name' => $validated['name'],
                     'email' => $validated['email'],
-                    'position' => Role::findById($validated['role_id'])->name,
+                    'position' => $role->name,
                 ]);
             }
             $user->update($userData);
@@ -152,7 +186,7 @@ class UserController extends Controller
 
             // Update internal user
             $user->internalUser->update([
-                'area_id' => $validated['area_id'] ?? null,
+                'area_id' => $resolvedAreaId,
                 'is_active' => $validated['is_active'] ?? true,
             ]);
 
@@ -317,6 +351,46 @@ class UserController extends Controller
         return back()->withErrors(['error' => $message]);
     }
 
+    // SINKRONISASI 1 USER KE ACCURATE
+    public function syncAccurate(User $user)
+    {
+        try {
+            $roleName = $user->roles->first()?->name ?? 'Cashier';
+
+            $payload = [
+                'name' => $user->name,
+                'email' => $user->email,
+                'position' => $roleName,
+            ];
+
+            if ($user->internalUser?->accurate_id) {
+                $payload['id'] = (int) $user->internalUser->accurate_id;
+            }
+
+            $response = $this->accurateService->saveEmployee($payload);
+            $accurateId = $response['r']['id'] ?? null;
+
+            if ($accurateId) {
+                if ($user->internalUser) {
+                    $user->internalUser->update(['accurate_id' => $accurateId]);
+                } else {
+                    InternalUser::create([
+                        'user_id' => $user->id,
+                        'accurate_id' => $accurateId,
+                        'is_active' => true,
+                    ]);
+                }
+
+                return redirect()->route('admin.users.index')
+                    ->with('success', "User {$user->name} berhasil disinkronkan ke Accurate Online (ID: {$accurateId}).");
+            }
+
+            return back()->withErrors(['error' => 'Gagal mendapatkan ID respon dari Accurate Online.']);
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Gagal sinkronisasi user ke Accurate: '.$e->getMessage()]);
+        }
+    }
+
     private function resolveRoleFromEmployee(array $employeeData): ?Role
     {
         $position = trim((string) ($employeeData['position'] ?? $employeeData['positionName'] ?? $employeeData['jobTitle'] ?? ''));
@@ -375,7 +449,7 @@ class UserController extends Controller
         try {
             $accurateId = $user->internalUser?->accurate_id;
 
-            if ($accurateId !== null && !$request->has('force')) {
+            if ($accurateId !== null && ! $request->has('force')) {
                 $this->accurateService->deleteEmployee((int) $accurateId);
             }
             $user->delete();
@@ -386,23 +460,24 @@ class UserController extends Controller
             if ($e->getCode() == '23000') {
                 return back()->withErrors(['error' => 'Gagal menghapus user: User ini sudah terhubung dengan data transaksi (seperti order). Silakan ubah status user menjadi "Inactive" melalui menu Edit daripada menghapusnya.']);
             }
-            return back()->withErrors(['error' => 'Gagal menghapus user karena ada data terkait: ' . $e->getMessage()]);
+
+            return back()->withErrors(['error' => 'Gagal menghapus user karena ada data terkait: '.$e->getMessage()]);
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
-            
+
             // Check if error is related to Accurate
-            $isAccurateError = str_contains(strtolower($errorMessage), 'accurate') || 
-                               str_contains(strtolower($errorMessage), 'tidak ditemukan') || 
-                               str_contains(strtolower($errorMessage), 'sudah dihapus') || 
+            $isAccurateError = str_contains(strtolower($errorMessage), 'accurate') ||
+                               str_contains(strtolower($errorMessage), 'tidak ditemukan') ||
+                               str_contains(strtolower($errorMessage), 'sudah dihapus') ||
                                str_contains(strtolower($errorMessage), 'host database');
-                               
+
             if ($isAccurateError) {
                 return back()
                     ->with('accurate_error_id', $user->id)
                     ->with('accurate_error_message', $errorMessage);
             }
-            
-            return back()->withErrors(['error' => 'Gagal menghapus user: ' . $errorMessage]);
+
+            return back()->withErrors(['error' => 'Gagal menghapus user: '.$errorMessage]);
         }
     }
 }

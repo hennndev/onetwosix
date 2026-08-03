@@ -44,7 +44,8 @@ class WaiterController extends Controller
             ->orderByDesc('checked_in_at')
             ->get();
 
-        $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
         $sessionChargePreviews = $sessions->mapWithKeys(function (TableSession $session) {
             $billing = $session->billing;
 

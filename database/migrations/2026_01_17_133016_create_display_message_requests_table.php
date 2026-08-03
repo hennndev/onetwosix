@@ -19,10 +19,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->enum('status', [
-                'pending',  
+                'pending',
                 'displayed',
-                'rejected', 
-                'cancelled' 
+                'completed',
+                'rejected',
+                'cancelled',
             ])->default('pending');
         });
     }

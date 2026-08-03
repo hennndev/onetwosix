@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Dashboard">
   <div class="p-6">
     @if (session('success'))
       <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
@@ -33,6 +33,23 @@
         </form>
       </div>
     </div>
+
+    <!-- Area Selector Pills -->
+    @if (($areas ?? collect())->count() > 1)
+      <div class="bg-white rounded-xl p-4 mb-6 shadow-sm border border-gray-100 flex items-center gap-3">
+        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Area:</span>
+        <a href="{{ route('admin.dashboard', array_merge(request()->except('area_id'), ['area_id' => 'all'])) }}"
+           class="px-4 py-1.5 text-xs rounded-full font-medium transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white font-semibold shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $a)
+          <a href="{{ route('admin.dashboard', array_merge(request()->except('area_id'), ['area_id' => $a->id])) }}"
+             class="px-4 py-1.5 text-xs rounded-full font-medium transition {{ $selectedAreaId === $a->id ? 'bg-slate-800 text-white font-semibold shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+            {{ $a->name }}
+          </a>
+        @endforeach
+      </div>
+    @endif
 
     <!-- Stats Cards Row -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">

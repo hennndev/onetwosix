@@ -10,6 +10,7 @@ class Printer extends Model
     protected $fillable = [
         'name',
         'location',
+        'area_id',
         'printer_type',
         'connection_type',
         'ip',
@@ -24,6 +25,23 @@ class Printer extends Model
         'is_default',
         'is_active',
     ];
+
+    public function area(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Area::class);
+    }
+
+    public function scopeForArea($query, ?int $areaId)
+    {
+        if (! $areaId) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($areaId) {
+            $q->where('area_id', $areaId)
+                ->orWhereNull('area_id');
+        });
+    }
 
     protected $casts = [
         'show_qr_code' => 'boolean',
