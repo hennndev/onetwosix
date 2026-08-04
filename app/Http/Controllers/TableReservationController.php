@@ -672,6 +672,8 @@ class TableReservationController extends Controller
             'discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_nominal' => 'nullable|numeric|min:0',
             'discount_auth_code' => 'nullable|digits:4',
+            'discount_order_item_ids' => 'nullable|array',
+            'discount_order_item_ids.*' => 'integer|distinct|exists:order_items,id',
         ]);
 
         $session = TableSession::with(['billing', 'orders.items'])
@@ -730,6 +732,32 @@ class TableReservationController extends Controller
                 $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
                 $discountNominal = (float) ($validated['discount_nominal'] ?? 0);
                 $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
+                $selectedItemIds = collect($validated['discount_order_item_ids'] ?? [])->map(fn ($id): int => (int) $id)->unique()->values();
+                $activeItems = $session->orders
+                    ->where('status', '!=', 'cancelled')
+                    ->flatMap(fn ($order) => $order->items)
+                    ->where('status', '!=', 'cancelled');
+                $selectedItems = $activeItems->whereIn('id', $selectedItemIds)->values();
+                $hasSelectedItemDiscount = $activeItems->sum(fn ($item): float => (float) $item->discount_amount) > 0;
+
+                if ($hasSelectedItemDiscount && (($discountType ?? 'none') !== 'none' || $focCompPaymentMethod === 'Compliment')) {
+                    throw ValidationException::withMessages([
+                        'discount_type' => 'Billing sudah memiliki diskon item dan tidak dapat digabung dengan diskon transaksi atau Compliment.',
+                    ]);
+                }
+
+                if (($discountType ?? 'none') !== 'none') {
+                    if ($selectedItemIds->isEmpty()) {
+                        throw ValidationException::withMessages([
+                            'discount_order_item_ids' => 'Pilih minimal satu item yang akan didiskon.',
+                        ]);
+                    }
+                    if ($selectedItems->count() !== $selectedItemIds->count()) {
+                        throw ValidationException::withMessages([
+                            'discount_order_item_ids' => 'Item diskon harus berasal dari billing aktif ini.',
+                        ]);
+                    }
+                }
 
                 $baseTotals = $this->calculateSessionBillingTotals(
                     $session,
@@ -739,22 +767,29 @@ class TableReservationController extends Controller
                 );
 
                 $discountBaseTotal = (float) ($baseTotals['discount_base_total'] ?? $baseTotals['grand_total_before_down_payment']);
+                $selectedItemsTotal = (float) $selectedItems->sum(fn ($item): float => (float) $item->subtotal);
 
                 if ($focCompPaymentMethod === 'Compliment') {
                     $requestedDiscountAmount = $discountBaseTotal;
                 } else {
                     $requestedDiscountAmount = match ($discountType) {
-                        'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
+                        'percentage' => round($selectedItemsTotal * ($discountPercentage / 100), 2),
                         'nominal' => round($discountNominal, 2),
                         default => 0,
                     };
                 }
 
-                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
+                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $focCompPaymentMethod === 'Compliment' ? $discountBaseTotal : $selectedItemsTotal);
 
                 $requiresAuthCode = $requestedDiscountAmount > 0 || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
 
                 if ($requiresAuthCode) {
+                    $requestedAt = (int) request()->session()->get('booking_discount_auth_code_requested_at', 0);
+                    if ($requestedAt === 0 || now()->timestamp - $requestedAt > 300) {
+                        throw ValidationException::withMessages([
+                            'discount_auth_code' => 'Request auth code terlebih dahulu sebelum memberikan diskon.',
+                        ]);
+                    }
                     if ($discountAuthCode === '') {
                         throw ValidationException::withMessages([
                             'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
@@ -769,14 +804,47 @@ class TableReservationController extends Controller
                             'discount_auth_code' => 'Auth code diskon tidak valid.',
                         ]);
                     }
+
+                    request()->session()->forget('booking_discount_auth_code_requested_at');
+                }
+
+                if ($requestedDiscountAmount > 0 && $focCompPaymentMethod !== 'Compliment') {
+                    $remainingDiscount = $requestedDiscountAmount;
+                    foreach ($selectedItems as $index => $item) {
+                        $itemSubtotal = (float) $item->subtotal;
+                        $lineDiscount = $index === $selectedItems->count() - 1
+                            ? $remainingDiscount
+                            : round($requestedDiscountAmount * ($itemSubtotal / $selectedItemsTotal), 2);
+                        $lineDiscount = min(max($lineDiscount, 0), $itemSubtotal);
+                        $item->update([
+                            'discount_amount' => $lineDiscount,
+                            'discount_reason' => 'Diskon saat tutup billing',
+                        ]);
+                        $remainingDiscount -= $lineDiscount;
+                    }
+                    $session->orders->each(fn (Order $order) => $order->updateTotals());
+                    $session->load('orders.items.inventoryItem');
                 }
 
                 $totals = $this->calculateSessionBillingTotals(
                     $session,
-                    $requestedDiscountAmount,
+                    $focCompPaymentMethod === 'Compliment' ? $requestedDiscountAmount : 0,
                     (float) $billing->minimum_charge,
                     (float) ($booking->down_payment_amount ?? 0),
                 );
+
+                if ($focCompPaymentMethod !== 'Compliment') {
+                    $lineDiscountTotal = (float) $session->orders
+                        ->where('status', '!=', 'cancelled')
+                        ->flatMap(fn (Order $order) => $order->items)
+                        ->where('status', '!=', 'cancelled')
+                        ->sum(fn (OrderItem $item): float => (float) $item->discount_amount);
+                    $netOrdersTotal = (float) $totals['orders_total'];
+                    $grossOrdersTotal = $netOrdersTotal + $lineDiscountTotal;
+                    $totals['orders_total'] = $grossOrdersTotal;
+                    $totals['subtotal'] += $lineDiscountTotal;
+                    $totals['discount_amount'] = $lineDiscountTotal;
+                }
 
                 $billingSequence = Billing::query()
                     ->where('is_booking', true)
@@ -1015,6 +1083,7 @@ class TableReservationController extends Controller
                     'qty' => $group->sum('quantity'),
                     'price' => (float) $first->price,
                     'subtotal' => $group->sum('subtotal'),
+                    'discount_amount' => $group->sum('discount_amount'),
                 ];
             })->values();
 
@@ -1066,6 +1135,37 @@ class TableReservationController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menutup billing: '.$e->getMessage()], 500);
         }
+    }
+
+    public function discountItems(TableReservation $booking): JsonResponse
+    {
+        $session = TableSession::query()
+            ->with('orders.items.inventoryItem')
+            ->where('table_reservation_id', $booking->id)
+            ->where('status', 'active')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            return response()->json(['items' => []]);
+        }
+
+        $items = $session->orders
+            ->where('status', '!=', 'cancelled')
+            ->flatMap(fn (Order $order) => $order->items)
+            ->where('status', '!=', 'cancelled')
+            ->map(fn (OrderItem $item): array => [
+                'id' => $item->id,
+                'name' => $item->item_name,
+                'quantity' => $item->quantity,
+                'subtotal' => (float) $item->subtotal,
+                'discount_amount' => (float) $item->discount_amount,
+                'include_tax' => (bool) ($item->inventoryItem?->include_tax ?? true),
+                'include_service_charge' => (bool) ($item->inventoryItem?->include_service_charge ?? true),
+            ])
+            ->values();
+
+        return response()->json(['items' => $items]);
     }
 
     public function reSyncAccurate(TableReservation $booking)
@@ -1504,15 +1604,16 @@ class TableReservationController extends Controller
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
-                ->groupBy('inventory_item_id')
-                ->map(function ($group) use ($warehouseName) {
-                    $first = $group->first();
+                ->where('status', '!=', 'cancelled')
+                ->map(function ($item) use ($warehouseName) {
+                    $gross = (float) $item->subtotal;
+                    $discountPercent = $gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0;
 
                     return [
-                        'itemNo' => $first->inventoryItem?->code ?? $first->item_code,
-                        'quantity' => $group->sum('quantity'),
-                        'unitPrice' => (float) $first->price,
-                        'discountPercent' => 0,
+                        'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
+                        'quantity' => $item->quantity,
+                        'unitPrice' => (float) $item->price,
+                        'discountPercent' => $discountPercent,
                         'warehouseName' => $warehouseName,
                     ];
                 })
@@ -1799,7 +1900,7 @@ class TableReservationController extends Controller
     protected function ensureAccurateCustomer(int $userId): ?string
     {
         $customerUser = CustomerUser::where('user_id', $userId)->first();
-        if ($customerUser?->customer_code) {
+        if ($customerUser?->customer_code && $customerUser?->accurate_id) {
             return $customerUser->customer_code;
         }
 
@@ -1813,6 +1914,10 @@ class TableReservationController extends Controller
             'email' => $user->email,
         ];
 
+        if ($customerUser?->accurate_id) {
+            $payload['id'] = $customerUser->accurate_id;
+        }
+
         try {
             $response = $this->accurateService->saveCustomer($payload);
             $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;
@@ -1820,8 +1925,10 @@ class TableReservationController extends Controller
 
             if ($customerNo) {
                 if (! $customerUser) {
+                    $profile = UserProfile::firstOrCreate(['user_id' => $user->id]);
                     $customerUser = CustomerUser::create([
                         'user_id' => $user->id,
+                        'user_profile_id' => $profile->id,
                         'accurate_id' => $accurateId,
                         'customer_code' => $customerNo,
                         'total_visits' => 0,
@@ -2392,6 +2499,7 @@ class TableReservationController extends Controller
                 'qty' => $group->sum('quantity'),
                 'price' => (float) $first->price,
                 'subtotal' => $group->sum('subtotal'),
+                'discount_amount' => $group->sum('discount_amount'),
             ];
         })->values() ?? collect();
 

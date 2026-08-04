@@ -311,9 +311,15 @@
           form.action = '{{ route('admin.customers.store') }}';
           formMethod.value = 'POST';
           form.reset();
-          passwordRequired.style.display = 'inline';
-          passwordHint.style.display = 'none';
-          passwordInput.required = true;
+          if (passwordRequired) passwordRequired.style.display = 'none';
+          if (passwordHint) {
+            passwordHint.style.display = 'inline';
+            passwordHint.textContent = '(opsional, min. 8 karakter)';
+          }
+          if (passwordInput) {
+            passwordInput.required = false;
+            passwordInput.removeAttribute('minlength');
+          }
           customerDataFields.classList.add('hidden');
         } else if (mode === 'edit' && customerId) {
           const customer = customers.find(c => c.id === customerId);
@@ -330,10 +336,16 @@
             document.getElementById('total_visits').value = customer.total_visits;
             document.getElementById('lifetime_spending').value = customer.lifetime_spending;
 
-            passwordRequired.style.display = 'none';
-            passwordHint.style.display = 'block';
-            passwordInput.required = false;
-            passwordInput.value = '';
+            if (passwordRequired) passwordRequired.style.display = 'none';
+            if (passwordHint) {
+              passwordHint.style.display = 'inline';
+              passwordHint.textContent = '(kosongkan jika tidak diubah)';
+            }
+            if (passwordInput) {
+              passwordInput.required = false;
+              passwordInput.removeAttribute('minlength');
+              passwordInput.value = '';
+            }
             customerDataFields.classList.remove('hidden');
           }
         }
@@ -352,6 +364,10 @@
 
       // Handle form submission to prevent double-click and show loading spinner
       document.getElementById('customerForm').addEventListener('submit', function(e) {
+        if (!this.checkValidity()) {
+          return;
+        }
+
         const submitBtn = document.getElementById('submitCustomerBtn');
         const cancelBtn = document.getElementById('cancelCustomerBtn');
         const spinner = document.getElementById('customerSubmitSpinner');
@@ -386,6 +402,10 @@
       });
 
       showTab(initialTab);
+
+      @if ($errors->any())
+        openModal('{{ old('_method') === 'PUT' ? 'edit' : 'add' }}');
+      @endif
     </script>
 
     <style>

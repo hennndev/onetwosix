@@ -117,6 +117,52 @@ test('booking checkout decrements inventory stock', function () {
         ->and((float) $orderItem->tax_amount)->toBe(8250.0);
 });
 
+test('booking checkout replays the same order for the same idempotency key', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 10]);
+    $session = TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+    $cartKey = 'item_'.$inventoryItem->id;
+    $idempotencyKey = fake()->uuid();
+    $payload = [
+        'customer_type' => 'booking',
+        'customer_user_id' => $customer->id,
+        'table_id' => $table->id,
+        'discount_percentage' => 0,
+        'idempotency_key' => $idempotencyKey,
+    ];
+
+    $first = actingAs($admin)
+        ->withSession(['pos_cart' => [
+            $cartKey => [
+                'id' => $cartKey,
+                'name' => $inventoryItem->name,
+                'price' => (float) $inventoryItem->price,
+                'quantity' => 2,
+                'preparation_location' => 'kitchen',
+            ],
+        ]])
+        ->postJson(route('admin.pos.checkout'), $payload)
+        ->assertSuccessful();
+
+    $second = actingAs($admin)
+        ->postJson(route('admin.pos.checkout'), $payload)
+        ->assertSuccessful()
+        ->assertJsonPath('idempotent_replay', true);
+
+    expect($second->json('order_id'))->toBe($first->json('order_id'))
+        ->and(Order::query()->where('table_session_id', $session->id)->count())->toBe(1)
+        ->and($inventoryItem->fresh()->stock_quantity)->toBe(8);
+});
+
 test('booking checkout keeps compliment and foc items at original price', function (string $categoryMain) {
     $admin = adminUser();
     $customer = User::factory()->create();
@@ -370,6 +416,8 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Auth Code Diskon (4 digit)', false)
         ->assertSee('Request Auth Code', false)
         ->assertSee('requestAuthCodeEmail()', false)
+        ->assertSee('requestSelectedDiscountAuthCode()', false)
+        ->assertSee('selectedDiscount.authCodeRequested', false)
         ->assertSee('x-show="calculatedServiceCharge() > 0"', false)
         ->assertSee('x-show="calculatedTax() > 0"', false)
         ->assertDontSee('x-text="receiptData?.tableDisplay"', false)
@@ -1062,9 +1110,10 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         'lifetime_spending' => 0,
     ]);
 
+    $capturedSalesOrderPayload = null;
     $capturedInvoicePayload = null;
 
-    mock(AccurateService::class, function (MockInterface $mock) use (&$capturedInvoicePayload): void {
+    mock(AccurateService::class, function (MockInterface $mock) use (&$capturedSalesOrderPayload, &$capturedInvoicePayload): void {
         // Item has no group components → decrement item's own stock
         $mock->shouldReceive('getItemGroupComponents')
             ->andReturn([]);
@@ -1080,6 +1129,11 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
 
         $mock->shouldReceive('saveSalesOrder')
             ->once()
+            ->withArgs(function (array $payload) use (&$capturedSalesOrderPayload): bool {
+                $capturedSalesOrderPayload = $payload;
+
+                return true;
+            })
             ->andReturn([
                 'r' => [
                     'number' => 'ROOM-WALKIN-20260318-12345',
@@ -1139,6 +1193,8 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
     $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
 
     expect($capturedInvoicePayload)->not->toBeNull()
+        ->and($capturedSalesOrderPayload['detailItem'][0]['discountPercent'])->toBe(0.0)
+        ->and($capturedInvoicePayload['detailItem'][0]['discountPercent'])->toBe(0.0)
         ->and((string) ($taxExpense['accountNo'] ?? ''))->toBe('210201')
         ->and((string) ($scExpense['accountNo'] ?? ''))->toBe('210202')
         ->and((float) ($scExpense['expenseAmount'] ?? 0))->toBe(5550.0)
@@ -1242,9 +1298,9 @@ test('walk in checkout stores accurate sync error on billing when invoice push f
     $order = Order::query()->latest('id')->firstOrFail();
 
     expect($billing->error_message)->toBe('Accurate invoice failed')
-        ->and($billing->accurate_so_number)->toBeNull()
+        ->and($billing->accurate_so_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{5}$/')
         ->and($billing->accurate_inv_number)->toBeNull()
-        ->and($order->accurate_so_number)->toBeNull()
+        ->and($order->accurate_so_number)->toBe($billing->accurate_so_number)
         ->and($order->accurate_inv_number)->toBeNull();
 });
 
@@ -2383,7 +2439,7 @@ test('booking checkout creates only one kitchen order when item is assigned to k
     expect(KitchenOrder::query()->count())->toBe(1);
 });
 
-test('booking checkout for menu category with is_count_portion_possible false still decrements ingredient stock allowing negative', function () {
+test('booking checkout rejects insufficient ingredient stock when portion display is disabled', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
     $area = makePosArea();
@@ -2452,14 +2508,15 @@ test('booking checkout for menu category with is_count_portion_possible false st
         ]);
 
     $response
-        ->assertSuccessful()
-        ->assertJsonPath('success', true);
+        ->assertUnprocessable()
+        ->assertJsonPath('success', false);
 
     expect($menuItem->fresh()->stock_quantity)->toBe(10)
-        ->and($ingredientItem->fresh()->stock_quantity)->toBe(-3);
+        ->and($ingredientItem->fresh()->stock_quantity)->toBe(3)
+        ->and(Order::query()->count())->toBe(0);
 });
 
-test('booking checkout not blocked when is_count_portion_possible false even with ingredient stock shortage', function () {
+test('booking checkout never creates negative ingredient stock when portion display is disabled', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
     $area = makePosArea();
@@ -2528,8 +2585,9 @@ test('booking checkout not blocked when is_count_portion_possible false even wit
         ]);
 
     $response
-        ->assertSuccessful()
-        ->assertJsonPath('success', true);
+        ->assertUnprocessable()
+        ->assertJsonPath('success', false);
 
-    expect($ingredientItem->fresh()->stock_quantity)->toBe(-49);
+    expect($ingredientItem->fresh()->stock_quantity)->toBe(1)
+        ->and(Order::query()->count())->toBe(0);
 });

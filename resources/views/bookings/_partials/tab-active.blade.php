@@ -144,6 +144,15 @@
               $checkerItems = $session->orders->flatMap->items->where('status', '!=', 'cancelled');
               $checkerTotalItems = $checkerItems->count();
               $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
+              $closeBillingDiscountItems = $checkerItems->map(fn ($item) => [
+                'id' => $item->id,
+                'name' => $item->item_name,
+                'quantity' => $item->quantity,
+                'subtotal' => (float) $item->subtotal,
+                'discount_amount' => (float) $item->discount_amount,
+                'include_tax' => (bool) ($item->inventoryItem?->include_tax ?? true),
+                'include_service_charge' => (bool) ($item->inventoryItem?->include_service_charge ?? true),
+              ])->values();
             @endphp
             <tr class="hover:bg-gray-50 transition-colors">
 
@@ -390,6 +399,8 @@
                               data-grand-total="{{ (float) $computedGrandTotal }}"
                               data-checker-checked="{{ $checkerCheckedItems }}"
                               data-checker-total="{{ $checkerTotalItems }}"
+                              data-discount-items="{{ base64_encode($closeBillingDiscountItems->toJson()) }}"
+                              data-discount-items-url="{{ route('admin.bookings.discountItems', $reservation) }}"
                               onclick="openCloseBillingModal(this)"
                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition">
                         <svg class="w-3.5 h-3.5"

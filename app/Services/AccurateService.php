@@ -395,6 +395,7 @@ class AccurateService
         return Http::withToken($accessToken)
             ->withHeaders(['X-Session-ID' => $database['session']])
             ->acceptJson()
+            ->timeout(config('accurate.api_timeout', 10))
             ->baseUrl($database['host'].'/accurate');
     }
 
@@ -417,7 +418,7 @@ class AccurateService
                 'X-Api-Signature' => $signature,
             ])
             ->acceptJson()
-            ->timeout(config('accurate.api_timeout', 30))
+            ->timeout(config('accurate.api_timeout', 10))
             ->baseUrl($host.'/accurate');
     }
 

@@ -106,6 +106,9 @@ class PrinterService
                 $escpos->text("{$item['name']} {$item['qty']}x\n");
                 $escpos->setEmphasis(false);
                 $escpos->text($this->formatClosedBillingPair('Harga: Rp '.number_format((float) $item['price'], 0, ',', '.'), 'Total: Rp '.number_format((float) $item['subtotal'], 0, ',', '.'), $width)."\n");
+                if ((float) ($item['discount_amount'] ?? 0) > 0) {
+                    $escpos->text($this->formatClosedBillingPair('Diskon Item', '- Rp '.number_format((float) $item['discount_amount'], 0, ',', '.'), $width)."\n");
+                }
                 $escpos->text(str_repeat('-', $width)."\n");
             }
 
@@ -729,6 +732,7 @@ class PrinterService
                     'qty' => (int) $group->sum('quantity'),
                     'price' => $this->resolvePrintableItemPrice($first),
                     'subtotal' => (float) $group->sum(fn ($item): float => $this->resolvePrintableItemSubtotal($item)),
+                    'discount_amount' => (float) $group->sum('discount_amount'),
                 ];
             })
             ->values()

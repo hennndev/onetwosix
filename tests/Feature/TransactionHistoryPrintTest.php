@@ -2,6 +2,7 @@
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\CustomerUser;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
@@ -11,6 +12,8 @@ use App\Models\Printer;
 use App\Models\Tabel;
 use App\Models\TableSession;
 use App\Models\User;
+use App\Models\UserProfile;
+use App\Services\AccurateService;
 use App\Services\PrinterService;
 use Mockery\MockInterface;
 
@@ -729,6 +732,51 @@ test('transaction history resync accurate returns success when accurate numbers 
         ->post(route('admin.transaction-history.reSyncAccurate', $order))
         ->assertRedirect()
         ->assertSessionHas('success', 'SO dan Invoice Accurate sudah tersedia.');
+});
+
+test('transaction history resync sends item discount to accurate', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create(['user_id' => $customer->id]);
+    $customerUser = CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 12345,
+        'customer_code' => 'CUST-RESYNC',
+    ]);
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen');
+    $order->update(['customer_user_id' => $customerUser->id, 'discount_amount' => 5000, 'total' => 45000]);
+    $order->items()->update(['discount_amount' => 5000]);
+    makeTransactionHistoryBilling($order, [
+        'orders_total' => 50000,
+        'subtotal' => 50000,
+        'discount_amount' => 5000,
+        'grand_total' => 45000,
+        'paid_amount' => 45000,
+    ]);
+    $payloads = [];
+
+    mock(AccurateService::class, function (MockInterface $mock) use (&$payloads): void {
+        $mock->shouldReceive('saveSalesOrder')->once()->withArgs(function (array $payload) use (&$payloads): bool {
+            $payloads['sales_order'] = $payload;
+
+            return true;
+        })->andReturnUsing(fn (array $payload): array => ['r' => ['number' => $payload['number']]]);
+        $mock->shouldReceive('saveSalesInvoice')->once()->withArgs(function (array $payload) use (&$payloads): bool {
+            $payloads['sales_invoice'] = $payload;
+
+            return true;
+        })->andReturn(['r' => ['number' => 'INV-RESYNC']]);
+        $mock->shouldReceive('saveSalesReceipt')->once()->andReturn(['r' => ['number' => 'RECEIPT-RESYNC']]);
+    });
+
+    actingAs($admin)
+        ->post(route('admin.transaction-history.reSyncAccurate', $order))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Re-sync Accurate berhasil.');
+
+    expect($payloads['sales_order']['detailItem'][0]['discountPercent'])->toBe(10.0)
+        ->and($payloads['sales_invoice']['detailItem'][0]['discountPercent'])->toBe(10.0);
 });
 
 test('transaction history filters orders by area_id', function () {

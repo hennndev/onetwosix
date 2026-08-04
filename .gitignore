@@ -19,5 +19,8 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+/public/build
+/public/hot
+/public/storage
 
 graphify-out

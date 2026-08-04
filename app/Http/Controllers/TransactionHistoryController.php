@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Billing;
 use App\Models\BillingPayment;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\Order;
 use App\Models\Printer;
 use App\Models\TableReservation;
@@ -631,12 +632,14 @@ class TransactionHistoryController extends Controller
                 ->groupBy('inventory_item_id')
                 ->map(function ($group) use ($warehouseName) {
                     $first = $group->first();
+                    $gross = (float) $group->sum('subtotal');
+                    $discountAmount = (float) $group->sum('discount_amount');
 
                     return [
                         'itemNo' => $first->inventoryItem?->code ?? $first->item_code,
                         'quantity' => $group->sum('quantity'),
                         'unitPrice' => (float) $first->price,
-                        'discountPercent' => 0,
+                        'discountPercent' => $gross > 0 ? round($discountAmount / $gross * 100, 6) : 0,
                         'warehouseName' => $warehouseName,
                     ];
                 })
@@ -910,7 +913,7 @@ class TransactionHistoryController extends Controller
     {
         $customerUser->loadMissing(['user', 'profile']);
 
-        if ($customerUser->customer_code) {
+        if ($customerUser->customer_code && $customerUser->accurate_id) {
             return $customerUser->customer_code;
         }
 
@@ -924,6 +927,10 @@ class TransactionHistoryController extends Controller
             'name' => $user->name,
             'email' => $user->email,
         ];
+
+        if ($customerUser->accurate_id) {
+            $payload['id'] = $customerUser->accurate_id;
+        }
 
         $response = $this->accurateService->saveCustomer($payload);
         $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;

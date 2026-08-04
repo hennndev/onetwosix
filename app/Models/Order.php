@@ -12,6 +12,7 @@ class Order extends Model
         'customer_user_id',
         'created_by',
         'order_number',
+        'idempotency_key',
         'status',
         'items_total',
         'discount_amount',
@@ -123,7 +124,11 @@ class Order extends Model
     public function updateTotals()
     {
         $this->items_total = $this->items()->sum('subtotal');
-        $this->total = $this->items_total - $this->discount_amount;
+        $lineDiscount = (float) $this->items()->sum('discount_amount');
+        if ($lineDiscount > 0) {
+            $this->discount_amount = $lineDiscount;
+        }
+        $this->total = max((float) $this->items_total - (float) $this->discount_amount, 0);
         $this->save();
     }
 

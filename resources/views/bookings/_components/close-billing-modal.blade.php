@@ -173,7 +173,14 @@
                  class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
           <input id="cb_discount_nominal"
                  type="hidden"
-                 value="0">
+                  value="0">
+        </div>
+
+        <div id="cbDiscountItemsBlock"
+             class="hidden space-y-2">
+          <p class="text-xs font-semibold text-gray-600">Pilih item yang mendapat diskon</p>
+          <div id="cbDiscountItems"
+               class="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2"></div>
         </div>
 
         <div id="cbDiscountAuthBlock"
@@ -182,10 +189,10 @@
                  class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code Diskon (4 digit)</label>
           <input id="cb_discount_auth_code"
                  type="password"
-                 inputmode="numeric"
-                 maxlength="4"
-                 placeholder="Masukkan auth code"
-                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                  inputmode="numeric"
+                  maxlength="4"
+                  placeholder="Masukkan auth code"
+                  class="hidden w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
           <button type="button"
                   onclick="requestAuthCodeEmailBooking()"
                   id="cbRequestAuthCodeBtn"
@@ -426,6 +433,11 @@
   let isRequestingAuthCodeEmailBooking = false;
   let cbCurrentSubTotal = 0;
   let cbCurrentDownPayment = 0;
+  let cbDiscountItems = [];
+  let cbAuthCodeRequested = false;
+  let cbMinimumCharge = 0;
+  let cbTaxPercentage = 0;
+  let cbServiceChargePercentage = 0;
 
   function formatRupiah(value) {
     return 'Rp ' + new Intl.NumberFormat('id-ID').format(value || 0);
@@ -453,17 +465,39 @@
     return document.querySelector('input[name="cb_discount_type"]:checked')?.value || 'none';
   }
 
+  function renderCloseBillingDiscountItems(message = null) {
+    document.getElementById('cbDiscountItems').innerHTML = message
+      ? `<p class="px-2 py-3 text-center text-xs text-gray-500">${message}</p>`
+      : cbDiscountItems.length === 0
+        ? '<p class="px-2 py-3 text-center text-xs text-gray-500">Tidak ada order item aktif pada billing ini.</p>'
+        : cbDiscountItems.map(item => `
+          <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50">
+            <input type="checkbox" name="cb_discount_order_item_ids" value="${item.id}" onchange="updateGrandTotalFromDiscount()" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+            <span class="min-w-0 flex-1 truncate text-xs text-gray-700">${item.quantity}x ${item.name}</span>
+            <span class="text-xs font-semibold text-gray-700">${formatRupiah(item.subtotal)}</span>
+          </label>
+        `).join('');
+  }
+
   function updateDiscountUI() {
     const discountType = getDiscountType();
     const focComp = document.getElementById('cb_foc_comp_payment_method')?.value || '';
     const percentageBlock = document.getElementById('cbDiscountPercentageBlock');
     const nominalBlock = document.getElementById('cbDiscountNominalBlock');
     const authBlock = document.getElementById('cbDiscountAuthBlock');
+    const itemsBlock = document.getElementById('cbDiscountItemsBlock');
     const requestBtn = document.getElementById('cbRequestAuthCodeBtn');
 
     percentageBlock.classList.toggle('hidden', discountType !== 'percentage');
     nominalBlock.classList.toggle('hidden', discountType !== 'nominal');
     authBlock.classList.toggle('hidden', discountType === 'none' && !['FOC', 'Compliment'].includes(focComp));
+    itemsBlock.classList.toggle('hidden', discountType === 'none');
+
+    if (discountType === 'none') {
+      cbAuthCodeRequested = false;
+      document.getElementById('cb_discount_auth_code').classList.add('hidden');
+      document.getElementById('cb_discount_auth_code').value = '';
+    }
 
     if (requestBtn) {
       requestBtn.disabled = false;
@@ -532,7 +566,7 @@
       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg> Tutup & Cetak Struk';
   }
 
-  function openCloseBillingModal(trigger) {
+  async function openCloseBillingModal(trigger) {
     const bookingId = Number(trigger?.dataset?.bookingId || 0);
     const minimumCharge = Number(trigger?.dataset?.minimumCharge || 0);
     const ordersTotal = Number(trigger?.dataset?.ordersTotal || 0);
@@ -544,6 +578,19 @@
     const taxPercentage = Number(trigger?.dataset?.taxPercentage || 0);
     const checkerChecked = Number(trigger?.dataset?.checkerChecked || 0);
     const checkerTotal = Number(trigger?.dataset?.checkerTotal || 0);
+    try {
+      const encodedItems = trigger?.dataset?.discountItems || '';
+      const decodedItems = encodedItems ? new TextDecoder().decode(Uint8Array.from(atob(encodedItems), character => character.charCodeAt(0))) : '[]';
+      cbDiscountItems = JSON.parse(decodedItems);
+    } catch (error) {
+      cbDiscountItems = [];
+    }
+    cbMinimumCharge = minimumCharge;
+    cbTaxPercentage = taxPercentage;
+    cbServiceChargePercentage = serviceChargePercentage;
+    cbAuthCodeRequested = false;
+
+    renderCloseBillingDiscountItems();
 
     closeBillingBookingId = bookingId;
 
@@ -633,6 +680,7 @@
     document.getElementById('cb_discount_percentage').value = '';
     setDiscountNominalInput(0);
     document.getElementById('cb_discount_auth_code').value = '';
+    document.getElementById('cb_discount_auth_code').classList.add('hidden');
     setSplitInput('cash', 0);
     setSplitInput('non_cash_amount', sistaBayar);
     setSplitInput('second_non_cash_amount', 0);
@@ -647,6 +695,23 @@
     updateCloseBillingSubmitButton();
 
     document.getElementById('closeBillingModal').classList.remove('hidden');
+
+    const discountItemsUrl = trigger?.dataset?.discountItemsUrl;
+    if (discountItemsUrl) {
+      renderCloseBillingDiscountItems('Memuat order item terbaru...');
+      try {
+        const response = await fetch(discountItemsUrl, {headers: {'Accept': 'application/json'}});
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || 'Gagal memuat order item.');
+        }
+        cbDiscountItems = Array.isArray(data.items) ? data.items : [];
+        renderCloseBillingDiscountItems();
+      } catch (error) {
+        cbDiscountItems = [];
+        renderCloseBillingDiscountItems('Gagal memuat order item terbaru. Tutup modal lalu coba lagi.');
+      }
+    }
   }
 
   function closeCloseBillingModal() {
@@ -715,15 +780,27 @@
   function updateGrandTotalFromDiscount() {
     const discountType = getDiscountType();
     let discountAmount = 0;
+    const selectedIds = [...document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked')].map(input => Number(input.value));
+    const selectedTotal = cbDiscountItems.filter(item => selectedIds.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
 
     if (discountType === 'percentage') {
       const percentage = Number(document.getElementById('cb_discount_percentage')?.value || 0);
-      discountAmount = Math.round((cbCurrentSubTotal * percentage) / 100);
+      discountAmount = Math.round((selectedTotal * percentage) / 100);
     } else if (discountType === 'nominal') {
-      discountAmount = Number(document.getElementById('cb_discount_nominal')?.value || 0);
+      discountAmount = Math.min(Number(document.getElementById('cb_discount_nominal')?.value || 0), selectedTotal);
     }
 
-    const sistaBayar = Math.max(Math.round(cbCurrentSubTotal - cbCurrentDownPayment - discountAmount), 0);
+    const netItems = cbDiscountItems.map(item => {
+      const lineDiscount = selectedTotal > 0 && selectedIds.includes(Number(item.id)) ? discountAmount * Number(item.subtotal || 0) / selectedTotal : Number(item.discount_amount || 0);
+      return {...item, net: Math.max(Number(item.subtotal || 0) - lineDiscount, 0)};
+    });
+    const netOrdersTotal = netItems.reduce((sum, item) => sum + item.net, 0);
+    const taxBase = netItems.filter(item => item.include_tax).reduce((sum, item) => sum + item.net, 0);
+    const serviceBase = netItems.filter(item => item.include_service_charge).reduce((sum, item) => sum + item.net, 0);
+    const taxAndServiceBase = netItems.filter(item => item.include_tax && item.include_service_charge).reduce((sum, item) => sum + item.net, 0);
+    const tax = Math.round(taxBase * cbTaxPercentage / 100);
+    const serviceCharge = Math.round((serviceBase + taxAndServiceBase * cbTaxPercentage / 100) * cbServiceChargePercentage / 100);
+    const sistaBayar = Math.max(Math.round(Math.max(cbMinimumCharge, netOrdersTotal) + tax + serviceCharge - cbCurrentDownPayment), 0);
     cbCurrentGrandTotal = sistaBayar;
 
     // Update Sisa Bayar display
@@ -740,6 +817,11 @@
 
   async function requestAuthCodeEmailBooking() {
     if (isRequestingAuthCodeEmailBooking) return;
+
+    if (getDiscountType() !== 'none' && document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked').length === 0) {
+      alert('Pilih minimal satu item yang akan didiskon.');
+      return;
+    }
 
     isRequestingAuthCodeEmailBooking = true;
     const btn = document.getElementById('cbRequestAuthCodeBtn');
@@ -763,7 +845,9 @@
       const data = await response.json();
 
       if (data.success) {
-        alert('Auth code telah dikirim ke email yang terdaftar.');
+        cbAuthCodeRequested = true;
+        document.getElementById('cb_discount_auth_code').classList.remove('hidden');
+        alert('Auth code telah dikirim. Silakan masukkan kode untuk melanjutkan.');
       } else {
         alert(data.message || 'Gagal mengirim auth code.');
       }
@@ -798,7 +882,17 @@
 
     const discountType = getDiscountType();
     if (discountType !== 'none') {
+      const selectedItemIds = [...document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked')].map(input => Number(input.value));
+      if (selectedItemIds.length === 0) {
+        alert('Pilih minimal satu item yang akan didiskon.');
+        return;
+      }
+      if (!cbAuthCodeRequested) {
+        alert('Request auth code terlebih dahulu.');
+        return;
+      }
       payload.discount_type = discountType;
+      payload.discount_order_item_ids = selectedItemIds;
 
       if (discountType === 'percentage') {
         const discountPercentage = Number(document.getElementById('cb_discount_percentage').value || 0);
@@ -993,7 +1087,10 @@
   });
 
   document.querySelectorAll('input[name="cb_discount_type"]').forEach((radio) => {
-    radio.addEventListener('change', updateDiscountUI);
+    radio.addEventListener('change', () => {
+      updateDiscountUI();
+      updateGrandTotalFromDiscount();
+    });
   });
 
   document.querySelectorAll('input[name="cb_payment_method"]').forEach((radio) => {

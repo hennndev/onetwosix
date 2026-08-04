@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Waiter;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\DispatchPrintTicketJob;
 use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\CustomerUser;
@@ -16,7 +17,9 @@ use App\Models\PosCategorySetting;
 use App\Models\Printer;
 use App\Models\TableSession;
 use App\Services\AccurateService;
+use App\Services\PosStockConsumer;
 use App\Services\PrinterService;
+use App\Services\SessionBillingCalculator;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +38,8 @@ class WaiterPosController extends Controller
     public function __construct(
         protected PrinterService $printerService,
         protected AccurateService $accurateService,
+        protected PosStockConsumer $posStockConsumer,
+        protected SessionBillingCalculator $sessionBillingCalculator,
     ) {}
 
     public function addToCart(Request $request, string $productId): JsonResponse
@@ -197,6 +202,7 @@ class WaiterPosController extends Controller
             'session_id' => 'required|exists:table_sessions,id',
             'checker_printer_ids' => 'nullable|array',
             'checker_printer_ids.*' => 'integer|exists:printers,id',
+            'idempotency_key' => 'nullable|uuid',
         ]);
 
         $selectedCheckerPrinterIds = collect($request->input('checker_printer_ids', []))
@@ -222,6 +228,21 @@ class WaiterPosController extends Controller
         }
 
         $cart = session()->get(self::CART_KEY, []);
+
+        if (! empty($validated['idempotency_key'])) {
+            $existingOrder = Order::query()
+                ->where('idempotency_key', $validated['idempotency_key'])
+                ->where('created_by', Auth::id())
+                ->first();
+            if ($existingOrder) {
+                return response()->json([
+                    'success' => true,
+                    'order_number' => $existingOrder->order_number,
+                    'order_id' => $existingOrder->id,
+                    'idempotent_replay' => true,
+                ]);
+            }
+        }
 
         if (empty($cart)) {
             return response()->json(['success' => false, 'message' => 'Keranjang kosong.'], 400);
@@ -258,8 +279,32 @@ class WaiterPosController extends Controller
             ], 422);
         }
 
+        $stockRequirements = $this->posStockConsumer->requirements($cart);
+
         DB::beginTransaction();
         try {
+            $tableSession = TableSession::query()
+                ->with(['table', 'billing', 'orders'])
+                ->whereKey($tableSession->id)
+                ->where('waiter_id', $waiterId)
+                ->whereNotNull('table_reservation_id')
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $tableSession) {
+                throw ValidationException::withMessages(['session_id' => 'Sesi meja sudah tidak aktif.']);
+            }
+
+            if ($tableSession->billing) {
+                $billing = Billing::query()->whereKey($tableSession->billing->id)->lockForUpdate()->first();
+                if ($billing && in_array($billing->billing_status, ['paid', 'finalized', 'force_closed'], true)) {
+                    throw ValidationException::withMessages(['session_id' => 'Billing meja sudah ditutup.']);
+                }
+            }
+
+            $this->posStockConsumer->consume($stockRequirements);
+
             $order = $this->createOrderWithRetry([
                 'table_session_id' => $tableSession->id,
                 'created_by' => Auth::id(),
@@ -269,6 +314,7 @@ class WaiterPosController extends Controller
                 'total' => 0,
                 'ordered_at' => now(),
                 'notes' => null,
+                'idempotency_key' => $validated['idempotency_key'] ?? null,
             ]);
 
             $orderNumber = (string) $order->order_number;
@@ -332,11 +378,13 @@ class WaiterPosController extends Controller
 
             if ($tableSession->billing) {
                 $billing = $tableSession->billing;
-                $billing->orders_total = $tableSession->orders()->sum('total');
-                $billing->subtotal = max((float) $billing->minimum_charge, (float) $billing->orders_total);
-                $billing->tax = 0;
-                $billing->grand_total = $billing->subtotal - $billing->discount_amount;
-                $billing->save();
+                $tableSession->unsetRelation('orders');
+                $totals = $this->sessionBillingCalculator->calculate(
+                    $tableSession,
+                    (float) $billing->discount_amount,
+                    (float) $billing->minimum_charge,
+                );
+                $billing->update($totals);
             }
 
             session()->forget(self::CART_KEY);
@@ -345,8 +393,31 @@ class WaiterPosController extends Controller
             DB::commit();
 
             return response()->json(['success' => true, 'order_number' => $orderNumber]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Data checkout tidak valid.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             DB::rollBack();
+
+            if (! empty($validated['idempotency_key'])) {
+                $existingOrder = Order::query()
+                    ->where('idempotency_key', $validated['idempotency_key'])
+                    ->where('created_by', Auth::id())
+                    ->first();
+                if ($existingOrder) {
+                    return response()->json([
+                        'success' => true,
+                        'order_number' => $existingOrder->order_number,
+                        'order_id' => $existingOrder->id,
+                        'idempotent_replay' => true,
+                    ]);
+                }
+            }
 
             return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: '.$e->getMessage()], 500);
         }
@@ -543,8 +614,8 @@ class WaiterPosController extends Controller
                 $virtualOrder,
                 $checkerCashierItems,
                 fn (KitchenOrder|BarOrder $preparationOrder, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($preparationOrder, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($preparationOrder, $printer),
+                    'checker' => $this->queuePreparationTicket($preparationOrder, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($preparationOrder, $printer, 'cashier'),
                     default => false,
                 },
                 $selectedCheckerPrinterIds
@@ -562,10 +633,10 @@ class WaiterPosController extends Controller
                 $kitchenOrder,
                 $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
-                    'bar' => $this->printerService->printBarTicket($order, $printer),
-                    default => $this->printerService->printKitchenTicket($order, $printer),
+                    'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
+                    'bar' => $this->queuePreparationTicket($order, $printer, 'bar'),
+                    default => $this->queuePreparationTicket($order, $printer, 'kitchen'),
                 },
                 $selectedCheckerPrinterIds
             );
@@ -582,10 +653,10 @@ class WaiterPosController extends Controller
                 $barOrder,
                 $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
-                    'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
-                    default => $this->printerService->printBarTicket($order, $printer),
+                    'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
+                    'kitchen' => $this->queuePreparationTicket($order, $printer, 'kitchen'),
+                    default => $this->queuePreparationTicket($order, $printer, 'bar'),
                 },
                 $selectedCheckerPrinterIds
             );
@@ -664,6 +735,22 @@ class WaiterPosController extends Controller
             }
         }
 
+    }
+
+    protected function queuePreparationTicket(object $order, Printer $printer, string $ticketType): bool
+    {
+        $sourceType = $order->exists ? ($order instanceof BarOrder ? 'bar' : 'kitchen') : 'virtual';
+
+        DispatchPrintTicketJob::dispatch(
+            $ticketType,
+            (int) ($order->order_id ?? $order->order?->id),
+            (int) $printer->id,
+            $sourceType,
+            $order->exists ? (int) $order->id : null,
+            $order->items->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        )->afterCommit();
+
+        return true;
     }
 
     protected function resolveCheckerPrintersFromCart(array $cart): Collection
@@ -752,7 +839,7 @@ class WaiterPosController extends Controller
     {
         $categoryMain = strtolower(trim((string) $inventoryItem->category_main));
 
-        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
+        if ($categoryMain === 'compliment') {
             return 0.0;
         }
 
@@ -947,6 +1034,10 @@ class WaiterPosController extends Controller
             try {
                 return Order::create($attributes);
             } catch (QueryException $exception) {
+                if (str_contains(strtolower($exception->getMessage()), 'idempotency_key')) {
+                    throw $exception;
+                }
+
                 if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
                     throw $exception;
                 }

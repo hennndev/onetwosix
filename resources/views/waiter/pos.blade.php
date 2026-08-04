@@ -403,6 +403,7 @@
           showConfirmOrder: false,
           addingToCart: null,
           checkingOut: false,
+          checkoutToken: null,
           toastMsg: '',
           toastSuccess: true,
 
@@ -735,10 +736,12 @@
                 body: JSON.stringify({
                   session_id: this.selectedSession,
                   checker_printer_ids: this.shouldChooseCheckerOnCheckout() ? this.getSelectedCheckerPrinterIds() : undefined,
+                  idempotency_key: this.checkoutToken ??= crypto.randomUUID(),
                 }),
               });
               const data = await res.json();
               if (data.success) {
+                this.checkoutToken = null;
                 this.cart = {};
                 this.showCart = false;
                 this.showConfirmOrder = false;

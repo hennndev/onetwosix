@@ -73,6 +73,12 @@
     <template x-for="item in cart"
               :key="item.id">
       <div class="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+        <button type="button"
+                @click="toggleDiscountItem(item.id)"
+                :aria-pressed="selectedDiscountItemIds.includes(inventoryId(item.id))"
+                :class="selectedDiscountItemIds.includes(inventoryId(item.id)) ? 'border-amber-500 bg-amber-100 text-amber-700' : 'border-gray-200 bg-white text-gray-400'"
+                class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold transition"
+                title="Pilih item untuk diskon">%</button>
         <div :class="getItemBgColor(item.id)"
              class="w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center">
           <svg class="w-5 h-5 text-white"
@@ -88,8 +94,10 @@
         <div class="flex-1 min-w-0">
           <h4 class="text-sm font-semibold text-gray-900 truncate"
               x-text="item.name"></h4>
-          <p class="text-xs text-gray-400 mt-0.5"
-             x-text="formatCurrency(item.price)"></p>
+           <p class="text-xs text-gray-400 mt-0.5"
+              x-text="formatCurrency(item.price)"></p>
+          <p x-show="selectedDiscountItemIds.includes(inventoryId(item.id))"
+             class="mt-1 text-[11px] font-semibold text-amber-600">Dipilih untuk diskon</p>
           <div class="flex items-center gap-2 mt-2">
             <button type="button"
                     @click="updateCartQuantity(item.id, 'decrease')"

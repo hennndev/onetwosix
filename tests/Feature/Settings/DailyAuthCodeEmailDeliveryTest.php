@@ -58,6 +58,46 @@ test('daily auth code email request fails when target email is not configured', 
     Mail::assertNothingSent();
 });
 
+test('selected item discount auth code request records successful delivery in session', function () {
+    $admin = adminUser();
+
+    GeneralSetting::instance()->update([
+        'auth_code_target_email' => 'approval@company.test',
+        'auth_code_delivery_channel' => 'email',
+        'daily_auth_code_access_emails' => $admin->email,
+    ]);
+
+    Mail::fake();
+
+    actingAs($admin)
+        ->withSession(['accurate_database' => 'test'])
+        ->postJson(route('admin.settings.daily-auth-code.send-email'), [
+            'source' => 'pos-selected-item-discount',
+        ])
+        ->assertOk()
+        ->assertSessionHas('pos_discount_auth_code_requested_at');
+});
+
+test('booking close discount auth code request records successful delivery in session', function () {
+    $admin = adminUser();
+
+    GeneralSetting::instance()->update([
+        'auth_code_target_email' => 'approval@company.test',
+        'auth_code_delivery_channel' => 'email',
+        'daily_auth_code_access_emails' => $admin->email,
+    ]);
+
+    Mail::fake();
+
+    actingAs($admin)
+        ->withSession(['accurate_database' => 'test'])
+        ->postJson(route('admin.settings.daily-auth-code.send-email'), [
+            'source' => 'booking-close-discount',
+        ])
+        ->assertOk()
+        ->assertSessionHas('booking_discount_auth_code_requested_at');
+});
+
 test('daily auth code email is not sent when channel is set to whatsapp only', function () {
     $admin = adminUser();
 

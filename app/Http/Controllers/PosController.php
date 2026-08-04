@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StorePosDiscountApprovalRequest;
+use App\Jobs\DispatchPrintTicketJob;
 use App\Models\Area;
 use App\Models\BarOrder;
 use App\Models\BarOrderItem;
@@ -24,7 +26,10 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
+use App\Services\PosDiscountService;
+use App\Services\PosStockConsumer;
 use App\Services\PrinterService;
+use App\Services\SessionBillingCalculator;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,7 +48,31 @@ class PosController extends Controller
         protected PrinterService $printerService,
         protected AccurateService $accurateService,
         protected DashboardSyncService $dashboardSyncService,
+        protected PosStockConsumer $posStockConsumer,
+        protected SessionBillingCalculator $sessionBillingCalculator,
+        protected PosDiscountService $posDiscountService,
     ) {}
+
+    public function approveDiscount(StorePosDiscountApprovalRequest $request): JsonResponse
+    {
+        $requestedAt = (int) $request->session()->get('pos_discount_auth_code_requested_at', 0);
+        if ($requestedAt === 0 || now()->timestamp - $requestedAt > 300) {
+            throw ValidationException::withMessages([
+                'manager_auth_code' => 'Request auth code terlebih dahulu sebelum mengajukan diskon.',
+            ]);
+        }
+
+        $result = $this->posDiscountService->issue($request->user(), session()->get('pos_cart', []), $request->validated());
+        $request->session()->forget('pos_discount_auth_code_requested_at');
+
+        return response()->json([
+            'success' => true,
+            'approval_token' => $result['token'],
+            'expires_at' => $result['approval']->expires_at->toIso8601String(),
+            'discount_amount' => collect($result['approval']->intent['discount']['lines'])->sum('discount_amount'),
+            'lines' => $result['approval']->intent['discount']['lines'],
+        ], 201);
+    }
 
     public function index(Request $request)
     {
@@ -525,6 +554,8 @@ class PosController extends Controller
             'checker_printer_ids' => 'nullable|array',
             'checker_printer_ids.*' => 'integer|exists:printers,id',
             'auto_print_receipt' => 'nullable|boolean',
+            'idempotency_key' => 'nullable|uuid',
+            'discount_approval_token' => 'nullable|string|size:64',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
@@ -535,6 +566,16 @@ class PosController extends Controller
             ->values();
 
         $cart = session()->get('pos_cart', []);
+
+        if (! empty($validated['idempotency_key'])) {
+            $existingOrder = Order::query()
+                ->where('idempotency_key', $validated['idempotency_key'])
+                ->where('created_by', Auth::id())
+                ->first();
+            if ($existingOrder) {
+                return $this->idempotentOrderResponse($existingOrder);
+            }
+        }
 
         if (empty($cart)) {
             return response()->json([
@@ -554,14 +595,33 @@ class PosController extends Controller
             ], 422);
         }
 
+        $stockRequirements = $this->posStockConsumer->requirements($cart);
+
         DB::beginTransaction();
         try {
+            $selectedDiscount = $this->posDiscountService->consume(
+                $validated['discount_approval_token'] ?? null,
+                $request->user(),
+                $cart,
+                [
+                    'customer_type' => $validated['customer_type'],
+                    'customer_user_id' => $validated['customer_user_id'] ?? null,
+                    'walk_in_customer_id' => $request->input('walk_in_customer_id'),
+                    'table_id' => $validated['table_id'] ?? null,
+                ],
+            );
+
+            if ($selectedDiscount && ((int) ($validated['discount_percentage'] ?? 0) > 0 || ($validated['discount_type'] ?? 'none') !== 'none' || ($validated['foc_comp_payment_method'] ?? null) === 'Compliment')) {
+                throw ValidationException::withMessages(['discount_approval_token' => 'Diskon item tidak dapat digabung dengan diskon transaksi atau Compliment.']);
+            }
+
             // Only booking for now
             if ($validated['customer_type'] === 'booking') {
                 // Find active table session
                 $tableSession = TableSession::where('customer_id', $validated['customer_user_id'])
                     ->where('table_id', $validated['table_id'])
                     ->where('status', 'active')
+                    ->lockForUpdate()
                     ->first();
 
                 if (! $tableSession) {
@@ -582,6 +642,12 @@ class PosController extends Controller
                     ], 422);
                 }
 
+                if ($tableSession->billing) {
+                    Billing::query()->whereKey($tableSession->billing->id)->lockForUpdate()->first();
+                }
+
+                $this->posStockConsumer->consume($stockRequirements);
+
                 // Generate order number
                 $order = $this->createOrderWithRetry([
                     'table_session_id' => $tableSession->id,
@@ -592,6 +658,7 @@ class PosController extends Controller
                     'total' => 0,
                     'ordered_at' => now(),
                     'notes' => null,
+                    'idempotency_key' => $validated['idempotency_key'] ?? null,
                 ], 'ORD', 'booking');
 
                 $orderNumber = (string) $order->order_number;
@@ -626,6 +693,7 @@ class PosController extends Controller
                 $serviceChargeBase = 0;
                 $taxBase = 0;
                 $taxAndServiceBase = 0;
+                $selectedDiscountTotal = 0.0;
                 $generalSettings = GeneralSetting::instance();
                 $taxPercentage = (float) $generalSettings->tax_percentage;
                 $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
@@ -650,26 +718,29 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
+                    $lineDiscount = (float) ($selectedDiscount['lines'][$inventoryItem->id]['discount'] ?? 0);
+                    $netSubtotal = max($subtotal - $lineDiscount, 0);
+                    $selectedDiscountTotal += $lineDiscount;
                     $includeTax = (bool) $inventoryItem->include_tax;
                     $includeServiceCharge = (bool) $inventoryItem->include_service_charge;
 
                     if ($includeServiceCharge) {
-                        $serviceChargeBase += $subtotal;
+                        $serviceChargeBase += $netSubtotal;
                     }
 
                     if ($includeTax) {
-                        $taxBase += $subtotal;
+                        $taxBase += $netSubtotal;
                     }
 
                     if ($includeTax && $includeServiceCharge) {
-                        $taxAndServiceBase += $subtotal;
+                        $taxAndServiceBase += $netSubtotal;
                     }
 
                     $itemTaxAmount = $includeTax
-                        ? round($subtotal * ($taxPercentage / 100), 2)
+                        ? round($netSubtotal * ($taxPercentage / 100), 2)
                         : 0;
                     $itemServiceChargeAmount = $includeServiceCharge
-                        ? round(($subtotal + ($includeTax ? $itemTaxAmount : 0)) * ($serviceChargePercentage / 100), 2)
+                        ? round(($netSubtotal + ($includeTax ? $itemTaxAmount : 0)) * ($serviceChargePercentage / 100), 2)
                         : 0;
 
                     // Create Order Item
@@ -681,7 +752,9 @@ class PosController extends Controller
                         'quantity' => $quantity,
                         'price' => $price,
                         'subtotal' => $subtotal,
-                        'discount_amount' => 0,
+                        'discount_amount' => $lineDiscount,
+                        'discount_reason' => $selectedDiscount['lines'][$inventoryItem->id]['reason'] ?? null,
+                        'discount_approval_id' => $selectedDiscount['approval']->id ?? null,
                         'tax_amount' => $itemTaxAmount,
                         'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
@@ -689,15 +762,14 @@ class PosController extends Controller
                         'notes' => $cartNotes[$productId] ?? null,
                     ]);
 
-                    $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                $orderTotals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage, null, [
+                $orderTotals = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, $discountPercentage, null, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ], true);
-                $discountAmount = (float) $orderTotals['discount_amount'];
+                $discountAmount = $selectedDiscountTotal + (float) $orderTotals['discount_amount'];
                 $finalTotal = (float) $orderTotals['subtotal_after_discount'];
 
                 // Update Order totals
@@ -706,6 +778,10 @@ class PosController extends Controller
                     'discount_amount' => $discountAmount,
                     'total' => $finalTotal,
                 ]);
+
+                if ($selectedDiscount) {
+                    $this->posDiscountService->markConsumed($selectedDiscount['approval'], $order);
+                }
 
                 // Route items to Kitchen/Bar and print tickets
                 $this->routeOrderToPreparation($order, $tableSession, $orderNumber, null, $selectedCheckerPrinterIds);
@@ -923,7 +999,10 @@ class PosController extends Controller
                     'payment_mode' => $paymentMode,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'foc_comp_payment_method' => $focCompPaymentMethod,
+                    'idempotency_key' => $validated['idempotency_key'] ?? null,
                 ], 'WALKIN', 'walk-in');
+
+                $this->posStockConsumer->consume($stockRequirements);
 
                 $orderNumber = (string) $order->order_number;
 
@@ -931,6 +1010,7 @@ class PosController extends Controller
                 $serviceChargeBase = 0;
                 $taxBase = 0;
                 $taxAndServiceBase = 0;
+                $selectedDiscountTotal = 0.0;
                 $generalSettings = GeneralSetting::instance();
                 $taxPercentage = (float) $generalSettings->tax_percentage;
                 $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
@@ -951,26 +1031,29 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
+                    $lineDiscount = (float) ($selectedDiscount['lines'][$inventoryItem->id]['discount'] ?? 0);
+                    $netSubtotal = max($subtotal - $lineDiscount, 0);
+                    $selectedDiscountTotal += $lineDiscount;
                     $includeTax = (bool) $inventoryItem->include_tax;
                     $includeServiceCharge = (bool) $inventoryItem->include_service_charge;
 
                     if ($includeServiceCharge) {
-                        $serviceChargeBase += $subtotal;
+                        $serviceChargeBase += $netSubtotal;
                     }
 
                     if ($includeTax) {
-                        $taxBase += $subtotal;
+                        $taxBase += $netSubtotal;
                     }
 
                     if ($includeTax && $includeServiceCharge) {
-                        $taxAndServiceBase += $subtotal;
+                        $taxAndServiceBase += $netSubtotal;
                     }
 
                     $itemTaxAmount = $includeTax
-                        ? round($subtotal * ($taxPercentage / 100), 2)
+                        ? round($netSubtotal * ($taxPercentage / 100), 2)
                         : 0;
                     $itemServiceChargeAmount = $includeServiceCharge
-                        ? round(($subtotal + ($includeTax ? $itemTaxAmount : 0)) * ($serviceChargePercentage / 100), 2)
+                        ? round(($netSubtotal + ($includeTax ? $itemTaxAmount : 0)) * ($serviceChargePercentage / 100), 2)
                         : 0;
 
                     OrderItem::create([
@@ -981,7 +1064,9 @@ class PosController extends Controller
                         'quantity' => $quantity,
                         'price' => $price,
                         'subtotal' => $subtotal,
-                        'discount_amount' => 0,
+                        'discount_amount' => $lineDiscount,
+                        'discount_reason' => $selectedDiscount['lines'][$inventoryItem->id]['reason'] ?? null,
+                        'discount_approval_id' => $selectedDiscount['approval']->id ?? null,
                         'tax_amount' => $itemTaxAmount,
                         'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
@@ -989,10 +1074,9 @@ class PosController extends Controller
                         'notes' => $cartNotes[$productId] ?? null,
                     ]);
 
-                    $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                $baseTotalsForDiscount = $this->calculateWalkInTotals($itemsTotal, 0, 0, [
+                $baseTotalsForDiscount = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, 0, 0, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
@@ -1007,11 +1091,12 @@ class PosController extends Controller
 
                 $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
 
-                $totals = $this->calculateWalkInTotals($itemsTotal, 0, $requestedDiscountAmount, [
+                $totals = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, 0, $requestedDiscountAmount, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ], true);
+                $totals['discount_amount'] += $selectedDiscountTotal;
 
                 if ($paymentMode === 'split') {
                     $grandTotal = round((float) $totals['grand_total'], 0);
@@ -1029,6 +1114,10 @@ class PosController extends Controller
                     'discount_amount' => $totals['discount_amount'],
                     'total' => $totals['grand_total'],
                 ]);
+
+                if ($selectedDiscount) {
+                    $this->posDiscountService->markConsumed($selectedDiscount['approval'], $order);
+                }
 
                 $isPartialPayment = in_array($paymentMode, ['partial', 'debt'], true);
                 $partialPaidAmount = (float) ($validated['partial_paid_amount'] ?? 0);
@@ -1057,7 +1146,7 @@ class PosController extends Controller
                     'is_booking' => false,
                     'minimum_charge' => 0,
                     'orders_total' => (float) $itemsTotal,
-                    'subtotal' => (float) $totals['subtotal_after_discount'],
+                    'subtotal' => $selectedDiscount ? (float) $itemsTotal : (float) $totals['subtotal_after_discount'],
                     'tax' => (float) $totals['tax'],
                     'tax_percentage' => (float) $totals['tax_percentage'],
                     'service_charge' => (float) $totals['service_charge'],
@@ -1084,16 +1173,26 @@ class PosController extends Controller
 
                 $createdBilling = Billing::where('transaction_code', $transactionCode)->first();
                 if ($createdBilling) {
-                    \App\Models\BillingPayment::create([
-                        'billing_id' => $createdBilling->id,
-                        'amount_paid' => $paidAmount,
-                        'payment_method' => $paymentMethod ?? 'cash',
-                        'payment_reference_number' => $paymentReferenceNumber,
-                        'payment_type' => $isDebt ? 'initial_partial' : 'full_payment',
-                        'notes' => $isDebt ? 'Pembayaran DP/Parsial saat checkout POS' : 'Pembayaran lunas saat checkout POS',
-                        'created_by' => Auth::id(),
-                        'paid_at' => now('Asia/Jakarta'),
-                    ]);
+                    $payments = $paymentMode === 'split'
+                        ? collect([
+                            ['amount' => $splitCashAmount, 'method' => 'cash', 'reference' => null],
+                            ['amount' => $splitNonCashAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],
+                            ['amount' => $splitSecondNonCashAmount, 'method' => $splitSecondNonCashMethod, 'reference' => $splitSecondNonCashReferenceNumber],
+                        ])->filter(fn (array $payment): bool => (float) $payment['amount'] > 0)
+                        : collect([['amount' => $paidAmount, 'method' => $paymentMethod ?? 'cash', 'reference' => $paymentReferenceNumber]]);
+
+                    foreach ($payments as $payment) {
+                        \App\Models\BillingPayment::create([
+                            'billing_id' => $createdBilling->id,
+                            'amount_paid' => $payment['amount'],
+                            'payment_method' => $payment['method'],
+                            'payment_reference_number' => $payment['reference'],
+                            'payment_type' => $isDebt ? 'initial_partial' : 'full_payment',
+                            'notes' => $isDebt ? 'Pembayaran DP/Parsial saat checkout POS' : 'Pembayaran saat checkout POS',
+                            'created_by' => Auth::id(),
+                            'paid_at' => now('Asia/Jakarta'),
+                        ]);
+                    }
                 }
 
                 if ($customerUser) {
@@ -1155,6 +1254,16 @@ class PosController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
 
+            if (! empty($validated['idempotency_key'])) {
+                $existingOrder = Order::query()
+                    ->where('idempotency_key', $validated['idempotency_key'])
+                    ->where('created_by', Auth::id())
+                    ->first();
+                if ($existingOrder) {
+                    return $this->idempotentOrderResponse($existingOrder);
+                }
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan: '.$e->getMessage(),
@@ -1199,6 +1308,7 @@ class PosController extends Controller
                 'qty' => (int) $item->quantity,
                 'price' => (float) $item->price,
                 'subtotal' => (float) $item->subtotal,
+                'discount_amount' => (float) $item->discount_amount,
             ];
         })->values();
 
@@ -1226,35 +1336,12 @@ class PosController extends Controller
      */
     protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
     {
-        $settings = GeneralSetting::instance();
-        $orders = $session->orders
-            ->where('status', '!=', 'cancelled')
-            ->values();
+        $totals = $this->sessionBillingCalculator->calculate($session, $discountAmount, $minimumCharge);
 
-        $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
-        $subtotal = max($minimumCharge, $ordersTotal);
-
-        $bases = $this->resolveSessionChargeableBases($orders);
-        $tax = round(max($bases['tax_base'], 0) * (((float) $settings->tax_percentage) / 100), 2);
-        $serviceChargeTaxBase = max($bases['service_charge_base'], 0);
-        $serviceChargeTaxableAmount = round(max($bases['tax_and_service_base'], 0) * (((float) $settings->tax_percentage) / 100), 2);
-        $serviceCharge = round(($serviceChargeTaxBase + $serviceChargeTaxableAmount) * (((float) $settings->service_charge_percentage) / 100), 2);
-        $discountBaseTotal = $subtotal + $serviceCharge + $tax;
-        $discountAmount = min(max($discountAmount, 0), $discountBaseTotal);
-        $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
-
-        return [
-            'orders_total' => $ordersTotal,
+        return $totals + [
             'minimum_charge' => $minimumCharge,
-            'subtotal' => $subtotal,
-            'discount_amount' => $discountAmount,
-            'subtotal_after_discount' => $subtotalAfterDiscount,
-            'discount_base_total' => $discountBaseTotal,
-            'service_charge_percentage' => (float) $settings->service_charge_percentage,
-            'service_charge' => $serviceCharge,
-            'tax_percentage' => (float) $settings->tax_percentage,
-            'tax' => $tax,
-            'grand_total' => max($discountBaseTotal - $discountAmount, 0),
+            'subtotal_after_discount' => max($totals['subtotal'] - min($totals['discount_amount'], $totals['subtotal']), 0),
+            'discount_base_total' => $totals['subtotal'] + $totals['service_charge'] + $totals['tax'],
         ];
     }
 
@@ -1661,6 +1748,10 @@ class PosController extends Controller
             try {
                 return Order::create($attributes);
             } catch (QueryException $exception) {
+                if (str_contains(strtolower($exception->getMessage()), 'idempotency_key')) {
+                    throw $exception;
+                }
+
                 if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
                     throw $exception;
                 }
@@ -2128,8 +2219,8 @@ class PosController extends Controller
                 $virtualOrder,
                 $checkerCashierItems,
                 fn (KitchenOrder|BarOrder $preparationOrder, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($preparationOrder, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($preparationOrder, $printer),
+                    'checker' => $this->queuePreparationTicket($preparationOrder, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($preparationOrder, $printer, 'cashier'),
                     default => false,
                 },
                 $selectedCheckerPrinterIds
@@ -2151,10 +2242,10 @@ class PosController extends Controller
                 $kitchenOrder,
                 $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
-                    'bar' => $this->printerService->printBarTicket($order, $printer),
-                    default => $this->printerService->printKitchenTicket($order, $printer),
+                    'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
+                    'bar' => $this->queuePreparationTicket($order, $printer, 'bar'),
+                    default => $this->queuePreparationTicket($order, $printer, 'kitchen'),
                 },
                 $selectedCheckerPrinterIds
             );
@@ -2175,10 +2266,10 @@ class PosController extends Controller
                 $barOrder,
                 $items,
                 fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
-                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
-                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
-                    'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
-                    default => $this->printerService->printBarTicket($order, $printer),
+                    'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
+                    'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
+                    'kitchen' => $this->queuePreparationTicket($order, $printer, 'kitchen'),
+                    default => $this->queuePreparationTicket($order, $printer, 'bar'),
                 },
                 $selectedCheckerPrinterIds
             );
@@ -2247,8 +2338,7 @@ class PosController extends Controller
             try {
                 $orderForPrinter = clone $order;
                 $orderForPrinter->setRelation('items', collect($group['items'])->values());
-                $callback($orderForPrinter, $group['printer']);
-                $printed = true;
+                $printed = (bool) $callback($orderForPrinter, $group['printer']) || $printed;
             } catch (\Exception $e) {
                 Log::warning('Assigned printer failed during POS checkout print fan-out', [
                     'printer_id' => $group['printer']->id ?? null,
@@ -2261,6 +2351,38 @@ class PosController extends Controller
         }
 
         return $printed;
+    }
+
+    protected function queuePreparationTicket(object $order, Printer $printer, string $ticketType): bool
+    {
+        $sourceType = $order->exists ? ($order instanceof BarOrder ? 'bar' : 'kitchen') : 'virtual';
+
+        DispatchPrintTicketJob::dispatch(
+            $ticketType,
+            (int) ($order->order_id ?? $order->order?->id),
+            (int) $printer->id,
+            $sourceType,
+            $order->exists ? (int) $order->id : null,
+            $order->items->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        )->afterCommit();
+
+        return true;
+    }
+
+    protected function idempotentOrderResponse(Order $order): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => "Order #{$order->order_number} sudah diproses.",
+            'order_number' => $order->order_number,
+            'order_id' => $order->id,
+            'items_total' => (float) $order->items_total,
+            'discount_amount' => (float) $order->discount_amount,
+            'total' => (float) $order->total,
+            'formatted_total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
+            'receipt_printed' => false,
+            'idempotent_replay' => true,
+        ]);
     }
 
     /**
@@ -2652,11 +2774,13 @@ class PosController extends Controller
             $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
 
             $detailItem = $order->items->map(function ($item) use ($warehouseName) {
+                $gross = (float) $item->subtotal;
+
                 return [
                     'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                     'quantity' => $item->quantity,
                     'unitPrice' => (float) $item->price,
-                    'discountPercent' => 0,
+                    'discountPercent' => $gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0,
                     'warehouseName' => $warehouseName,
                 ];
             })->values()->toArray();
@@ -2685,27 +2809,14 @@ class PosController extends Controller
                 ];
             }
 
-            $soNumber = null;
-            $maxAttempts = 3;
+            $soNumber = $order->accurate_so_number;
             $activeArea = auth()->user()?->resolveActiveArea();
             $areaPrefix = $activeArea ? $activeArea->so_prefix : 'ROOM-';
-            $soPrefix = "{$areaPrefix}WALKIN-".now()->format('Ymd').'-';
-            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $randomNumber = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
-                $soNumberWithPrefix = $soPrefix.$randomNumber;
-                try {
-                    $soResult = $this->accurateService->saveSalesOrder(
-                        array_merge($soBasePayload, ['number' => $soNumberWithPrefix])
-                    );
-                    // Use the same prefixed number we sent; Accurate may return different format
-                    $soNumber = $soNumberWithPrefix;
-                    break;
-                } catch (\Exception $e) {
-                    $isDuplicate = str_contains($e->getMessage(), 'Sudah ada data');
-                    if (! $isDuplicate || $attempt === $maxAttempts) {
-                        throw $e;
-                    }
-                }
+            if (! $soNumber) {
+                $soNumber = sprintf('%sWALKIN-%s-%05d', $areaPrefix, $order->ordered_at->format('Ymd'), $order->id % 100000);
+                $this->accurateService->saveSalesOrder(array_merge($soBasePayload, ['number' => $soNumber]));
+                $order->update(['accurate_so_number' => $soNumber]);
+                $billing?->update(['accurate_so_number' => $soNumber]);
             }
 
             // 2. Save Sales Invoice
@@ -2740,8 +2851,13 @@ class PosController extends Controller
                 ];
             }
 
-            $invResult = $this->accurateService->saveSalesInvoice($invPayload);
-            $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
+            $invNumber = $order->accurate_inv_number;
+            if (! $invNumber) {
+                $invResult = $this->accurateService->saveSalesInvoice($invPayload);
+                $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
+                $order->update(['accurate_inv_number' => $invNumber]);
+                $billing?->update(['accurate_inv_number' => $invNumber]);
+            }
 
             // 3. Save Sales Receipt (Penerimaan Penjualan) for single or split payments
             $this->syncSalesReceipts($customerNo, $transDate, $soNumber, $invNumber, $order->order_number, $billing, $order);
@@ -2953,7 +3069,7 @@ class PosController extends Controller
     {
         $customerUser->loadMissing(['user', 'profile']);
 
-        if ($customerUser->customer_code) {
+        if ($customerUser->customer_code && $customerUser->accurate_id) {
             return $customerUser->customer_code;
         }
 
@@ -2967,6 +3083,10 @@ class PosController extends Controller
             'name' => $user->name,
             'email' => $user->email,
         ];
+
+        if ($customerUser->accurate_id) {
+            $payload['id'] = $customerUser->accurate_id;
+        }
 
         $response = $this->accurateService->saveCustomer($payload);
         $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;

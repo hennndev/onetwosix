@@ -205,7 +205,7 @@ class WaiterController extends Controller
                     'id' => 'item_'.$item->id,
                     'name' => $displayName,
                     'category' => $item->category_type,
-                    'price' => (float) $item->price,
+                    'price' => strtolower(trim((string) $item->category_main)) === 'compliment' ? 0.0 : (float) $item->price,
                     'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
                     'is_menu' => (bool) $setting?->is_menu,
                     'is_item_group' => $isItemGroup,

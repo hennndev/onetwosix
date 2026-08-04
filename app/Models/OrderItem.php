@@ -15,6 +15,8 @@ class OrderItem extends Model
         'price',
         'subtotal',
         'discount_amount',
+        'discount_reason',
+        'discount_approval_id',
         'tax_amount',
         'service_charge_amount',
         'preparation_location',

@@ -39,6 +39,7 @@
         clearCart: "{{ route('admin.pos.clear-cart') }}",
         previewCheckoutAvailability: "{{ route('admin.pos.preview-checkout-availability') }}",
         checkout: "{{ route('admin.pos.checkout') }}",
+        approveDiscount: "{{ route('admin.pos.discount-approvals.store') }}",
         printReceiptBase: "{{ url('admin/pos/print-receipt') }}",
         printWalkInDraftReceipt: "{{ route('admin.pos.print-walk-in-draft-receipt') }}",
         verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
@@ -186,6 +187,7 @@
           cart: posInitialData.cart,
           cartTotal: posInitialData.cartTotal,
           isProcessing: false,
+          checkoutToken: null,
           showHistoryModal: false,
           recentOrders: [],
           historyLoading: false,
@@ -257,6 +259,18 @@
           posWaiters: posWaiters,
           availableTables: posAvailableTables,
           cartNotes: {},
+          selectedDiscountItemIds: [],
+          selectedDiscount: {
+            type: 'none',
+            value: 0,
+            reason: '',
+            managerCode: '',
+            authCodeRequested: false,
+            requestingAuthCode: false,
+            token: null,
+            amount: 0,
+            approving: false,
+          },
           menuAvailability: null,
 
           init() {
@@ -276,6 +290,116 @@
             const colors = ['bg-blue-500', 'bg-violet-500', 'bg-cyan-600', 'bg-orange-500', 'bg-teal-500', 'bg-pink-500'];
             const hash = String(id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
             return colors[hash % colors.length];
+          },
+
+          inventoryId(productId) {
+            return Number(String(productId || '').replace('item_', ''));
+          },
+
+          invalidateDiscountApproval() {
+            this.selectedDiscount.token = null;
+            this.selectedDiscount.amount = 0;
+            this.selectedDiscount.managerCode = '';
+            this.selectedDiscount.authCodeRequested = false;
+            this.checkoutToken = null;
+          },
+
+          toggleDiscountItem(itemId) {
+            const inventoryId = this.inventoryId(itemId);
+            this.selectedDiscountItemIds = this.selectedDiscountItemIds.includes(inventoryId) ?
+              this.selectedDiscountItemIds.filter(id => id !== inventoryId) :
+              [...this.selectedDiscountItemIds, inventoryId];
+            this.invalidateDiscountApproval();
+          },
+
+          async approveSelectedDiscount() {
+            if (!this.selectedDiscount.authCodeRequested) {
+              this.showToastMessage('Request auth code terlebih dahulu.', 'error');
+              return;
+            }
+
+            if (this.selectedDiscountItemIds.length === 0 || this.selectedDiscount.type === 'none' || Number(this.selectedDiscount.value || 0) <= 0 || !String(this.selectedDiscount.reason || '').trim() || !/^\d{4}$/.test(String(this.selectedDiscount.managerCode || ''))) {
+              this.showToastMessage('Pilih item, isi nilai, alasan, dan auth code manager.', 'error');
+              return;
+            }
+
+            this.selectedDiscount.approving = true;
+            try {
+              const response = await fetch(posRoutes.approveDiscount, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({
+                  customer_type: this.checkoutForm.customer_type,
+                  customer_user_id: this.checkoutForm.customer_user_id || null,
+                  walk_in_customer_id: this.checkoutForm.walk_in_customer_id || null,
+                  table_id: this.checkoutForm.table_id || null,
+                  selected_item_ids: this.selectedDiscountItemIds,
+                  discount_type: this.selectedDiscount.type,
+                  discount_value: Number(this.selectedDiscount.value || 0),
+                  reason: String(this.selectedDiscount.reason || '').trim(),
+                  manager_auth_code: String(this.selectedDiscount.managerCode || ''),
+                }),
+              });
+              const data = await response.json();
+              if (!response.ok || !data.success) {
+                this.showToastMessage(data.message || Object.values(data.errors || {})[0]?.[0] || 'Approval diskon gagal.', 'error');
+                return;
+              }
+
+              this.selectedDiscount.token = data.approval_token;
+              this.selectedDiscount.amount = Number(data.discount_amount || 0);
+              this.selectedDiscount.managerCode = '';
+              this.checkoutForm.discount_type = 'none';
+              this.checkoutForm.discount_percentage = 0;
+              this.checkoutForm.discount_nominal = 0;
+              this.checkoutForm.discountPercentage = 0;
+              this.showToastMessage('Diskon item disetujui manager.', 'success');
+            } catch (error) {
+              this.showToastMessage('Approval diskon gagal.', 'error');
+            } finally {
+              this.selectedDiscount.approving = false;
+            }
+          },
+
+          async requestSelectedDiscountAuthCode() {
+            if (this.selectedDiscount.type === 'none' || this.selectedDiscountItemIds.length === 0 || Number(this.selectedDiscount.value || 0) <= 0 || !String(this.selectedDiscount.reason || '').trim()) {
+              this.showToastMessage('Pilih tipe, item, isi nilai diskon, dan alasan terlebih dahulu.', 'error');
+              return;
+            }
+
+            if (this.selectedDiscount.requestingAuthCode) {
+              return;
+            }
+
+            this.selectedDiscount.requestingAuthCode = true;
+            try {
+              const response = await fetch(posRoutes.sendAuthCodeEmail, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({ source: 'pos-selected-item-discount' }),
+              });
+              const data = await response.json();
+
+              if (!response.ok || !data.success) {
+                this.showToastMessage(data.message || 'Gagal mengirim auth code.', 'error');
+                return;
+              }
+
+              this.selectedDiscount.authCodeRequested = true;
+              this.showToastMessage(data.message || 'Auth code berhasil dikirim.', 'success');
+            } catch (error) {
+              this.showToastMessage('Gagal mengirim auth code.', 'error');
+            } finally {
+              this.selectedDiscount.requestingAuthCode = false;
+            }
           },
 
           getCounterLabel() {
@@ -327,6 +451,7 @@
               );
               const data = await response.json();
               if (data.success) {
+                this.invalidateDiscountApproval();
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
                 await this.refreshMenuAvailability();
@@ -362,6 +487,7 @@
               );
               const data = await response.json();
               if (data.success) {
+                this.invalidateDiscountApproval();
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
                 await this.refreshMenuAvailability();
@@ -393,6 +519,7 @@
               );
               const data = await response.json();
               if (data.success) {
+                this.invalidateDiscountApproval();
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
                 await this.refreshMenuAvailability();
@@ -423,6 +550,8 @@
               });
               const data = await response.json();
               if (data.success) {
+                this.invalidateDiscountApproval();
+                this.selectedDiscountItemIds = [];
                 this.cart = [];
                 this.cartTotal = 0;
                 this.cartNotes = {};
@@ -629,6 +758,7 @@
            * Populates checkoutForm and opens the shared checkout modal.
            */
           receiveWalkIn(d) {
+            this.invalidateDiscountApproval();
             this.checkoutForm.customer_type = 'walk-in';
             this.checkoutForm.walk_in_customer_id = d.id;
             this.checkoutForm.table_id = null;
@@ -675,6 +805,15 @@
             const nominal = this.extractNumber(event.target.value);
             const maxNominal = Math.max(this.cartTotal, 0);
             this.checkoutForm.discount_nominal = Math.min(Math.max(nominal, 0), maxNominal);
+          },
+
+          onSelectedDiscountNominalInput(event) {
+            const nominal = this.extractNumber(event.target.value);
+            const selectedGross = this.cart
+              .filter(line => this.selectedDiscountItemIds.includes(this.inventoryId(line.id)))
+              .reduce((sum, line) => sum + Number(line.price || 0) * Number(line.quantity || 0), 0);
+            this.selectedDiscount.value = Math.max(Math.min(nominal, Math.max(selectedGross, 0)), 0);
+            this.invalidateDiscountApproval();
           },
 
           isWalkInNonCashNormalMode() {
@@ -891,6 +1030,10 @@
           },
 
           discountAmount() {
+            if (this.selectedDiscount.token) {
+              return Number(this.selectedDiscount.amount || 0);
+            }
+
             if (this.checkoutForm.customer_type === 'walk-in') {
               const discountBase = this.walkInPreDiscountTotal();
 
@@ -911,7 +1054,7 @@
           },
 
           finalTotal() {
-            if (this.checkoutForm.customer_type === 'walk-in') {
+            if (this.checkoutForm.customer_type === 'walk-in' && !this.selectedDiscount.token) {
               return this.cartTotal;
             }
 
@@ -921,19 +1064,20 @@
           chargeableBases() {
             return this.cart.reduce((acc, item) => {
               const subtotal = Number(item.price || 0) * Number(item.quantity || 0);
+              const netSubtotal = Math.max(subtotal - this.selectedItemDiscount(item), 0);
               const includeTax = item.include_tax !== false;
               const includeServiceCharge = item.include_service_charge !== false;
 
               if (includeServiceCharge) {
-                acc.serviceChargeBase += subtotal;
+                acc.serviceChargeBase += netSubtotal;
               }
 
               if (includeTax) {
-                acc.taxBase += subtotal;
+                acc.taxBase += netSubtotal;
               }
 
               if (includeTax && includeServiceCharge) {
-                acc.taxAndServiceBase += subtotal;
+                acc.taxAndServiceBase += netSubtotal;
               }
 
               return acc;
@@ -944,7 +1088,28 @@
             });
           },
 
+          selectedItemDiscount(item) {
+            if (!this.selectedDiscount.token || !this.selectedDiscountItemIds.includes(this.inventoryId(item.id))) {
+              return 0;
+            }
+
+            const gross = Number(item.price || 0) * Number(item.quantity || 0);
+            if (this.selectedDiscount.type === 'percentage') {
+              return Math.round(gross * Number(this.selectedDiscount.value || 0) / 100);
+            }
+
+            const selectedGross = this.cart
+              .filter(line => this.selectedDiscountItemIds.includes(this.inventoryId(line.id)))
+              .reduce((sum, line) => sum + Number(line.price || 0) * Number(line.quantity || 0), 0);
+
+            return selectedGross > 0 ? Math.round(Number(this.selectedDiscount.amount || 0) * gross / selectedGross) : 0;
+          },
+
           discountRatio() {
+            if (this.selectedDiscount.token) {
+              return 0;
+            }
+
             if (this.cartTotal <= 0) {
               return 0;
             }
@@ -956,7 +1121,7 @@
             const bases = this.chargeableBases();
             const serviceChargeRate = this.posCharges.serviceChargePercentage / 100;
 
-            if (this.checkoutForm.customer_type === 'walk-in') {
+            if (this.checkoutForm.customer_type === 'walk-in' || this.selectedDiscount.token) {
               const taxRate = this.posCharges.taxPercentage / 100;
               let serviceChargeBaseWithTax = bases.serviceChargeBase;
 
@@ -979,7 +1144,7 @@
             const bases = this.chargeableBases();
             const taxRate = this.posCharges.taxPercentage / 100;
 
-            if (this.checkoutForm.customer_type === 'walk-in') {
+            if (this.checkoutForm.customer_type === 'walk-in' || this.selectedDiscount.token) {
               return Math.round(bases.taxBase * taxRate);
             }
 
@@ -990,7 +1155,7 @@
           },
 
           walkInPreDiscountTotal() {
-            return this.cartTotal + this.calculatedServiceCharge() + this.calculatedTax();
+            return this.cartTotal - (this.selectedDiscount.token ? this.selectedDiscount.amount : 0) + this.calculatedServiceCharge() + this.calculatedTax();
           },
 
           subTotalBeforeDiscount() {
@@ -1002,6 +1167,10 @@
           },
 
           payableTotal() {
+            if (this.selectedDiscount.token) {
+              return this.walkInPreDiscountTotal();
+            }
+
             if (this.checkoutForm.customer_type === 'walk-in') {
               return this.walkInPreDiscountTotal() - this.discountAmount();
             }
@@ -1084,6 +1253,8 @@
               const payload = {
                 ...this.checkoutForm,
                 cart_notes: this.cartNotes,
+                idempotency_key: this.checkoutToken ??= crypto.randomUUID(),
+                discount_approval_token: this.selectedDiscount.token,
               };
 
               if (this.shouldChooseCheckerOnCheckout()) {
@@ -1116,6 +1287,11 @@
               });
               const data = await response.json();
               if (data.success) {
+                this.checkoutToken = null;
+                this.selectedDiscountItemIds = [];
+                this.selectedDiscount = {
+                  type: 'percentage', value: 0, reason: '', managerCode: '', authCodeRequested: false, requestingAuthCode: false, token: null, amount: 0, approving: false
+                };
                 const checkoutSnapshot = {
                   ...this.checkoutForm,
                 };

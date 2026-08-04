@@ -202,6 +202,7 @@
                     data-grand-total="{{ (float) ($sessionChargePreview['grand_total'] ?? max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }}"
                     data-checker-checked="{{ $checkerCheckedItems }}"
                     data-checker-total="{{ $checkerTotalItems }}"
+                    data-discount-items-url="{{ route('admin.bookings.discountItems', $tableBooking) }}"
                     onclick="event.stopPropagation(); openCloseBillingModal(this)"
                     class="mt-2 w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
               Tutup Billing

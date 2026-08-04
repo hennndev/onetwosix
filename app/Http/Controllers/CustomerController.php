@@ -100,26 +100,30 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8',
+            'email' => 'nullable|email|unique:users,email',
+            'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:20',
             'address' => 'nullable|string',
             'birth_date' => 'nullable|date',
         ]);
-        $accurateId = null;
+
+        $email = ! empty($validated['email'])
+            ? $validated['email']
+            : 'customer_'.time().'_'.random_int(1000, 9999).'@126club.internal';
+
+        $password = ! empty($validated['password'])
+            ? Hash::make($validated['password'])
+            : Hash::make(\Illuminate\Support\Str::random(16));
+
         try {
             DB::beginTransaction();
 
             $user = User::create([
                 'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
+                'email' => $email,
+                'password' => $password,
             ]);
-            $payload = [
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-            ];
-            // Create user profile
+
             $profile = UserProfile::create([
                 'user_id' => $user->id,
                 'phone' => $validated['phone'] ?? null,
@@ -127,12 +131,11 @@ class CustomerController extends Controller
                 'birth_date' => $validated['birth_date'] ?? null,
             ]);
 
-            $response = $this->accurateService->saveCustomer($payload);
-            $accurateId = $response['r']['id'];
-            $customerNo = $response['r']['customerNo'];
+            $customerCode = 'CUST-'.str_pad((string) $user->id, 5, '0', STR_PAD_LEFT);
+
             CustomerUser::create([
-                'accurate_id' => $accurateId,
-                'customer_code' => $customerNo,
+                'accurate_id' => null,
+                'customer_code' => $customerCode,
                 'user_id' => $user->id,
                 'user_profile_id' => $profile->id,
                 'total_visits' => 0,
@@ -152,9 +155,11 @@ class CustomerController extends Controller
 
     public function update(Request $request, CustomerUser $customer)
     {
+        $customer->loadMissing(['user', 'profile']);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,'.$customer->user_id,
+            'email' => 'nullable|email|unique:users,email,'.($customer->user_id ?? 0),
             'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:20',
             'address' => 'nullable|string',
@@ -166,24 +171,45 @@ class CustomerController extends Controller
         try {
             DB::beginTransaction();
 
-            // Update user
-            $userData = [
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-            ];
-            if (! empty($validated['password'])) {
-                $userData['password'] = Hash::make($validated['password']);
+            $email = ! empty($validated['email'])
+                ? $validated['email']
+                : ($customer->user?->email ?: 'customer_'.time().'_'.random_int(1000, 9999).'@126club.internal');
+
+            if (! $customer->user) {
+                $user = User::create([
+                    'name' => $validated['name'],
+                    'email' => $email,
+                    'password' => \Illuminate\Support\Facades\Hash::make($validated['password'] ?? \Illuminate\Support\Str::random(16)),
+                ]);
+                $customer->update(['user_id' => $user->id]);
+                $customer->setRelation('user', $user);
+            } else {
+                $userData = [
+                    'name' => $validated['name'],
+                    'email' => $email,
+                ];
+                if (! empty($validated['password'])) {
+                    $userData['password'] = \Illuminate\Support\Facades\Hash::make($validated['password']);
+                }
+                $customer->user->update($userData);
             }
-            $customer->user->update($userData);
 
-            // Update profile
-            $customer->profile->update([
-                'phone' => $validated['phone'] ?? null,
-                'address' => $validated['address'] ?? null,
-                'birth_date' => $validated['birth_date'] ?? null,
-            ]);
+            if ($customer->profile) {
+                $customer->profile->update([
+                    'phone' => $validated['phone'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                    'birth_date' => $validated['birth_date'] ?? null,
+                ]);
+            } else {
+                $profile = UserProfile::create([
+                    'user_id' => $customer->user_id,
+                    'phone' => $validated['phone'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                    'birth_date' => $validated['birth_date'] ?? null,
+                ]);
+                $customer->update(['user_profile_id' => $profile->id]);
+            }
 
-            // Update customer data
             $customer->update([
                 'total_visits' => $validated['total_visits'] ?? $customer->total_visits,
                 'lifetime_spending' => $validated['lifetime_spending'] ?? $customer->lifetime_spending,
@@ -306,7 +332,7 @@ class CustomerController extends Controller
     {
         $customerUser->loadMissing(['user', 'profile']);
 
-        if ($customerUser->customer_code) {
+        if ($customerUser->customer_code && $customerUser->accurate_id) {
             return $customerUser->customer_code;
         }
 
@@ -320,6 +346,10 @@ class CustomerController extends Controller
             'name' => $user->name,
             'email' => $user->email,
         ];
+
+        if ($customerUser->accurate_id) {
+            $payload['id'] = $customerUser->accurate_id;
+        }
 
         $response = $this->accurateService->saveCustomer($payload);
         $accurateId = $response['r']['id'] ?? $response['d']['id'] ?? null;

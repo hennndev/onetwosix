@@ -162,6 +162,83 @@ test('close billing works with normal payment mode', function () {
         ->and($updatedTable?->status)->toBe('available');
 });
 
+test('close billing modal receives active order items safely', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+    $item = $session->orders->first()->items->first();
+    $item->update(['item_name' => 'Menu "Special"']);
+    $response = actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertSuccessful()
+        ->assertSee('Pilih item yang mendapat diskon')
+        ->assertSee('Tidak ada order item aktif pada billing ini.', false)
+        ->assertSee('new TextDecoder()', false);
+
+    preg_match('/data-discount-items="([^"]+)"/', $response->getContent(), $matches);
+    $payload = json_decode(base64_decode($matches[1] ?? ''), true);
+
+    expect($payload)->toBeArray()->toHaveCount(1)
+        ->and($payload[0]['id'])->toBe($item->id)
+        ->and($payload[0]['name'])->toBe('Menu "Special"')
+        ->and($payload[0]['quantity'])->toBe(2)
+        ->and((float) $payload[0]['subtotal'])->toBe(120000.0);
+
+    expect($response->getContent())->toContain(route('admin.bookings.discountItems', $booking))
+        ->toContain('Memuat order item terbaru...');
+});
+
+test('close billing button on table map loads active discount items', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $response = actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertSuccessful();
+
+    expect($response->getContent())->toMatch(
+        '/<button[^>]+data-booking-id="'.preg_quote((string) $booking->id, '/').'"[^>]+data-discount-items-url="'.preg_quote(route('admin.bookings.discountItems', $booking), '/').'"[^>]+onclick="event\.stopPropagation\(\); openCloseBillingModal\(this\)"/s'
+    );
+});
+
+test('close billing discount items endpoint returns orders added after page render', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+
+    actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertSuccessful();
+
+    $order = $session->orders->first();
+    $inventory = InventoryItem::create([
+        'code' => 'LATE-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Late Order Item',
+        'category_type' => 'beverage',
+        'price' => 25000,
+        'stock_quantity' => 10,
+        'is_active' => true,
+    ]);
+    $lateItem = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventory->id,
+        'item_name' => $inventory->name,
+        'item_code' => $inventory->code,
+        'quantity' => 1,
+        'price' => 25000,
+        'subtotal' => 25000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+    ]);
+
+    actingAs($admin)
+        ->getJson(route('admin.bookings.discountItems', $booking))
+        ->assertSuccessful()
+        ->assertJsonPath('items.1.id', $lateItem->id)
+        ->assertJsonPath('items.1.name', 'Late Order Item')
+        ->assertJsonPath('items.1.subtotal', 25000);
+});
+
 test('close billing deducts booking down payment from grand total', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
@@ -307,6 +384,7 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     });
 
     actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
         ->postJson(route('admin.bookings.closeBilling', $booking), [
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
@@ -377,13 +455,16 @@ test('close billing rejects discount without valid auth code', function () {
         ],
     );
 
-    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
-        'payment_mode' => 'normal',
-        'payment_method' => 'cash',
-        'discount_type' => 'percentage',
-        'discount_percentage' => 10,
-        'discount_auth_code' => '0000',
-    ]);
+    $response = actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_order_item_ids' => [$booking->tableSession->orders->first()->items->first()->id],
+            'discount_auth_code' => '0000',
+        ]);
 
     $response
         ->assertUnprocessable()
@@ -404,13 +485,17 @@ test('close billing applies percentage discount with valid auth code', function 
         ],
     );
 
-    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
-        'payment_mode' => 'normal',
-        'payment_method' => 'cash',
-        'discount_type' => 'percentage',
-        'discount_percentage' => 10,
-        'discount_auth_code' => '4321',
-    ]);
+    $item = $booking->tableSession->orders->first()->items->first();
+    $response = actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_order_item_ids' => [$item->id],
+            'discount_auth_code' => '4321',
+        ]);
 
     $response
         ->assertSuccessful()
@@ -419,7 +504,8 @@ test('close billing applies percentage discount with valid auth code', function 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect((float) $updatedBilling->discount_amount)->toBe(12000.0)
-        ->and((float) $updatedBilling->grand_total)->toBe(108000.0);
+        ->and((float) $updatedBilling->grand_total)->toBe(108000.0)
+        ->and((float) $item->fresh()->discount_amount)->toBe(12000.0);
 });
 
 test('close billing applies nominal discount with valid auth code', function () {
@@ -435,13 +521,17 @@ test('close billing applies nominal discount with valid auth code', function () 
         ],
     );
 
-    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
-        'payment_mode' => 'normal',
-        'payment_method' => 'cash',
-        'discount_type' => 'nominal',
-        'discount_nominal' => 15000,
-        'discount_auth_code' => '6789',
-    ]);
+    $item = $booking->tableSession->orders->first()->items->first();
+    $response = actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'nominal',
+            'discount_nominal' => 15000,
+            'discount_order_item_ids' => [$item->id],
+            'discount_auth_code' => '6789',
+        ]);
 
     $response
         ->assertSuccessful()
@@ -450,7 +540,77 @@ test('close billing applies nominal discount with valid auth code', function () 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect((float) $updatedBilling->discount_amount)->toBe(15000.0)
-        ->and((float) $updatedBilling->grand_total)->toBe(105000.0);
+        ->and((float) $updatedBilling->grand_total)->toBe(105000.0)
+        ->and((float) $item->fresh()->discount_amount)->toBe(15000.0);
+});
+
+test('close billing discounts only selected item and sends it to receipt and accurate', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+    $order = $session->orders->first();
+    $selectedItem = $order->items->first();
+    $selectedItem->update(['quantity' => 1, 'subtotal' => 60000]);
+    $regularInventory = InventoryItem::create([
+        'code' => 'INV-REGULAR-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Regular Item',
+        'category_type' => 'beverage',
+        'price' => 60000,
+        'stock_quantity' => 50,
+        'is_active' => true,
+    ]);
+    $regularItem = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $regularInventory->id,
+        'item_name' => $regularInventory->name,
+        'item_code' => $regularInventory->code,
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+    ]);
+    $order->updateTotals();
+    $profile = UserProfile::create(['user_id' => $booking->customer_id]);
+    CustomerUser::create([
+        'user_id' => $booking->customer_id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 120003,
+        'customer_code' => 'CUST-SELECTIVE',
+    ]);
+    DailyAuthCode::forDate(now()->format('Y-m-d'))->update(['code' => '8642', 'override_code' => null]);
+    $salesOrderPayload = [];
+
+    mock(AccurateService::class, function (MockInterface $mock) use (&$salesOrderPayload): void {
+        $mock->shouldReceive('saveSalesOrder')->once()->withArgs(function (array $payload) use (&$salesOrderPayload): bool {
+            $salesOrderPayload = $payload;
+
+            return true;
+        })->andReturnUsing(fn (array $payload): array => ['r' => ['number' => $payload['number']]]);
+        $mock->shouldReceive('saveSalesInvoice')->once()->andReturn(['r' => ['number' => 'INV-SELECTIVE']]);
+    });
+
+    actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_order_item_ids' => [$selectedItem->id],
+            'discount_auth_code' => '8642',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('receipt.items.0.discount_amount', 6000)
+        ->assertJsonPath('receipt.items.1.discount_amount', 0)
+        ->assertJsonPath('receipt.discount_amount', 6000)
+        ->assertJsonPath('receipt.grand_total', 114000);
+
+    expect((float) $selectedItem->fresh()->discount_amount)->toBe(6000.0)
+        ->and((float) $regularItem->fresh()->discount_amount)->toBe(0.0)
+        ->and($salesOrderPayload['detailItem'][0]['discountPercent'])->toBe(10.0)
+        ->and($salesOrderPayload['detailItem'][1]['discountPercent'])->toBe(0.0);
 });
 
 test('close billing calculates service charge based on subtotal plus tax when tax is active', function () {
@@ -549,12 +709,16 @@ test('close billing calculates percentage discount after tax and service charge'
         ],
     );
 
+    $item = $booking->tableSession->orders->first()->items->first();
+
     actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
         ->postJson(route('admin.bookings.closeBilling', $booking), [
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
             'discount_type' => 'percentage',
             'discount_percentage' => 10,
+            'discount_order_item_ids' => [$item->id],
             'discount_auth_code' => '1357',
         ])
         ->assertSuccessful()
@@ -562,9 +726,9 @@ test('close billing calculates percentage discount after tax and service charge'
 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
-    expect((float) $updatedBilling->tax)->toBe(13200.0)
-        ->and((float) $updatedBilling->service_charge)->toBe(13320.0)
-        ->and((float) $updatedBilling->discount_amount)->toBe(14652.0)
+    expect((float) $updatedBilling->tax)->toBe(11880.0)
+        ->and((float) $updatedBilling->service_charge)->toBe(11988.0)
+        ->and((float) $updatedBilling->discount_amount)->toBe(12000.0)
         ->and((float) $updatedBilling->grand_total)->toBe(131868.0);
 });
 
@@ -612,11 +776,12 @@ test('close billing works with normal non-cash payment and reference number', fu
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
-    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
-        'payment_mode' => 'normal',
-        'payment_method' => 'transfer',
-        'payment_reference_number' => 'TRF-APPROVAL-12345',
-    ]);
+    $response = actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'transfer',
+            'payment_reference_number' => 'TRF-APPROVAL-12345',
+        ]);
 
     $response
         ->assertSuccessful()
@@ -884,16 +1049,20 @@ test('close billing auto-adjusts split non-cash when discount changes final gran
         ],
     );
 
-    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
-        'payment_mode' => 'split',
-        'split_cash_amount' => 70000,
-        'split_non_cash_amount' => 50000,
-        'split_non_cash_method' => 'debit',
-        'split_non_cash_reference_number' => 'DB-2468',
-        'discount_type' => 'percentage',
-        'discount_percentage' => 10,
-        'discount_auth_code' => '2468',
-    ]);
+    $item = $booking->tableSession->orders->first()->items->first();
+    $response = actingAs($admin)
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'split',
+            'split_cash_amount' => 70000,
+            'split_non_cash_amount' => 50000,
+            'split_non_cash_method' => 'debit',
+            'split_non_cash_reference_number' => 'DB-2468',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_order_item_ids' => [$item->id],
+            'discount_auth_code' => '2468',
+        ]);
 
     $response
         ->assertSuccessful()

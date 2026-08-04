@@ -11,6 +11,7 @@ Route::delete('pos/{productId}/remove-from-cart', [PosController::class, 'remove
 Route::post('pos/clear-cart', [PosController::class, 'clearCart'])->name('pos.clear-cart');
 Route::get('pos/preview-checkout-availability', [PosController::class, 'previewCheckoutAvailability'])->name('pos.preview-checkout-availability');
 Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+Route::post('pos/discount-approvals', [PosController::class, 'approveDiscount'])->middleware('throttle:5,1')->name('pos.discount-approvals.store');
 Route::get('pos/recent-orders', [PosController::class, 'recentOrders'])->name('pos.recent-orders');
 Route::post('pos/assign-waiter/{booking}', [PosController::class, 'assignWaiterFromPos'])->name('pos.assign-waiter');
 

@@ -172,6 +172,13 @@ class DailyAuthCodeController extends Controller
             $channels[] = 'WhatsApp';
         }
 
+        if ($request->input('source') === 'pos-selected-item-discount') {
+            $request->session()->put('pos_discount_auth_code_requested_at', now()->timestamp);
+        }
+        if ($request->input('source') === 'booking-close-discount') {
+            $request->session()->put('booking_discount_auth_code_requested_at', now()->timestamp);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Auth code berhasil dikirim ke '.implode(' & ', $channels).'.',

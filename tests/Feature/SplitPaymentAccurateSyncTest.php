@@ -27,6 +27,7 @@ test('split bill sync sends separate sales receipts with cash account for cash a
     \App\Models\CustomerUser::create([
         'user_id' => $customerUser->id,
         'user_profile_id' => $profile->id,
+        'accurate_id' => 101,
         'customer_code' => 'CUST-001',
     ]);
 
@@ -158,6 +159,7 @@ test('split bill sync with both non-cash uses bank account for both receipts', f
     \App\Models\CustomerUser::create([
         'user_id' => $customerUser->id,
         'user_profile_id' => $profile->id,
+        'accurate_id' => 102,
         'customer_code' => 'CUST-002',
     ]);
 

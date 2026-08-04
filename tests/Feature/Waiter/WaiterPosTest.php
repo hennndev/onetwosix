@@ -175,6 +175,7 @@ test('waiter checkout creates order for their own session and clears cart', func
     expect((string) $response->json('order_number'))->toMatch('/^ORD-\d{8}-\d{4}$/');
 
     expect(Order::where('table_session_id', $session->id)->exists())->toBeTrue();
+    expect($product->fresh()->stock_quantity)->toBe(97);
 });
 
 test('waiter checkout persists cart item note to order and kitchen order items', function () {
@@ -833,6 +834,56 @@ test('waiter pos page uses inventory pos_name as product display name', function
     expect($productPayload)->not->toBeNull()
         ->and($productPayload['name'])->toBe('POS Display Name');
 });
+
+test('waiter checkout keeps FOC billed and makes only Compliment free', function (string $categoryMain, float $expectedPrice) {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-FREE-'.strtoupper($categoryMain));
+    $session = posSession($table, $customer, $waiter);
+    $product = posProduct('food');
+    $product->update([
+        'category_main' => $categoryMain,
+        'price' => 50000,
+        'stock_quantity' => 10,
+    ]);
+    $productId = 'item_'.$product->id;
+
+    $page = actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('waiter.pos'))
+        ->assertOk();
+
+    expect((float) collect($page->viewData('products'))->firstWhere('id', $productId)['price'])->toBe($expectedPrice);
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $product->name,
+                    'price' => 50000,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $order = Order::query()->where('table_session_id', $session->id)->latest('id')->firstOrFail();
+    $orderItem = $order->items()->firstOrFail();
+
+    expect((float) $orderItem->price)->toBe($expectedPrice)
+        ->and((float) $orderItem->subtotal)->toBe($expectedPrice * 2)
+        ->and((float) $order->total)->toBe($expectedPrice * 2)
+        ->and($product->fresh()->stock_quantity)->toBe(8);
+})->with([
+    'FOC remains billed' => ['foc', 50000.0],
+    'Compliment is free' => ['compliment', 0.0],
+]);
 
 test('waiter pos page hides inventory items marked invisible in pos', function () {
     $waiter = posWaiter();

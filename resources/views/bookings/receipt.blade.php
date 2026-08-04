@@ -216,6 +216,12 @@
           <span>Harga: Rp {{ number_format($item['price'], 0, ',', '.') }}</span>
           <span class="item-total">Total: Rp {{ number_format($item['subtotal'], 0, ',', '.') }}</span>
         </div>
+        @if (($item['discount_amount'] ?? 0) > 0)
+          <div class="item-meta item-price-total">
+            <span>Diskon Item</span>
+            <span class="item-total">- Rp {{ number_format($item['discount_amount'], 0, ',', '.') }}</span>
+          </div>
+        @endif
       </div>
     @endforeach
   </div>
@@ -229,12 +235,20 @@
     $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
     $subTotalAmount = $totalBillAmount + $taxAmount + $serviceChargeAmount;
     $downPaymentAmount = (float) ($booking?->down_payment_amount ?? 0);
+    $discountAmount = (float) ($billing?->discount_amount ?? 0);
   @endphp
 
   <div class="total-row">
     <span>Total Bill</span>
     <span>Rp {{ number_format($totalBillAmount, 0, ',', '.') }}</span>
   </div>
+
+  @if ($discountAmount > 0)
+    <div class="total-row" style="color: #c2410c;">
+      <span>Diskon</span>
+      <span>- Rp {{ number_format($discountAmount, 0, ',', '.') }}</span>
+    </div>
+  @endif
 
   @if ($taxAmount > 0)
     <div class="total-row">

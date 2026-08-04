@@ -214,12 +214,14 @@ test('close billing for booking with FOC or Compliment requires valid auth code'
         ->assertJsonValidationErrors(['discount_auth_code']);
 
     // 2. Compliment with valid auth code -> succeeds with 0 grand total
-    $resCompSuccess = postJson(route('admin.bookings.closeBilling', $reservation->id), [
-        'payment_mode' => 'normal',
-        'payment_method' => 'cash',
-        'foc_comp_payment_method' => 'Compliment',
-        'discount_auth_code' => $authCode,
-    ]);
+    $resCompSuccess = $this
+        ->withSession(['booking_discount_auth_code_requested_at' => now()->timestamp])
+        ->postJson(route('admin.bookings.closeBilling', $reservation->id), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'foc_comp_payment_method' => 'Compliment',
+            'discount_auth_code' => $authCode,
+        ]);
 
     $resCompSuccess->assertStatus(200)
         ->assertJson(['success' => true]);
