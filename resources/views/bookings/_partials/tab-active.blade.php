@@ -1,7 +1,7 @@
 {{-- ACTIVE TABLES TAB --}}
 
 {{-- Stats row --}}
-<div class="grid grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
   <div class="bg-blue-800 rounded-xl px-5 py-4 flex items-center gap-4">
     <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
       <svg class="w-5 h-5 text-white"

@@ -1,5 +1,5 @@
 <x-app-layout title="Kinerja Waiter">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
 
     <!-- Header -->
     <div class="flex items-center gap-3 mb-6 bg-white border border-slate-200 rounded-xl p-5">
@@ -19,6 +19,31 @@
         <p class="text-sm text-slate-500">Monitor performa dan penjualan setiap waiter</p>
       </div>
     </div>
+
+    <!-- Realtime summary stats (polled) -->
+    @php
+      $summaryQuery = array_merge(['summary' => 1], $selectedAreaId ? ['area_id' => $selectedAreaId] : []);
+    @endphp
+    <div id="waiterStats"
+         x-data="realtimePoll({ url: '{{ route('admin.waiter-performance.index', $summaryQuery) }}', target: 'waiterStats', interval: 15000 })">
+      @include('waiter-performance._partials.stats')
+    </div>
+
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-5">
+        <a href="{{ route('admin.waiter-performance.index', request()->except('area_id')) }}"
+           class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($selectedAreaId) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $area)
+          <a href="{{ route('admin.waiter-performance.index', array_merge(request()->except('area_id'), ['area_id' => $area->id])) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ $selectedAreaId === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            {{ $area->name }}
+          </a>
+        @endforeach
+      </div>
+    @endif
 
     <form method="GET"
           action="{{ route('admin.waiter-performance.index') }}"
@@ -44,7 +69,7 @@
         </div>
 
         <!-- Period buttons -->
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           @foreach (['today' => 'Hari Ini', 'week' => 'Minggu Ini', 'month' => 'Bulan Ini'] as $value => $label)
             <button type="submit"
                     name="period"
@@ -61,9 +86,12 @@
              name="period"
              id="periodInput"
              value="{{ $period }}">
+      @if ($selectedAreaId)
+        <input type="hidden" name="area_id" value="{{ $selectedAreaId }}">
+      @endif
 
       <!-- Mode Toggle -->
-      <div class="flex gap-2 mb-5">
+      <div class="flex flex-wrap gap-2 mb-5">
         <button type="submit"
                 name="mode"
                 value="individual"

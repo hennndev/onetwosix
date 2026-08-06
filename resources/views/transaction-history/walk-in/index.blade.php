@@ -1,5 +1,5 @@
 <x-app-layout title="Riwayat Walk-In">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="walkInTransactionHistory()">
 
     <!-- Header -->
@@ -22,22 +22,26 @@
         </div>
       </div>
 
-      <!-- Area Filter Pills -->
-      @if (($areas ?? collect())->count() > 1)
-        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
-             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-            Semua Area
-          </a>
-          @foreach ($areas as $area)
-            <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
-               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-              {{ $area->name }}
-            </a>
-          @endforeach
-        </div>
-      @endif
     </div>
+
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      @php
+        $wiBaseQuery = array_merge(request()->except(['area_id', 'per_page', 'search', 'date_from', 'date_to']), ['transaction_mode' => 'walk_in']);
+      @endphp
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <a href="{{ route('admin.transaction-history.index', $wiBaseQuery) }}"
+           class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($selectedAreaId ?? null) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $area)
+          <a href="{{ route('admin.transaction-history.index', array_merge($wiBaseQuery, ['area_id' => $area->id])) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ ($selectedAreaId ?? null) === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            {{ $area->name }}
+          </a>
+        @endforeach
+      </div>
+    @endif
 
     <!-- Stat Cards -->
     <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
@@ -125,7 +129,7 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <!-- Header & Filter -->
       <div class="px-5 py-4 border-b border-gray-100 bg-gray-50">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h2 class="font-semibold text-gray-800">Daftar Transaksi Walk In</h2>
           <div class="flex items-center gap-2">
             <select x-model="perPage"
@@ -140,10 +144,15 @@
 
         <form method="GET"
               action="{{ route('admin.transaction-history.index') }}"
-              class="flex items-center gap-2 mb-3">
+              class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-3">
           <input type="hidden"
                  name="transaction_mode"
                  value="walk_in">
+          @if (! is_null($selectedAreaId ?? null))
+            <input type="hidden"
+                   name="area_id"
+                   value="{{ $selectedAreaId }}">
+          @endif
           <input type="text"
                  name="search"
                  placeholder="Cari nama, kontak, no. transaksi..."
@@ -161,11 +170,11 @@
           @endif
         </form>
 
-        <div class="flex items-center gap-3">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <span class="text-sm font-medium text-gray-500">Filter Tanggal:</span>
           <form method="GET"
                 action="{{ route('admin.transaction-history.index') }}"
-                class="flex items-center gap-2">
+                class="flex flex-wrap items-center gap-2">
             @if (request('search'))
               <input type="hidden"
                      name="search"
@@ -179,6 +188,11 @@
             <input type="hidden"
                    name="transaction_mode"
                    value="walk_in">
+            @if (! is_null($selectedAreaId ?? null))
+              <input type="hidden"
+                     name="area_id"
+                     value="{{ $selectedAreaId }}">
+            @endif
             <input type="date"
                    name="date_from"
                    value="{{ request('date_from') }}"
@@ -217,7 +231,7 @@
         </div>
       @else
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm min-w-[800px]">
             <thead>
               <tr class="bg-gray-50 border-b border-gray-200">
                 <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Status</th>

@@ -1,4 +1,4 @@
-<x-guest-layout>
+<x-guest-layout title="Login">
   <div class="mb-8">
     <h1 class="text-gray-800 font-black text-6xl tracking-wider mb-2">126</h1>
     <p class="text-gray-500 text-xs tracking-[0.3em] uppercase">One • Two • Six</p>

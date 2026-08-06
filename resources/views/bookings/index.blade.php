@@ -14,7 +14,7 @@
     );
   @endphp
 
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="bookingPage(@js($tablesJson), @js($activeBookingsByTable->keys()->values()), @js(collect()))">
 
     @if (session('success'))
@@ -40,6 +40,22 @@
     @endif
 
     @include('bookings._partials.header')
+
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <a href="{{ route('admin.bookings.index', ['tab' => $tab ?? 'all']) }}"
+           class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($activeAreaId ?? null) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $area)
+          <a href="{{ route('admin.bookings.index', ['tab' => $tab ?? 'all', 'area_id' => $area->id]) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ ($activeAreaId ?? null) === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            {{ $area->name }}
+          </a>
+        @endforeach
+      </div>
+    @endif
 
     @include('bookings._partials.tab-nav')
 

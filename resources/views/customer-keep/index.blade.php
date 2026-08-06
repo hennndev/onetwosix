@@ -1,5 +1,5 @@
 <x-app-layout title="Customer Keep">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="keepManager()"
        x-cloak>
 
@@ -20,7 +20,7 @@
     @endif
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center">
           <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,7 +36,7 @@
       <button @click="openAddModal()"
               :disabled="todayCustomers.length === 0"
               :class="todayCustomers.length === 0 ? 'opacity-40 cursor-not-allowed bg-slate-800' : 'bg-slate-800 hover:bg-slate-700'"
-              class="inline-flex items-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg transition">
+              class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg transition">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>

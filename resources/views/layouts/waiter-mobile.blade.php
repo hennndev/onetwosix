@@ -10,7 +10,7 @@
   <meta name="theme-color"
         content="#f8fafc">
 
-  <title>{{ config('app.name', 'Laravel') }}</title>
+  <title>{{ config('app.name', '126 Club') }}</title>
 
   <link rel="preconnect"
         href="https://fonts.bunny.net">

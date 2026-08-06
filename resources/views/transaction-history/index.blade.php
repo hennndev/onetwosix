@@ -1,5 +1,5 @@
 <x-app-layout title="Riwayat Transaksi">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="transactionHistory()">
 
     <!-- Header -->
@@ -22,113 +22,42 @@
         </div>
       </div>
 
-      <!-- Area Filter Pills -->
-      @if (($areas ?? collect())->count() > 1)
-        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
-             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-            Semua Area
-          </a>
-          @foreach ($areas as $area)
-            <a href="{{ route('admin.transaction-history.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
-               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-              {{ $area->name }}
-            </a>
-          @endforeach
-        </div>
-      @endif
     </div>
 
-    <!-- Stat Cards -->
-    <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
-      <!-- Total Transaksi -->
-      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6 text-white"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        </div>
-        <div>
-          <p class="text-xs text-gray-500 mb-0.5">Total Transaksi</p>
-          <p class="text-2xl font-bold text-gray-900">{{ $totalOrders }}</p>
-        </div>
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      @php
+        $txBaseQuery = request()->except(['area_id', 'per_page', 'search']);
+      @endphp
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <a href="{{ route('admin.transaction-history.index', $txBaseQuery) }}"
+           class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($selectedAreaId ?? null) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $area)
+          <a href="{{ route('admin.transaction-history.index', array_merge($txBaseQuery, ['area_id' => $area->id])) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ ($selectedAreaId ?? null) === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            {{ $area->name }}
+          </a>
+        @endforeach
       </div>
+    @endif
 
-      <!-- Hari Ini -->
-      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4"
-           style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-        <div class="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6 text-white"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </div>
-        <div>
-          <p class="text-xs text-green-700 mb-0.5">Hari Ini</p>
-          <p class="text-2xl font-bold text-gray-900">{{ $todayOrders }}</p>
-        </div>
-      </div>
-
-      <!-- Pendapatan Hari Ini -->
-      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 bg-slate-700 rounded-xl flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6 text-white"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-          </svg>
-        </div>
-        <div>
-          <p class="text-xs text-gray-500 mb-0.5">Pendapatan Hari Ini</p>
-          <p class="text-xl font-bold text-gray-900">
-            Rp {{ number_format($todayRevenue / 1000000, 1, '.', '') }}jt
-          </p>
-        </div>
-      </div>
-
-      <!-- Total DP Booking Hari Ini -->
-      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4"
-           style="background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%);">
-        <div class="w-12 h-12 bg-cyan-600 rounded-xl flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6 text-white"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-          </svg>
-        </div>
-        <div>
-          <p class="text-xs text-cyan-700 mb-0.5">Total DP Hari Ini <span class="font-normal">(booking)</span></p>
-          <p class="text-2xl font-bold text-gray-900">Rp {{ number_format($todayBookingDownPayment, 0, ',', '.') }}</p>
-        </div>
-      </div>
-
+    <!-- Realtime stats cards (polled) -->
+    @php
+      $txLiveQuery = request()->only(['area_id', 'transaction_mode', 'date_from', 'date_to', 'search', 'per_page']);
+    @endphp
+    <div id="txStats"
+         x-data="realtimePoll({ url: '{{ route('admin.transaction-history.index', $txLiveQuery) }}', target: 'txStats', interval: 30000 })">
+      @include('transaction-history._partials.stats')
     </div>
 
     <!-- Table Card -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <!-- Table Header -->
-      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
         <h2 class="font-semibold text-gray-800">Daftar Transaksi</h2>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <!-- Per Page + Search -->
           <form method="GET"
                 action="{{ route('admin.transaction-history.index') }}"
@@ -146,6 +75,11 @@
                      name="search"
                      value="{{ request('search') }}">
             @endif
+            @if (! is_null($selectedAreaId ?? null))
+              <input type="hidden"
+                     name="area_id"
+                     value="{{ $selectedAreaId }}">
+            @endif
           </form>
           <form method="GET"
                 action="{{ route('admin.transaction-history.index') }}">
@@ -154,11 +88,16 @@
                      name="search"
                      value="{{ request('search') }}"
                      placeholder="Cari transaksi atau customer..."
-                     class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 w-64">
+                     class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 w-full sm:w-64">
               @if (request('per_page'))
                 <input type="hidden"
                        name="per_page"
                        value="{{ request('per_page') }}">
+              @endif
+              @if (! is_null($selectedAreaId ?? null))
+                <input type="hidden"
+                       name="area_id"
+                       value="{{ $selectedAreaId }}">
               @endif
               <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5"
                    fill="none"
@@ -171,26 +110,17 @@
               </svg>
             </div>
           </form>
-          <span class="text-sm text-gray-400">{{ $orders->total() }} transaksi</span>
+          <span class="text-sm text-gray-400" data-tx-count>{{ $orders->total() }} transaksi</span>
         </div>
       </div>
 
-      @if ($orders->isEmpty())
-        <div class="flex flex-col items-center justify-center py-16 text-gray-400">
-          <svg class="w-12 h-12 mb-3 text-gray-300"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" />
-          </svg>
-          <p class="text-sm font-medium">Tidak ada transaksi ditemukan</p>
-        </div>
-      @else
+      <!-- Realtime order list (polled) -->
+      @php
+        $txListQuery = request()->only(['area_id', 'transaction_mode', 'date_from', 'date_to', 'search', 'per_page']);
+      @endphp
+      <div id="txListWrap">
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm min-w-[800px]">
             <thead>
               <tr class="bg-gray-50">
                 <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Waktu</th>
@@ -202,86 +132,13 @@
                 <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Bayar</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
-              @foreach ($orders as $order)
-                @php
-                  $displayId = $order->order_number;
-                  $isBooking = $order->tableSession?->reservation !== null;
-                  $tableName = $order->tableSession?->table?->table_number;
-                  $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
-                  $orderBilling = $order->billing ?? $order->tableSession?->billing;
-                @endphp
-                <tr x-on:click="openOrderDetailById({{ $order->id }})"
-                    class="hover:bg-gray-50 transition-colors cursor-pointer">
-                  <td class="px-5 py-3.5 whitespace-nowrap">
-                    @if ($order->ordered_at)
-                      <div class="font-medium text-gray-500 text-xs">{{ $order->ordered_at->format('d M') }}</div>
-                      <div class="text-xs text-gray-400">{{ $order->ordered_at->format('H:i') }}</div>
-                    @else
-                      <span class="text-gray-400">—</span>
-                    @endif
-                  </td>
-
-                  <td class="px-5 py-3.5">
-                    <span class="font-mono font-semibold text-gray-800 text-sm">{{ $displayId }}</span>
-                  </td>
-
-                  <td class="px-5 py-3.5">
-                    @if ($customerName)
-                      <span class="font-medium text-gray-800">{{ $customerName }}</span>
-                    @else
-                      <span class="text-gray-400 text-xs">Walk-in</span>
-                    @endif
-                  </td>
-
-                  <td class="px-5 py-3.5">
-                    <div class="flex flex-col gap-0.5">
-                      @if ($isBooking)
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 w-fit">
-                          Booking
-                        </span>
-                      @else
-                        <span class="text-xs text-gray-500">Walk-in</span>
-                      @endif
-                      @if ($orderBilling && ($orderBilling->is_debt || $orderBilling->billing_status === 'partial_paid'))
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-200 w-fit">
-                          HUTANG (Sisa: Rp {{ number_format($orderBilling->remaining_balance, 0, ',', '.') }})
-                        </span>
-                      @endif
-                      @if ($tableName)
-                        <span class="text-xs text-gray-400">{{ $isBooking ? ($order->tableSession->table->area->name ?? 'VIP') . ' ' . $tableName : 'Table ' . $tableName }}</span>
-                      @endif
-                    </div>
-                  </td>
-
-                  <td class="px-5 py-3.5">
-                    <span class="font-medium text-gray-700">{{ $order->items->count() }}</span>
-                  </td>
-
-                  <td class="px-5 py-3.5 text-right whitespace-nowrap">
-                    <span class="font-semibold text-gray-800">Rp {{ number_format($order->total, 0, ',', '.') }}</span>
-                  </td>
-
-                  <td x-on:click.stop
-                      class="px-5 py-3.5 text-center">
-                    <button x-on:click.stop="openPrintModalById({{ $order->id }})"
-                            class="inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 transition text-gray-400 hover:text-gray-700">
-                      <svg class="w-5 h-5"
-                           fill="none"
-                           stroke="currentColor"
-                           viewBox="0 0 24 24">
-                        <path stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              @endforeach
+            <tbody id="txList"
+                   x-data="txListPoll({ url: '{{ route('admin.transaction-history.refresh', $txListQuery) }}', target: 'txList' })">
+              @include('transaction-history._partials.list')
             </tbody>
           </table>
         </div>
+      </div>
 
         @if ($orders->hasPages())
           <div class="px-5 py-4 border-t border-gray-100">
@@ -343,7 +200,6 @@
             </div>
           </div>
         @endif
-      @endif
     </div>
 
     <div x-show="showErrorModal"
@@ -849,8 +705,43 @@
 
   </div>
   <script>
-    const transactionHistoryOrderPayloads = @js($orderPrintPayloads);
-    const transactionHistoryOrderDetailPayloads = @js($orderDetailPayloads);
+    let transactionHistoryOrderPayloads = @js($orderPrintPayloads);
+    let transactionHistoryOrderDetailPayloads = @js($orderDetailPayloads);
+
+    // Realtime order list polling: swap tbody rows + refresh detail/print payloads.
+    window.txListPoll = function (opts) {
+      return {
+        init() {
+          this.tick();
+          this._timer = setInterval(() => this.tick(), 30000);
+        },
+        destroy() {
+          if (this._timer) clearInterval(this._timer);
+        },
+        async tick() {
+          try {
+            const res = await fetch(opts.url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.success) return;
+
+            const target = document.getElementById(opts.target);
+            if (target && data.listHtml) {
+              target.innerHTML = data.listHtml;
+              if (window.Alpine) window.Alpine.initTree(target);
+            }
+
+            if (data.detailPayloads) transactionHistoryOrderDetailPayloads = data.detailPayloads;
+            if (data.printPayloads) transactionHistoryOrderPayloads = data.printPayloads;
+
+            const countEl = document.querySelector('[data-tx-count]');
+            if (countEl && data.totalCount !== undefined) countEl.textContent = data.totalCount + ' transaksi';
+          } catch (e) {
+            // transient failure — keep last rendered list
+          }
+        },
+      };
+    };
 
     function transactionHistory() {
       return {

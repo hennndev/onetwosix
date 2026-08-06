@@ -1,0 +1,27 @@
+; systemd unit — Laravel queue worker (printer receipt)
+; Alternatif tanpa supervisor. Install:
+;   sudo ln -s "$PWD/deploy/systemd/126club-worker.service" /etc/systemd/system/
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable --now 126club-worker
+;
+; Notes:
+;   - Sesuaikan WorkingDirectory & User dengan lokasi deploy.
+;   - TimeoutStopSec 3600: beri waktu job print selesai (job timeout max 60s + grace).
+
+[Unit]
+Description=Laravel queue worker for 126club (printer receipt)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/126club
+ExecStart=/usr/bin/php /var/www/126club/artisan queue:work database --queue=print,default --sleep=3 --tries=3 --timeout=60 --max-time=86400 --memory=128
+Restart=always
+RestartSec=5
+TimeoutStopSec=3600
+KillSignal=SIGQUIT
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,4 @@
-<div class="w-96 bg-white border-l border-gray-100 flex flex-col h-full">
+<div class="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-100 flex flex-col h-64 lg:h-full">
   <!-- Cart Header -->
   <div class="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
     <div class="flex items-center justify-between">

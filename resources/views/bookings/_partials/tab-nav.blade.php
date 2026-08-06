@@ -1,7 +1,7 @@
 {{-- Tab Navigation --}}
-<div class="flex items-center gap-1 mb-6">
+<div class="flex items-center gap-1 mb-6 overflow-x-auto">
   <a href="{{ route('admin.bookings.index', ['tab' => 'all']) }}"
-     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition
+     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
             {{ $tab === 'all' || ($tab !== 'active' && $tab !== 'pending' && $tab !== 'history') ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100' }}">
     <svg class="w-4 h-4"
          fill="none"
@@ -15,7 +15,7 @@
     Booking
   </a>
   <a href="{{ route('admin.bookings.index', ['tab' => 'pending']) }}"
-     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition
+     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
             {{ $tab === 'pending' ? 'bg-yellow-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100' }}">
     <svg class="w-4 h-4"
          fill="none"
@@ -35,7 +35,7 @@
     @endif
   </a>
   <a href="{{ route('admin.bookings.index', ['tab' => 'active']) }}"
-     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition
+     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
             {{ $tab === 'active' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100' }}">
     <svg class="w-4 h-4"
          fill="none"
@@ -55,7 +55,7 @@
     @endif
   </a>
   <a href="{{ route('admin.bookings.index', ['tab' => 'partial']) }}"
-     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition
+     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
             {{ $tab === 'partial' ? 'bg-orange-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100' }}">
     <svg class="w-4 h-4"
          fill="none"
@@ -75,7 +75,7 @@
     @endif
   </a>
   <a href="{{ route('admin.bookings.index', ['tab' => 'history']) }}"
-     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition
+     class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
             {{ $tab === 'history' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100' }}">
     <svg class="w-4 h-4"
          fill="none"

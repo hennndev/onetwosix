@@ -1,9 +1,9 @@
 <x-app-layout title="Bar Display">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="barOrdersApp()"
        x-init="init()">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center">
           <svg class="w-5 h-5 text-white"
@@ -38,6 +38,22 @@
       </button>
     </div>
 
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <a href="{{ route('admin.bar.index') }}"
+           class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($selectedAreaId ?? null) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+          Semua Area
+        </a>
+        @foreach ($areas as $area)
+          <a href="{{ route('admin.bar.index', ['area_id' => $area->id]) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ ($selectedAreaId ?? null) === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            {{ $area->name }}
+          </a>
+        @endforeach
+      </div>
+    @endif
+
     <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
       <div class="flex items-center gap-2">
         <button @click="activeTab = 'orders'"
@@ -57,26 +73,11 @@
         </button>
       </div>
 
-      <!-- Area Filter Pills -->
-      @if (($areas ?? collect())->count() > 1)
-        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <a href="{{ route('admin.bar.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
-             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-purple-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-            Semua Area
-          </a>
-          @foreach (($areas ?? []) as $area)
-            <a href="{{ route('admin.bar.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
-               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-purple-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-              {{ $area->name }}
-            </a>
-          @endforeach
-        </div>
-      @endif
     </div>
 
     <!-- Stats -->
     <div x-show="activeTab === 'orders'"
-         class="grid grid-cols-4 gap-4 mb-6">
+         class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
         <p class="text-3xl font-bold text-gray-900"
            x-text="stats.total"></p>
@@ -635,6 +636,9 @@
             if (this.currentStatus) {
               params.append('status', this.currentStatus);
             }
+            @if (! is_null($selectedAreaId ?? null))
+              params.append('area_id', '{{ $selectedAreaId }}');
+            @endif
 
             const response = await fetch(`{{ route('admin.bar.fetch') }}?${params.toString()}`, {
               headers: {

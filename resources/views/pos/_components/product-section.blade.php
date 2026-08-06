@@ -1,6 +1,6 @@
 <div class="flex-1 flex flex-col overflow-hidden">
   <!-- Search & Filter Bar -->
-  <div class="flex items-center gap-3 px-6 pt-6 pb-4 flex-shrink-0">
+  <div class="flex flex-wrap items-center gap-3 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 flex-shrink-0">
     <div class="flex-1 relative">
       <form method="GET"
             action="{{ route('admin.pos.index') }}">
@@ -35,7 +35,7 @@
   </div>
 
   <!-- Products Grid -->
-  <div class="overflow-y-auto flex-1 px-6 pb-6">
+  <div class="lg:overflow-y-auto flex-1 px-4 sm:px-6 pb-6">
     <div class="grid gap-4"
          :style="`grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))`">
       @forelse($products as $product)

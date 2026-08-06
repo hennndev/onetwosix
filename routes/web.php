@@ -166,6 +166,7 @@ Route::middleware('auth')->group(function () {
 
         // Transaction History
         Route::get('transaction-history', [TransactionHistoryController::class, 'index'])->name('transaction-history.index');
+        Route::get('transaction-history/refresh', [TransactionHistoryController::class, 'refresh'])->name('transaction-history.refresh');
         Route::post('transaction-history/{order}/print', [TransactionHistoryController::class, 'print'])->name('transaction-history.print');
         Route::post('transaction-history/{order}/payment', [TransactionHistoryController::class, 'updatePayment'])->name('transaction-history.update-payment');
         Route::post('transaction-history/{order}/settle-debt', [TransactionHistoryController::class, 'settleDebt'])->name('transaction-history.settle-debt');

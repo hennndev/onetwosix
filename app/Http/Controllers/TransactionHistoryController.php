@@ -25,7 +25,7 @@ class TransactionHistoryController extends Controller
         protected AccurateService $accurateService
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): \Illuminate\View\View|\Illuminate\Http\Response
     {
         $user = auth()->user();
         $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
@@ -109,98 +109,8 @@ class TransactionHistoryController extends Controller
             return $order;
         });
 
-        $orderPrintPayloads = $orders->getCollection()
-            ->mapWithKeys(function (Order $order) {
-                // Use order_number directly (already has prefix)
-                $displayId = $order->order_number;
-                $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
-
-                return [
-                    $order->id => [
-                        'id' => $order->id,
-                        'displayId' => $displayId,
-                        'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
-                        'customer' => $customerName ?? 'Walk-in',
-                        'time' => $order->ordered_at?->format('H:i') ?? '—',
-                        'printTypes' => $order->print_types,
-                        'printCounts' => $order->print_counts,
-                    ],
-                ];
-            })
-            ->toArray();
-
-        $orderDetailPayloads = $orders->getCollection()
-            ->mapWithKeys(function (Order $order) {
-                // Use order_number directly (already has prefix)
-                $displayId = $order->order_number;
-                $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
-                $tableName = $order->tableSession?->table?->table_number;
-                $areaName = $order->tableSession?->table?->area?->name;
-                $taxTotal = $order->items->sum(fn ($item) => (float) $item->tax_amount);
-                $serviceChargeTotal = $order->items->sum(fn ($item) => (float) $item->service_charge_amount);
-                $billing = $order->billing ?? $order->tableSession?->billing;
-                $paymentModeLabel = strtoupper((string) ($billing?->payment_mode ?? 'normal'));
-                $paymentMethodDisplay = $paymentModeLabel === 'SPLIT'
-                    ? 'SPLIT'
-                    : strtoupper((string) ($billing?->payment_method ?? 'cash'));
-
-                return [
-                    $order->id => [
-                        'id' => $order->id,
-                        'displayId' => $displayId,
-                        'customer' => $customerName ?? 'Walk-in',
-                        'time' => $order->ordered_at?->format('d M Y H:i') ?? '—',
-                        'table' => $tableName ? trim(($areaName ? $areaName.' ' : '').$tableName) : 'Walk-in',
-                        'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
-                        'items' => $order->items->map(fn ($item) => [
-                            'name' => $item->item_name,
-                            'qty' => (int) $item->quantity,
-                            'subtotal' => 'Rp '.number_format((float) $item->subtotal, 0, ',', '.'),
-                        ])->values(),
-                        'taxTotal' => $taxTotal,
-                        'taxTotalFormatted' => 'Rp '.number_format($taxTotal, 0, ',', '.'),
-                        'serviceChargeTotal' => $serviceChargeTotal,
-                        'serviceChargeTotalFormatted' => 'Rp '.number_format($serviceChargeTotal, 0, ',', '.'),
-                        'billing' => $billing ? [
-                            'id' => (int) $billing->id,
-                            'billingStatus' => (string) ($billing->billing_status ?? '-'),
-                            'paymentMode' => (string) ($billing->payment_mode ?? 'normal'),
-                            'paymentMethod' => (string) ($billing->payment_method ?? 'cash'),
-                            'paymentMethodDisplay' => $paymentMethodDisplay,
-                            'paymentReferenceNumber' => (string) ($billing->payment_reference_number ?? ''),
-                            'splitCashAmount' => (float) ($billing->split_cash_amount ?? 0),
-                            'splitNonCashAmount' => (float) ($billing->split_debit_amount ?? 0),
-                            'splitNonCashMethod' => (string) ($billing->split_non_cash_method ?? ''),
-                            'splitNonCashReferenceNumber' => (string) ($billing->split_non_cash_reference_number ?? ''),
-                            'splitSecondNonCashAmount' => (float) ($billing->split_second_non_cash_amount ?? 0),
-                            'splitSecondNonCashMethod' => (string) ($billing->split_second_non_cash_method ?? ''),
-                            'splitSecondNonCashReferenceNumber' => (string) ($billing->split_second_non_cash_reference_number ?? ''),
-                            'grandTotal' => (float) ($billing->grand_total ?? $order->total),
-                            'grandTotalFormatted' => 'Rp '.number_format((float) ($billing->grand_total ?? $order->total), 0, ',', '.'),
-                            'paidAmount' => (float) ($billing->paid_amount ?? $order->total),
-                            'paidAmountFormatted' => 'Rp '.number_format((float) ($billing->paid_amount ?? $order->total), 0, ',', '.'),
-                            'remainingBalance' => (float) ($billing->remaining_balance ?? 0),
-                            'remainingBalanceFormatted' => 'Rp '.number_format((float) ($billing->remaining_balance ?? 0), 0, ',', '.'),
-                            'isDebt' => (bool) ($billing->is_debt ?? false),
-                            'transactionCode' => (string) ($billing->transaction_code ?? '-'),
-                            'accurateSoNumber' => (string) ($billing->accurate_so_number ?? $order->accurate_so_number ?? ''),
-                            'accurateInvNumber' => (string) ($billing->accurate_inv_number ?? $order->accurate_inv_number ?? ''),
-                            'errorMessage' => (string) ($billing->error_message ?? ''),
-                            'updatePaymentUrl' => route('admin.transaction-history.update-payment', $order),
-                            'settleDebtUrl' => route('admin.transaction-history.settle-debt', $order),
-                            'payments' => $billing->payments->map(fn ($p) => [
-                                'id' => $p->id,
-                                'amountPaid' => (float) $p->amount_paid,
-                                'amountPaidFormatted' => 'Rp '.number_format((float) $p->amount_paid, 0, ',', '.'),
-                                'paymentMethod' => strtoupper($p->payment_method),
-                                'paymentType' => $p->payment_type,
-                                'paidAt' => $p->paid_at?->format('d M Y H:i'),
-                            ])->values(),
-                        ] : null,
-                    ],
-                ];
-            })
-            ->toArray();
+        $orderPrintPayloads = $this->buildPrintPayloads($orders->getCollection());
+        $orderDetailPayloads = $this->buildDetailPayloads($orders->getCollection());
 
         $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter);
 
@@ -255,6 +165,12 @@ class TransactionHistoryController extends Controller
 
         $viewName = $transactionMode === 'walk_in' ? 'transaction-history.walk-in.index' : 'transaction-history.index';
 
+        if ($request->headers->get('X-Live')) {
+            return response(
+                view('transaction-history._partials.stats', compact('totalOrders', 'todayOrders', 'todayRevenue', 'todayBookingDownPayment'))
+            )->withHeaders(['X-Live' => '1']);
+        }
+
         return view($viewName, compact(
             'orders',
             'totalOrders',
@@ -273,6 +189,214 @@ class TransactionHistoryController extends Controller
             'areas',
             'selectedAreaId',
         ));
+    }
+
+    /**
+     * Realtime poll: re-render stats + list partials and return fresh detail/print payloads.
+     */
+    public function refresh(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = auth()->user();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
+        $transactionMode = $request->get('transaction_mode') === 'walk_in' ? 'walk_in' : 'all';
+        $dateFrom = $request->filled('date_from') ? $request->date('date_from')->toDateString() : null;
+        $dateTo = $request->filled('date_to') ? $request->date('date_to')->toDateString() : null;
+
+        $areaFilter = fn ($q) => $q->when(
+            $selectedAreaId,
+            fn ($sq) => $sq->where(
+                fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))
+            )
+        );
+
+        $query = Order::with([
+            'items.inventoryItem.printers',
+            'tableSession.table',
+            'tableSession.reservation',
+            'tableSession.billing.payments',
+            'tableSession.customer.profile',
+            'customer.user.profile',
+            'billing.payments',
+            'customer.user',
+        ])
+            ->whereNotIn('status', ['cancelled'])
+            ->tap($areaFilter);
+
+        if ($transactionMode === 'walk_in') {
+            $query->whereNull('table_session_id');
+        }
+
+        if ($dateFrom) {
+            $query->whereDate('ordered_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo) {
+            $query->whereDate('ordered_at', '<=', $dateTo);
+        }
+
+        if ($request->filled('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('order_number', 'like', '%'.$request->search.'%')
+                    ->orWhereHas('tableSession.customer', function ($q2) use ($request) {
+                        $q2->where('name', 'like', '%'.$request->search.'%');
+                    })
+                    ->orWhereHas('customer.user', function ($q2) use ($request) {
+                        $q2->where('name', 'like', '%'.$request->search.'%');
+                    });
+            });
+        }
+
+        $perPage = in_array((int) $request->get('per_page'), [10, 25, 50, 100]) ? (int) $request->get('per_page') : 25;
+        $orders = $query->latest('ordered_at')->paginate($perPage)->withQueryString();
+
+        $orders->getCollection()->transform(function (Order $order) {
+            $assignedPrinterTypes = $this->resolveOrderAssignedPrinterTypes($order);
+            $order->setAttribute('print_types', [
+                'resmi' => true,
+                'kitchen' => $assignedPrinterTypes->contains('kitchen'),
+                'bar' => $assignedPrinterTypes->contains('bar'),
+                'checker' => $assignedPrinterTypes->contains('checker'),
+            ]);
+            $order->setAttribute('print_counts', [
+                'resmi' => (int) ($order->receipt_print_count ?? 0),
+                'kitchen' => (int) ($order->kitchen_print_count ?? 0),
+                'bar' => (int) ($order->bar_print_count ?? 0),
+                'checker' => (int) ($order->checker_print_count ?? 0),
+            ]);
+
+            return $order;
+        });
+
+        $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter);
+
+        if ($transactionMode === 'walk_in') {
+            $statsQuery->whereNull('table_session_id');
+        }
+
+        if ($dateFrom) {
+            $statsQuery->whereDate('ordered_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo) {
+            $statsQuery->whereDate('ordered_at', '<=', $dateTo);
+        }
+
+        $totalOrders = (clone $statsQuery)->count();
+        $todayOrders = (clone $statsQuery)->whereDate('ordered_at', today())->count();
+        $todayRevenue = (clone $statsQuery)->whereDate('ordered_at', today())->sum('total');
+        $todayBookingDownPayment = (float) \App\Models\TableReservation::query()
+            ->whereDate('reservation_date', today())
+            ->whereNotIn('status', ['cancelled', 'rejected', 'force_closed'])
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+            ->sum('down_payment_amount');
+
+        return response()->json([
+            'success' => true,
+            'statsHtml' => view('transaction-history._partials.stats', compact('totalOrders', 'todayOrders', 'todayRevenue', 'todayBookingDownPayment'))->render(),
+            'listHtml' => view('transaction-history._partials.list', ['orders' => $orders])->render(),
+            'totalCount' => $orders->total(),
+            'detailPayloads' => $this->buildDetailPayloads($orders->getCollection()),
+            'printPayloads' => $this->buildPrintPayloads($orders->getCollection()),
+        ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function buildPrintPayloads(\Illuminate\Support\Collection $orders): array
+    {
+        return $orders->mapWithKeys(function (Order $order) {
+            $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
+
+            return [
+                $order->id => [
+                    'id' => $order->id,
+                    'displayId' => $order->order_number,
+                    'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
+                    'customer' => $customerName ?? 'Walk-in',
+                    'time' => $order->ordered_at?->format('H:i') ?? '—',
+                    'printTypes' => $order->print_types,
+                    'printCounts' => $order->print_counts,
+                ],
+            ];
+        })->toArray();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function buildDetailPayloads(\Illuminate\Support\Collection $orders): array
+    {
+        return $orders->mapWithKeys(function (Order $order) {
+            $displayId = $order->order_number;
+            $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
+            $tableName = $order->tableSession?->table?->table_number;
+            $areaName = $order->tableSession?->table?->area?->name;
+            $taxTotal = $order->items->sum(fn ($item) => (float) $item->tax_amount);
+            $serviceChargeTotal = $order->items->sum(fn ($item) => (float) $item->service_charge_amount);
+            $billing = $order->billing ?? $order->tableSession?->billing;
+            $paymentModeLabel = strtoupper((string) ($billing?->payment_mode ?? 'normal'));
+            $paymentMethodDisplay = $paymentModeLabel === 'SPLIT'
+                ? 'SPLIT'
+                : strtoupper((string) ($billing?->payment_method ?? 'cash'));
+
+            return [
+                $order->id => [
+                    'id' => $order->id,
+                    'displayId' => $displayId,
+                    'customer' => $customerName ?? 'Walk-in',
+                    'time' => $order->ordered_at?->format('d M Y H:i') ?? '—',
+                    'table' => $tableName ? trim(($areaName ? $areaName.' ' : '').$tableName) : 'Walk-in',
+                    'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
+                    'items' => $order->items->map(fn ($item) => [
+                        'name' => $item->item_name,
+                        'qty' => (int) $item->quantity,
+                        'subtotal' => 'Rp '.number_format((float) $item->subtotal, 0, ',', '.'),
+                    ])->values(),
+                    'taxTotal' => $taxTotal,
+                    'taxTotalFormatted' => 'Rp '.number_format($taxTotal, 0, ',', '.'),
+                    'serviceChargeTotal' => $serviceChargeTotal,
+                    'serviceChargeTotalFormatted' => 'Rp '.number_format($serviceChargeTotal, 0, ',', '.'),
+                    'billing' => $billing ? [
+                        'id' => (int) $billing->id,
+                        'billingStatus' => (string) ($billing->billing_status ?? '-'),
+                        'paymentMode' => (string) ($billing->payment_mode ?? 'normal'),
+                        'paymentMethod' => (string) ($billing->payment_method ?? 'cash'),
+                        'paymentMethodDisplay' => $paymentMethodDisplay,
+                        'paymentReferenceNumber' => (string) ($billing->payment_reference_number ?? ''),
+                        'splitCashAmount' => (float) ($billing->split_cash_amount ?? 0),
+                        'splitNonCashAmount' => (float) ($billing->split_debit_amount ?? 0),
+                        'splitNonCashMethod' => (string) ($billing->split_non_cash_method ?? ''),
+                        'splitNonCashReferenceNumber' => (string) ($billing->split_non_cash_reference_number ?? ''),
+                        'splitSecondNonCashAmount' => (float) ($billing->split_second_non_cash_amount ?? 0),
+                        'splitSecondNonCashMethod' => (string) ($billing->split_second_non_cash_method ?? ''),
+                        'splitSecondNonCashReferenceNumber' => (string) ($billing->split_second_non_cash_reference_number ?? ''),
+                        'grandTotal' => (float) ($billing->grand_total ?? $order->total),
+                        'grandTotalFormatted' => 'Rp '.number_format((float) ($billing->grand_total ?? $order->total), 0, ',', '.'),
+                        'paidAmount' => (float) ($billing->paid_amount ?? $order->total),
+                        'paidAmountFormatted' => 'Rp '.number_format((float) ($billing->paid_amount ?? $order->total), 0, ',', '.'),
+                        'remainingBalance' => (float) ($billing->remaining_balance ?? 0),
+                        'remainingBalanceFormatted' => 'Rp '.number_format((float) ($billing->remaining_balance ?? 0), 0, ',', '.'),
+                        'isDebt' => (bool) ($billing->is_debt ?? false),
+                        'transactionCode' => (string) ($billing->transaction_code ?? '-'),
+                        'accurateSoNumber' => (string) ($billing->accurate_so_number ?? $order->accurate_so_number ?? ''),
+                        'accurateInvNumber' => (string) ($billing->accurate_inv_number ?? $order->accurate_inv_number ?? ''),
+                        'errorMessage' => (string) ($billing->error_message ?? ''),
+                        'updatePaymentUrl' => route('admin.transaction-history.update-payment', $order),
+                        'settleDebtUrl' => route('admin.transaction-history.settle-debt', $order),
+                        'payments' => $billing->payments->map(fn ($p) => [
+                            'id' => $p->id,
+                            'amountPaid' => (float) $p->amount_paid,
+                            'amountPaidFormatted' => 'Rp '.number_format((float) $p->amount_paid, 0, ',', '.'),
+                            'paymentMethod' => strtoupper($p->payment_method),
+                            'paymentType' => $p->payment_type,
+                            'paidAt' => $p->paid_at?->format('d M Y H:i'),
+                        ])->values(),
+                    ] : null,
+                ],
+            ];
+        })->toArray();
     }
 
     public function print(Request $request, Order $order): JsonResponse

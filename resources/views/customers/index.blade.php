@@ -1,5 +1,5 @@
 <x-app-layout title="Manajemen Customer">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
         {{ session('success') }}
@@ -166,7 +166,7 @@
                     <div class="text-xs text-gray-500">{{ number_format(((float) ($customer->transaction_lifetime_spending ?? 0)) / 1000000, 1) }}jt</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
-                    @if ($customer->customer_code)
+                    @if ($customer->customer_code && $customer->accurate_id)
                       <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Accurate ID: {{ $customer->accurate_id }}">
                         <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                         Synced ({{ $customer->customer_code }})
@@ -197,7 +197,7 @@
                               class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition">
                         Edit
                       </button>
-                      @if (! $customer->customer_code)
+                      @if (! $customer->customer_code || ! $customer->accurate_id)
                         <form action="{{ route('admin.customers.sync-accurate', $customer->id) }}" method="POST" class="inline">
                           @csrf
                           <button type="submit"
@@ -373,20 +373,23 @@
         const spinner = document.getElementById('customerSubmitSpinner');
         const text = document.getElementById('customerSubmitText');
 
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
-        }
-        if (cancelBtn) {
-          cancelBtn.disabled = true;
-          cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        }
         if (spinner) {
           spinner.classList.remove('hidden');
         }
         if (text) {
           text.textContent = 'Menyimpan...';
         }
+
+        setTimeout(() => {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+          }
+          if (cancelBtn) {
+            cancelBtn.disabled = true;
+            cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+        }, 0);
       });
 
       // Close modal on Escape key

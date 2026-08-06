@@ -1,5 +1,5 @@
 <x-app-layout title="Manajemen Menu">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="menuForm()">
 
     <!-- Header -->
@@ -57,7 +57,7 @@
       <div class="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
 
         <!-- No & Name -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">Mode Kode Item <span class="text-red-500">*</span></label>
             <select x-model="form.code_mode"
@@ -93,7 +93,7 @@
         </div>
 
         <!-- Item Type, Category, Unit, Price -->
-        <div class="grid grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">Tipe Item <span class="text-red-500">*</span></label>
             <select x-model="form.item_type"
@@ -153,7 +153,7 @@
           </select>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
             <input type="checkbox"
                    x-model="form.include_tax"

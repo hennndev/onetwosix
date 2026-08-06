@@ -1,5 +1,5 @@
 <x-app-layout title="Stock Opname">
-  <div class="p-6"
+  <div class="p-4 sm:p-6"
        x-data="stockOpname()"
        x-init="init()">
 
@@ -15,7 +15,7 @@
     </div>
 
     <!-- Header -->
-    <div class="flex items-start justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Stock Opname</h1>
         <p class="text-sm text-gray-500">Hitung dan sesuaikan stok inventaris</p>

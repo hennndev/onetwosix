@@ -1,5 +1,5 @@
 <x-app-layout title="Riwayat Performa Waiter">
-  <div class="p-6 space-y-5">
+  <div class="p-4 sm:p-6 space-y-5">
     <div class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold text-slate-800">Riwayat Bulanan Waiter</h1>

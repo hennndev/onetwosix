@@ -451,6 +451,13 @@ class KitchenController extends Controller
             $query->whereIn('status', ['baru', 'proses']);
         }
 
+        $user = auth()->user();
+        $areaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : null;
+
+        if ($areaId) {
+            $query->where(fn ($q) => $q->where('area_id', $areaId)->orWhereHas('table.area', fn ($t) => $t->where('id', $areaId)));
+        }
+
         $orders = $query->get()->map(function ($order) {
             return $this->formatOrder($order);
         });

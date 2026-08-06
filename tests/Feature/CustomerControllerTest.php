@@ -27,7 +27,7 @@ test('admin can store new customer instantly in local database', function () {
 
     $customerUser = CustomerUser::where('user_id', $user->id)->first();
     expect($customerUser)->not->toBeNull()
-        ->and($customerUser->customer_code)->toBe('CUST-'.str_pad((string) $user->id, 5, '0', STR_PAD_LEFT))
+        ->and($customerUser->customer_code)->toBeNull()
         ->and($customerUser->accurate_id)->toBeNull();
 });
 

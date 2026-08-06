@@ -7,22 +7,6 @@
       <p class="text-slate-700 text-sm mt-0.5">{{ $sessions->count() }} meja aktif saat ini</p>
     </div>
 
-    <!-- Area Filter -->
-    @if ($areas->count() > 1)
-      <div class="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
-        <a href="{{ route('waiter.active-tables') }}"
-           class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition {{ !request('area_id') ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200' }}">
-          Semua
-        </a>
-        @foreach ($areas as $area)
-          <a href="{{ route('waiter.active-tables', ['area_id' => $area->id]) }}"
-             class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition whitespace-nowrap {{ request('area_id') == $area->id ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200' }}">
-            {{ $area->name }}
-          </a>
-        @endforeach
-      </div>
-    @endif
-
     @if ($sessions->isEmpty())
       <div class="bg-white rounded-2xl p-10 text-center shadow-sm border border-slate-100">
         <svg class="w-12 h-12 mx-auto mb-3 text-slate-600"

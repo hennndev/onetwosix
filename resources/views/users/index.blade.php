@@ -1,5 +1,5 @@
 <x-app-layout title="Manajemen User & Staf">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
         {{ session('success') }}
@@ -17,7 +17,7 @@
     @endif
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
           <svg class="w-6 h-6 text-white"

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Area;
+use App\Models\TableSession;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -12,7 +14,7 @@ use Illuminate\View\View;
 
 class WaiterPerformanceController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): \Illuminate\View\View|\Illuminate\Http\Response
     {
         $period = $request->get('period', 'today');
         $mode = $request->get('mode', 'individual');
@@ -33,10 +35,26 @@ class WaiterPerformanceController extends Controller
         $dateRange = $this->getDateRange($period, $selectedDate);
         $periodLabel = $this->resolvePeriodLabel($period, $selectedDate);
 
+        $user = auth()->user();
+        $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
+        $selectedAreaId = $user ? $user->resolveActiveAreaId($request->input('area_id'), $request->has('area_id')) : ($request->filled('area_id')
+            ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
+            : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
+
         $waiters = User::whereHas('roles', fn ($q) => $q->where('name', 'Waiter/Server'))
             ->whereHas('internalUser', fn ($q) => $q->where('is_active', true))
             ->with(['internalUser.area'])
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('internalUser', fn ($uq) => $uq->where('area_id', $selectedAreaId)))
             ->get();
+
+        // Realtime summary partial (polled by the page)
+        if ($request->headers->get('X-Live')) {
+            return response(
+                view('waiter-performance._partials.stats', ['summary' => $this->summaryStats($selectedAreaId, $waiters->count())])
+            )->withHeaders(['X-Live' => '1']);
+        }
+
+        $summary = $this->summaryStats($selectedAreaId, $waiters->count());
 
         $selectedWaiter = null;
         $stats = null;
@@ -211,7 +229,8 @@ class WaiterPerformanceController extends Controller
 
         return view('waiter-performance.index', compact(
             'period', 'mode', 'waiters', 'selectedWaiter', 'stats',
-            'topProducts', 'recentSessions', 'dailyHistory', 'allWaitersStats', 'rank', 'dateRange', 'selectedDate', 'periodLabel'
+            'topProducts', 'recentSessions', 'dailyHistory', 'allWaitersStats', 'rank', 'dateRange', 'selectedDate', 'periodLabel',
+            'areas', 'selectedAreaId', 'summary'
         ));
     }
 
@@ -258,6 +277,42 @@ class WaiterPerformanceController extends Controller
             'monthlyHistory' => $monthlyHistory,
             'summary' => $summary,
         ]);
+    }
+
+    private function summaryStats(?int $selectedAreaId, int $waitersTotal): array
+    {
+        [$start, $end] = $this->currentOperationalWindow();
+
+        $activeSessions = TableSession::where('status', 'active')
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+            ->count();
+
+        $todayRevenue = DB::table('billings')
+            ->join('table_sessions', 'billings.table_session_id', '=', 'table_sessions.id')
+            ->where('billings.billing_status', 'paid')
+            ->whereBetween('table_sessions.checked_in_at', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+            ->sum('billings.grand_total');
+
+        $todaySessions = DB::table('table_sessions')
+            ->whereBetween('checked_in_at', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+            ->count();
+
+        $todayCustomers = DB::table('table_sessions')
+            ->whereNotNull('customer_id')
+            ->whereBetween('checked_in_at', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->when($selectedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+            ->distinct('customer_id')
+            ->count('customer_id');
+
+        return [
+            'waitersTotal' => $waitersTotal,
+            'activeSessions' => $activeSessions,
+            'todayRevenue' => $todayRevenue,
+            'todaySessions' => $todaySessions,
+            'todayCustomers' => $todayCustomers,
+        ];
     }
 
     private function getDateRange(string $period, ?string $selectedDate = null): array

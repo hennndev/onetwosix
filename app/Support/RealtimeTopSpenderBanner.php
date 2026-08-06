@@ -9,9 +9,9 @@ class RealtimeTopSpenderBanner
     /**
      * @return array<string, mixed>|null
      */
-    public function current(): ?array
+    public function current(?int $areaId = null): ?array
     {
-        $topSession = $this->topSessions(1)->first();
+        $topSession = $this->topSessions(1, $areaId)->first();
 
         if (! $topSession) {
             return null;
@@ -28,9 +28,9 @@ class RealtimeTopSpenderBanner
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function topSpenders(int $limit = 3): array
+    public function topSpenders(int $limit = 3, ?int $areaId = null): array
     {
-        return $this->topSessions($limit)
+        return $this->topSessions($limit, $areaId)
             ->values()
             ->map(function (TableSession $session, int $index): array {
                 return [
@@ -47,7 +47,7 @@ class RealtimeTopSpenderBanner
     /**
      * @return \Illuminate\Support\Collection<int, TableSession>
      */
-    protected function topSessions(int $limit): \Illuminate\Support\Collection
+    protected function topSessions(int $limit, ?int $areaId = null): \Illuminate\Support\Collection
     {
         return TableSession::query()
             ->with([
@@ -68,6 +68,7 @@ class RealtimeTopSpenderBanner
             ], 'service_charge_amount')
             ->where('status', 'active')
             ->whereNotNull('table_reservation_id')
+            ->when($areaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $areaId)))
             ->get()
             ->sortByDesc(fn (TableSession $session): float => $this->resolveRunningSubtotal($session))
             ->take($limit);

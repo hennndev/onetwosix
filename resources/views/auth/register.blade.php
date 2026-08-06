@@ -1,4 +1,4 @@
-<x-guest-layout>
+<x-guest-layout title="Register">
   <!-- Logo -->
   <div class="mb-8">
     <h1 class="text-gray-800 font-black text-6xl tracking-wider mb-2">126</h1>

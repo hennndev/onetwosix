@@ -1,5 +1,5 @@
 <x-app-layout title="Permintaan Kode Otorisasi">
-  <div class="p-6 max-w-2xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-2xl mx-auto">
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
         <h2 class="text-lg font-bold text-slate-800">Review Permintaan Auth Code</h2>
@@ -45,7 +45,7 @@
                 placeholder="Misal: Tolong pastikan bill meja 5 sudah dibayar cash."></textarea>
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <button type="submit" name="status" value="approved" class="flex-1 bg-slate-900 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-800 transition-colors">
                 Kirim Auth Code & Approve
               </button>

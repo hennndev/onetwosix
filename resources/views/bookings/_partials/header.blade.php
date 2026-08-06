@@ -1,5 +1,5 @@
 {{-- Page Header --}}
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
   <div class="flex items-center gap-3">
     <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center">
       <svg class="w-6 h-6 text-white"

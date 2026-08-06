@@ -1,5 +1,5 @@
 <x-app-layout title="Pengaturan Umum">
-  <div class="p-6 w-full max-w-full">
+  <div class="p-4 sm:p-6 w-full max-w-full">
 
     <!-- Back -->
     <a href="{{ route('admin.settings.index') }}"

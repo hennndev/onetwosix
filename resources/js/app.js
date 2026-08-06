@@ -127,4 +127,31 @@ window.resetFormButtons = function (formOrButton) {
   });
 };
 
+// Realtime partial polling: fetch a URL returning an HTML partial and swap a container's content.
+window.realtimePoll = function (opts) {
+  return {
+    interval: opts.interval || 15000,
+    init() {
+      this.tick();
+      this._timer = setInterval(() => this.tick(), this.interval);
+    },
+    destroy() {
+      if (this._timer) clearInterval(this._timer);
+    },
+    async tick() {
+      try {
+        const res = await fetch(opts.url, { headers: { Accept: 'text/html', 'X-Live': '1' }, cache: 'no-store' });
+        if (!res.ok) return;
+        const html = await res.text();
+        const target = document.getElementById(opts.target);
+        if (!target || !html.trim()) return;
+        target.innerHTML = html;
+        if (window.Alpine) window.Alpine.initTree(target);
+      } catch (e) {
+        // transient failure — keep last rendered data
+      }
+    },
+  };
+};
+
 Alpine.start();

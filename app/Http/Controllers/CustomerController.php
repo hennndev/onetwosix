@@ -56,11 +56,15 @@ class CustomerController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $customersForSummary = (clone $query)->get();
-
         $totalCustomers = CustomerUser::count();
-        $totalSpending = (float) $customersForSummary->sum(fn (CustomerUser $customer): float => (float) ($customer->transaction_lifetime_spending ?? 0));
-        $totalVisits = (int) $customersForSummary->sum(fn (CustomerUser $customer): int => (int) ($customer->transaction_total_visits ?? 0));
+
+        $summaryStats = (clone $query)
+            ->reorder()
+            ->select(DB::raw('SUM(COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) as aggregate_total_spending, SUM(COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0)) as aggregate_total_visits'))
+            ->first();
+
+        $totalSpending = (float) ($summaryStats->aggregate_total_spending ?? 0);
+        $totalVisits = (int) ($summaryStats->aggregate_total_visits ?? 0);
         $avgSpending = $totalCustomers > 0 ? $totalSpending / $totalCustomers : 0;
 
         // Leaderboard data (points + visits)
@@ -131,11 +135,9 @@ class CustomerController extends Controller
                 'birth_date' => $validated['birth_date'] ?? null,
             ]);
 
-            $customerCode = 'CUST-'.str_pad((string) $user->id, 5, '0', STR_PAD_LEFT);
-
             CustomerUser::create([
                 'accurate_id' => null,
-                'customer_code' => $customerCode,
+                'customer_code' => null,
                 'user_id' => $user->id,
                 'user_profile_id' => $profile->id,
                 'total_visits' => 0,

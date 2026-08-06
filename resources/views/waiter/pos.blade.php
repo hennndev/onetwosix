@@ -6,7 +6,13 @@
     <div class="px-5 pt-5 pb-3 sticky top-0 bg-slate-50 z-20">
       <div class="flex items-center justify-between mb-3">
         <div>
-          <h1 class="text-xl font-bold">POS</h1>
+          <h1 class="text-xl font-bold flex items-center gap-2">
+            POS
+            <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-600 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
+              Live
+            </span>
+          </h1>
           <p class="text-slate-700 text-xs mt-0.5">Pilih meja & tambah pesanan</p>
         </div>
         <!-- Cart badge -->
@@ -29,19 +35,16 @@
 
       <!-- Session Selector -->
       <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        @foreach ($activeSessions as $session)
-          <button @click="selectSession('{{ $session->id }}')"
-                  :class="selectedSession === '{{ $session->id }}' ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200'"
+        <template x-for="session in sessions" :key="session.id">
+          <button @click="selectSession(session.id)"
+                  :class="String(selectedSession) === String(session.id) ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200'"
                   class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap">
-            Meja {{ $session->table?->table_number ?? '?' }}
-            @if ($session->customer)
-              · {{ Str::limit($session->customer->name, 10) }}
-            @endif
+            Meja <span x-text="session.table"></span>
+            <span x-show="session.customer"> · <span x-text="session.customer"></span></span>
           </button>
-        @endforeach
-        @if ($activeSessions->isEmpty())
-          <span class="text-xs text-slate-500 py-1.5">Belum ada booking aktif yang di-assign ke Anda.</span>
-        @endif
+        </template>
+        <span x-show="sessions.length === 0"
+              class="text-xs text-slate-500 py-1.5">Belum ada booking aktif yang di-assign ke Anda.</span>
       </div>
     </div>
 
@@ -98,8 +101,9 @@
         <template x-for="product in filteredProducts()"
                   :key="product.id">
           <button @click="addToCart(product)"
-                  :disabled="addingToCart === product.id"
-                  class="bg-white rounded-2xl p-4 text-left relative active:scale-95 transition-transform disabled:opacity-50 border border-slate-100 shadow-sm">
+                  :disabled="addingToCart === product.id || isProductUnavailable(product)"
+                  :class="isProductUnavailable(product) ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'"
+                  class="rounded-2xl p-4 text-left relative active:scale-95 transition-transform disabled:opacity-50 border border-slate-100 shadow-sm">
             <!-- Category badge -->
             <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-2"
                   :class="{
@@ -112,6 +116,15 @@
                x-text="product.name"></p>
             <p class="text-teal-600 font-bold text-sm"
                x-text="'Rp ' + product.price.toLocaleString('id-ID')"></p>
+            <!-- Sold out badge -->
+            <span x-show="isProductUnavailable(product)"
+                  class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-60 rounded-2xl">
+              <span class="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg">Habis</span>
+            </span>
+            <!-- Portion availability -->
+            <span x-show="!isProductUnavailable(product) && getPortionLabel(product)"
+                  x-text="getPortionLabel(product)"
+                  class="absolute bottom-2 right-2 text-[10px] font-medium text-amber-600"></span>
             <!-- Cart qty indicator -->
             <span x-show="getCartQty(product.id) > 0"
                   x-text="getCartQty(product.id)"
@@ -406,9 +419,60 @@
           checkoutToken: null,
           toastMsg: '',
           toastSuccess: true,
+          availableMap: {},
 
           init() {
             this.hydrateCartCheckerAssignments();
+            this.pollLive();
+            this._liveTimer = setInterval(() => this.pollLive(), 30000);
+          },
+
+          destroy() {
+            if (this._liveTimer) clearInterval(this._liveTimer);
+          },
+
+          async pollLive() {
+            try {
+              const res = await fetch('{{ route('waiter.pos.live') }}', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+              });
+              if (!res.ok) return;
+              const data = await res.json();
+
+              if (Array.isArray(data.products)) {
+                const map = {};
+                data.products.forEach((p) => { map[p.id] = p; });
+                this.availableMap = map;
+              }
+
+              if (Array.isArray(data.sessions) && data.sessions.length > 0) {
+                this.sessions = data.sessions;
+
+                // If the selected session disappeared (billing closed / check-out), reset it
+                const selectedId = String(this.selectedSession ?? '');
+                if (selectedId && !data.sessions.some((s) => String(s.id) === selectedId)) {
+                  this.selectedSession = null;
+                  this.showCart = false;
+                }
+              }
+            } catch (_) {
+              // transient failure — keep last known availability
+            }
+          },
+
+          isProductUnavailable(product) {
+            const live = this.availableMap[product.id];
+            if (live) return live.is_available === false;
+            // fallback: item group with known stock 0
+            return product.is_item_group === false && (product.stock ?? 0) <= 0;
+          },
+
+          getPortionLabel(product) {
+            const live = this.availableMap[product.id];
+            if (live && live.possible_portions !== null && live.possible_portions !== undefined) {
+              return `Tersisa ${live.possible_portions} porsi`;
+            }
+            return null;
           },
 
           get cartCount() {

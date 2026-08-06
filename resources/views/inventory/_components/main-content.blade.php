@@ -16,7 +16,7 @@
   @endif
 
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Inventory Management</h1>
       <p class="text-sm text-gray-500">Kelola daftar produk dan stok gudang</p>
@@ -54,7 +54,7 @@
   </div>
 
   <!-- Stats Cards -->
-  <div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
     <div class="bg-white border border-gray-200 rounded-xl p-4">
       <div class="flex items-center justify-between">
         <div>

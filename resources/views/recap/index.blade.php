@@ -20,6 +20,25 @@
         </div>
       @endif
 
+      <!-- Area Tabs (multi-area header) -->
+      @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+        @php
+          $baseQuery = request()->except('area_id');
+        @endphp
+        <div class="flex gap-2 overflow-x-auto pb-2">
+          <a href="{{ route('admin.recap.index', $baseQuery) }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($selectedAreaId) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.recap.index', array_merge($baseQuery, ['area_id' => $area->id])) }}"
+               class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ $selectedAreaId === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      @endif
+
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -37,41 +56,24 @@
           </div>
         </div>
 
-        {{-- Area Selector Pills --}}
-        @if (($areas ?? collect())->count() > 1)
-          <div class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Area:</span>
-            <a href="{{ route('admin.recap.index', array_merge(request()->except('area_id'), ['area_id' => 'all'])) }}"
-               class="px-3 py-1 text-xs rounded-full font-medium transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
-              Semua Area
-            </a>
-            @foreach ($areas as $a)
-              <a href="{{ route('admin.recap.index', array_merge(request()->except('area_id'), ['area_id' => $a->id])) }}"
-                 class="px-3 py-1 text-xs rounded-full font-medium transition {{ $selectedAreaId === $a->id ? 'bg-slate-800 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
-                {{ $a->name }}
-              </a>
-            @endforeach
-          </div>
-        @endif
-
         <div class="flex flex-col gap-4">
-          <div class="flex border-b border-gray-200 gap-2">
+          <div class="flex border-b border-gray-200 gap-2 overflow-x-auto">
             <button type="button"
                     @click="activeTab = 'recap'"
                     :class="activeTab === 'recap' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                    class="px-5 py-3 text-sm transition">
+                    class="px-5 py-3 text-sm transition whitespace-nowrap">
               Recap
             </button>
             <button type="button"
                     @click="activeTab = 'history'"
                     :class="activeTab === 'history' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                    class="px-5 py-3 text-sm transition">
+                    class="px-5 py-3 text-sm transition whitespace-nowrap">
               History
             </button>
             <button type="button"
                     @click="activeTab = 'transactions-recap-today'"
                     :class="activeTab === 'transactions-recap-today' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                    class="px-5 py-3 text-sm transition">
+                    class="px-5 py-3 text-sm transition whitespace-nowrap">
               Transactions Recap Hari Ini
             </button>
           </div>
@@ -80,42 +82,13 @@
 
       <div x-show="activeTab === 'recap'"
            class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p class="text-sm font-medium text-gray-500">Transaksi Kasir</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">{{ $cashierCount }}</p>
-          </div>
-
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p class="text-sm font-medium text-gray-500">Total Penjualan Kasir</p>
-            {{-- <p class="text-2xl font-bold text-emerald-700 mt-1">Rp {{ number_format($cashierRevenue, 0, ',', '.') }}</p> --}}
-
-            <div class="space-y-1.5 mt-3 border-t pt-2">
-              <div class="flex justify-between items-center">
-                <span class="text-sm font-medium text-emerald-700">Gross Sales</span>
-                <span class="text-base font-semibold text-emerald-700">Rp {{ number_format($grossSales, 0, ',', '.') }}</span>
-              </div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm font-medium text-slate-700">Net Sales</span>
-                <span class="text-base font-semibold text-slate-700">Rp {{ number_format($netSales, 0, ',', '.') }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p class="text-sm font-medium text-gray-500">Item Keluar Kitchen</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">{{ $kitchenQtyTotal }}</p>
-          </div>
-
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p class="text-sm font-medium text-gray-500">Item Keluar Bar</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">{{ $barQtyTotal }}</p>
-          </div>
-
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p class="text-sm font-medium text-gray-500">Total Penjualan Rokok (Qty)</p>
-            <p class="text-2xl font-bold text-rose-700 mt-1">{{ number_format($totalPenjualanRokok ?? 0, 0, ',', '.') }}</p>
-          </div>
+        <!-- Realtime summary cards (polled) -->
+        @php
+          $recapLiveQuery = array_merge(request()->only(['date', 'start_datetime', 'end_datetime', 'area_id']));
+        @endphp
+        <div id="recapSummary"
+             x-data="realtimePoll({ url: '{{ route('admin.recap.index', $recapLiveQuery) }}', target: 'recapSummary', interval: 30000 })">
+          @include('recap._partials.summary')
         </div>
 
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
@@ -456,13 +429,13 @@
             <button type="button"
                     @click="transactionRecapTab = 'billing'"
                     :class="transactionRecapTab === 'billing' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                    class="px-5 py-3 text-sm transition">
+                    class="px-5 py-3 text-sm transition whitespace-nowrap">
               Dari Billing
             </button>
             <button type="button"
                     @click="transactionRecapTab = 'walkin'"
                     :class="transactionRecapTab === 'walkin' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                    class="px-5 py-3 text-sm transition">
+                    class="px-5 py-3 text-sm transition whitespace-nowrap">
               Dari Walk-in
             </button>
           </div>
@@ -937,13 +910,13 @@
                   <button type="button"
                           @click="historyTransactionRecapTab = 'billing'"
                           :class="historyTransactionRecapTab === 'billing' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                          class="px-5 py-3 text-sm transition">
+                          class="px-5 py-3 text-sm transition whitespace-nowrap">
                     Dari Billing
                   </button>
                   <button type="button"
                           @click="historyTransactionRecapTab = 'walkin'"
                           :class="historyTransactionRecapTab === 'walkin' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
-                          class="px-5 py-3 text-sm transition">
+                          class="px-5 py-3 text-sm transition whitespace-nowrap">
                     Dari Walk-in
                   </button>
                 </div>

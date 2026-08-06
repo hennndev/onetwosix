@@ -24,7 +24,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class RecapController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): \Illuminate\View\View|\Illuminate\Http\Response
     {
         $validated = $request->validate([
             'date' => ['nullable', 'date'],
@@ -41,6 +41,13 @@ class RecapController extends Controller
 
         [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
         $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
+
+        if ($request->headers->get('X-Live')) {
+            return response(
+                view('recap._partials.summary', $recapData)
+            )->withHeaders(['X-Live' => '1']);
+        }
+
         $recapHistoryTransactionRecaps = RecapHistory::query()
             ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
             ->latest('end_day')

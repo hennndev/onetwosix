@@ -1,5 +1,5 @@
 <x-app-layout title="Point of Sale (POS)">
-  <div class="flex w-full h-[calc(100vh-6rem)]"
+  <div class="flex flex-col lg:flex-row w-full lg:h-[calc(100vh-6rem)]"
        x-data="posApp"
        x-cloak
        @walk-in-proceed.window="receiveWalkIn($event.detail)"

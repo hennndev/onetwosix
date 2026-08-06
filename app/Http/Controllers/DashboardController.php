@@ -23,6 +23,12 @@ class DashboardController extends Controller
             ? ($request->input('area_id') === 'all' ? null : (int) $request->input('area_id'))
             : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
 
+        if ($request->headers->get('X-Live')) {
+            return response(
+                view('_partials.dashboard-stats', $this->liveStats($selectedAreaId))
+            )->withHeaders(['X-Live' => '1']);
+        }
+
         [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
         $lastCloseAt = RecapHistory::query()
             ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
@@ -177,12 +183,111 @@ class DashboardController extends Controller
         ));
     }
 
-    public function syncToday(DashboardSyncService $dashboardSyncService): RedirectResponse
+    private function liveStats(?int $selectedAreaId): array
     {
-        $dashboardSyncService->syncAll();
+        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
+        $lastCloseAt = RecapHistory::query()
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->latest('created_at')
+            ->value('created_at');
+
+        $todayBillings = Billing::query()
+            ->where('billing_status', 'paid')
+            ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
+                $query->whereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId));
+            })
+            ->where(function ($query) {
+                $query->where('is_booking', true)->orWhere('is_walk_in', true);
+            })
+            ->where(function ($query) use ($windowStart, $windowEnd) {
+                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd) {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->where('paid_at', '>=', $windowStart)
+                        ->where('paid_at', '<', $windowEnd);
+                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd) {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->where('updated_at', '>=', $windowStart)
+                        ->where('updated_at', '<', $windowEnd);
+                });
+            })
+            ->when($lastCloseAt, function ($query) use ($lastCloseAt) {
+                $query->where(function ($lastCloseQuery) use ($lastCloseAt) {
+                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt) {
+                        $paidAtQuery->whereNotNull('paid_at')->where('paid_at', '>', $lastCloseAt);
+                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt) {
+                        $fallbackQuery->whereNull('paid_at')->where('updated_at', '>', $lastCloseAt);
+                    });
+                });
+            });
+
+        $transactionsToday = (clone $todayBillings)->count();
+
+        $barItemsSold = BarOrderItem::whereHas(
+            'barOrder',
+            fn ($q) => $q->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<', $windowEnd)
+                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
+        )->sum('quantity');
+
+        $kitchenItemsSold = KitchenOrderItem::whereHas(
+            'kitchenOrder',
+            fn ($q) => $q->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<', $windowEnd)
+                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
+        )->sum('quantity');
+
+        $itemsSoldToday = $barItemsSold + $kitchenItemsSold;
+
+        $bookingPending = TableReservation::where('status', 'pending')->count();
+        $bookingConfirmed = TableReservation::where('status', 'confirmed')->count();
+
+        $totalTables = Tabel::where('is_active', true)
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->count();
+        $availableTables = Tabel::where('is_active', true)
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->where('status', 'available')
+            ->count();
+
+        $dashboardAggregate = Dashboard::query()
+            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId), fn ($q) => $q->whereNull('area_id'))
+            ->first();
+
+        $dashboardTotalDp = (float) ($dashboardAggregate?->total_dp ?? 0);
+        $dashboardGrossSales = (float) ($dashboardAggregate?->total_amount ?? 0) + $dashboardTotalDp;
+        $dashboardNetSales = max(0.0, $dashboardGrossSales
+            - (float) ($dashboardAggregate?->total_tax ?? 0)
+            - (float) ($dashboardAggregate?->total_service_charge ?? 0));
+
+        return compact(
+            'transactionsToday',
+            'itemsSoldToday',
+            'bookingPending',
+            'bookingConfirmed',
+            'totalTables',
+            'availableTables',
+            'dashboardGrossSales',
+            'dashboardNetSales'
+        );
+    }
+
+    public function syncToday(\Illuminate\Http\Request $request, DashboardSyncService $dashboardSyncService): RedirectResponse
+    {
+        $requestedAreaId = $request->input('area_id');
+
+        if ($requestedAreaId && $requestedAreaId !== 'all') {
+            $areaId = (int) $requestedAreaId;
+            $dashboardSyncService->sync($areaId);
+            $message = 'Dashboard berhasil di-sync untuk area terpilih.';
+        } else {
+            $dashboardSyncService->syncAll();
+            $message = 'Dashboard berhasil di-sync (seluruh area).';
+        }
 
         return redirect()
-            ->route('admin.dashboard')
-            ->with('success', 'Dashboard berhasil di-sync (seluruh area).');
+            ->route('admin.dashboard', isset($areaId) ? ['area_id' => $areaId] : [])
+            ->with('success', $message);
     }
 }

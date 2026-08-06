@@ -1,5 +1,5 @@
 <x-app-layout title="Display Messages">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
         {{ session('success') }}
@@ -17,7 +17,7 @@
     @endif
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center">
           <svg class="w-6 h-6 text-white"
@@ -36,7 +36,7 @@
         </div>
       </div>
       <button onclick="openModal('add')"
-              class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center gap-2">
+              class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center gap-2 justify-center">
         <svg class="w-5 h-5"
              fill="none"
              stroke="currentColor"
@@ -163,7 +163,7 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
       <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">

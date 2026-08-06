@@ -638,19 +638,17 @@
   }
 
   // History tab client-side filter
-  ['searchInput', 'categoryFilter', 'statusFilter'].forEach(id => {
+  ['searchInput', 'statusFilter'].forEach(id => {
     document.getElementById(id)?.addEventListener(id === 'searchInput' ? 'input' : 'change', filterHistory);
   });
 
   function filterHistory() {
     const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
-    const category = document.getElementById('categoryFilter')?.value || '';
     const status = document.getElementById('statusFilter')?.value || '';
     document.querySelectorAll('.booking-row').forEach(row => {
       const ms = !search || row.textContent.toLowerCase().includes(search);
-      const mc = !category || row.dataset.category == category;
       const mst = !status || row.dataset.status == status;
-      row.style.display = ms && mc && mst ? '' : 'none';
+      row.style.display = ms && mst ? '' : 'none';
     });
   }
 

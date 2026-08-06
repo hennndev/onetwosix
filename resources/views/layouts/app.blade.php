@@ -31,11 +31,23 @@
 
 <body class="font-sans antialiased bg-gray-50">
   <div class="flex h-screen overflow-hidden"
-       x-data="{ sidebarOpen: JSON.parse(localStorage.getItem('sidebarOpen') ?? 'true') }"
+       x-data="{ sidebarOpen: window.innerWidth >= 1024 && JSON.parse(localStorage.getItem('sidebarOpen') ?? 'true') }"
        x-cloak
        @keydown.escape.window="sidebarOpen = false; localStorage.setItem('sidebarOpen', false)">
-    <!-- Sidebar -->
-    @include('layouts.sidebar')
+    <!-- Sidebar: off-canvas overlay di mobile, inline di desktop -->
+    <aside :class="[
+      'fixed z-40 inset-y-0 left-0 overflow-hidden transition-all duration-300 lg:relative lg:inset-auto',
+      sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      sidebarOpen ? 'w-64' : 'w-0 lg:w-64'
+    ]">
+      @include('layouts.sidebar')
+    </aside>
+
+    <!-- Overlay (mobile only, saat sidebar terbuka) -->
+    <div x-show="sidebarOpen"
+         @click="sidebarOpen = false; localStorage.setItem('sidebarOpen', false)"
+         x-transition.opacity
+         class="fixed inset-0 z-30 bg-black/50 lg:hidden"></div>
 
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden">

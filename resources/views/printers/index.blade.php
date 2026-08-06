@@ -1,5 +1,5 @@
 <x-app-layout title="Manajemen Printer">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     @if (session('success'))
       <div class="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg relative"
            role="alert">
@@ -40,14 +40,14 @@
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div class="p-6 border-b border-gray-100">
-        <div class="flex items-center justify-between">
+      <div class="p-4 sm:p-6 border-b border-gray-100">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 class="text-lg font-semibold text-gray-800">Daftar Printer</h2>
             <p class="text-sm text-gray-500">{{ $printers->count() }} printer terdaftar</p>
           </div>
           <button onclick="openModal('add')"
-                  class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center space-x-2 transition">
+                  class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center justify-center space-x-2 transition">
             <svg class="w-5 h-5"
                  fill="none"
                  stroke="currentColor"

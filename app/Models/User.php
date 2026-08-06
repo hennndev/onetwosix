@@ -93,6 +93,12 @@ class User extends Authenticatable
             return (int) $requestedAreaId;
         }
 
+        $sessionAreaId = session('active_area_id');
+
+        if ($sessionAreaId && $sessionAreaId !== 'all') {
+            return (int) $sessionAreaId;
+        }
+
         return null;
     }
 

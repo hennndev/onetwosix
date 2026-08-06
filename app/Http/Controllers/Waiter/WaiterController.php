@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class WaiterController extends Controller
@@ -36,15 +37,17 @@ class WaiterController extends Controller
     public function activeTables(): View
     {
         $waiterId = (int) Auth::id();
+        $user = auth()->user();
+        $activeAreaId = $user ? $user->resolveActiveAreaId() : null;
 
         $sessions = TableSession::with(['table.area', 'customer.profile', 'billing', 'orders.items.inventoryItem'])
             ->withSum(['orders as total_spent' => fn ($q) => $q->whereNotIn('status', ['cancelled'])], 'total')
             ->where('waiter_id', $waiterId)
             ->where('status', 'active')
+            ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
             ->orderByDesc('checked_in_at')
             ->get();
 
-        $user = auth()->user();
         $areas = $user ? $user->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
         $sessionChargePreviews = $sessions->mapWithKeys(function (TableSession $session) {
             $billing = $session->billing;
@@ -262,6 +265,99 @@ class WaiterController extends Controller
         $canChooseChecker = (bool) ($settings->can_choose_checker ?? false);
 
         return view('waiter.pos', compact('products', 'activeSessions', 'cart', 'selectedSession', 'canChooseChecker', 'checkerPrinters'));
+    }
+
+    /**
+     * Realtime poll: stock availability per product + the waiter's active sessions.
+     * Lets the waiter see sold-out items and new/closed tables without reloading.
+     */
+    public function posLive(): JsonResponse
+    {
+        $waiterId = (int) Auth::id();
+        $posSettings = PosCategorySetting::allKeyed()->filter(fn ($setting) => $setting->show_in_pos);
+
+        $products = InventoryItem::with('printers')
+            ->whereIn('category_type', $posSettings->keys()->values()->all() ?: ['__none__'])
+            ->where('is_active', true)
+            ->where('is_visible_in_pos', true)
+            ->get()
+            ->map(function ($item) {
+                $isItemGroup = (bool) ($item->is_item_group ?? false);
+                $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
+                $possiblePortions = null;
+                $isAvailable = (bool) $item->is_active && ! ($isItemGroup && (bool) $item->is_group_sold_out);
+
+                if ($isItemGroup && $isCountPortionPossible) {
+                    $possiblePortions = $this->resolvePossiblePortions($item);
+                    $isAvailable = $isAvailable && $possiblePortions > 0;
+                } elseif (! $isItemGroup && $isCountPortionPossible) {
+                    $isAvailable = $isAvailable && (int) ($item->stock_quantity ?? 0) > 0;
+                }
+
+                return [
+                    'id' => 'item_'.$item->id,
+                    'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
+                    'possible_portions' => $possiblePortions,
+                    'is_available' => $isAvailable,
+                ];
+            });
+
+        $activeSessions = TableSession::with(['table.area', 'customer.profile'])
+            ->where('waiter_id', $waiterId)
+            ->whereNotNull('table_reservation_id')
+            ->where('status', 'active')
+            ->orderByDesc('checked_in_at')
+            ->get()
+            ->map(fn ($session) => [
+                'id' => (string) $session->id,
+                'table' => (string) ($session->table?->table_number ?? '?'),
+                'customer' => $session->customer?->name,
+            ])
+            ->values();
+
+        return response()->json([
+            'products' => $products,
+            'sessions' => $activeSessions,
+        ]);
+    }
+
+    protected function resolvePossiblePortions(InventoryItem $inventoryItem): int
+    {
+        try {
+            /** @var array<int, array<string, mixed>> $components */
+            $components = Cache::remember(
+                "accurate_item_group_{$inventoryItem->accurate_id}",
+                now()->addHour(),
+                fn (): array => app(\App\Services\AccurateService::class)->getItemGroupComponents((int) $inventoryItem->accurate_id),
+            );
+        } catch (\Throwable) {
+            return 0;
+        }
+
+        if ($components === []) {
+            return 0;
+        }
+
+        $linePossiblePortions = null;
+
+        foreach ($components as $component) {
+            $componentAccurateId = (int) ($component['itemId'] ?? 0);
+            $componentQuantity = (float) ($component['quantity'] ?? 0);
+
+            if ($componentAccurateId <= 0 || $componentQuantity <= 0) {
+                continue;
+            }
+
+            $ingredient = InventoryItem::query()->where('accurate_id', $componentAccurateId)->first();
+            $availableStock = max((float) ($ingredient?->stock_quantity ?? 0), 0);
+            $possibleByIngredient = (int) floor($availableStock / $componentQuantity);
+
+            $linePossiblePortions = $linePossiblePortions === null
+                ? $possibleByIngredient
+                : min($linePossiblePortions, $possibleByIngredient);
+        }
+
+        return $linePossiblePortions ?? 0;
     }
 
     public function notifications(): View

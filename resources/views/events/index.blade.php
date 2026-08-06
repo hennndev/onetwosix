@@ -1,5 +1,5 @@
 <x-app-layout title="Manajemen Event">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
         {{ session('success') }}
@@ -17,7 +17,7 @@
     @endif
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center">
           <svg class="w-6 h-6 text-white"
@@ -36,7 +36,7 @@
         </div>
       </div>
       <button onclick="openModal('add')"
-              class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center gap-2">
+              class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center gap-2 justify-center">
         <svg class="w-5 h-5"
              fill="none"
              stroke="currentColor"
@@ -50,27 +50,9 @@
       </button>
     </div>
 
-    <!-- Area Filter Pills -->
-    @if (($areas ?? collect())->count() > 1)
-      <div class="flex items-center gap-2 mb-6">
-        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Area:</span>
-        <div class="inline-flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <a href="{{ route('admin.events.index', array_merge(request()->query(), ['area_id' => 'all'])) }}"
-             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ empty($selectedAreaId) ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-            Semua Area
-          </a>
-          @foreach ($areas as $area)
-            <a href="{{ route('admin.events.index', array_merge(request()->query(), ['area_id' => $area->id])) }}"
-               class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {{ (int) ($selectedAreaId ?? 0) === (int) $area->id ? 'bg-slate-800 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-100' }}">
-              {{ $area->name }}
-            </a>
-          @endforeach
-        </div>
-      </div>
-    @endif
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="bg-purple-50 border border-purple-200 rounded-xl p-4">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
@@ -156,7 +138,7 @@
     <div class="mb-6">
       <h2 class="text-lg font-bold text-gray-900 mb-4">📅 Semua Event ({{ $events->count() }})</h2>
 
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         @forelse($events as $event)
           <div class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg transition">
             <!-- Header Badges -->

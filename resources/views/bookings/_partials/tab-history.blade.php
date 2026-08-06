@@ -17,15 +17,6 @@
            placeholder="Cari booking (nama, telepon, ID)..."
            class="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
   </div>
-  <select id="categoryFilter"
-          class="px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
-    @if (($areas ?? collect())->count() > 1)
-      <option value="">Semua Category</option>
-    @endif
-    @foreach ($areas as $area)
-      <option value="{{ $area->id }}">{{ $area->name }}</option>
-    @endforeach
-  </select>
   <select id="statusFilter"
           class="px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
     <option value="">Semua Status</option>
@@ -37,7 +28,7 @@
 </div>
 
 {{-- 4 Stat cards --}}
-<div class="grid grid-cols-4 gap-4 mb-5">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
   {{-- Total Booking --}}
   <div class="bg-slate-700 rounded-xl px-5 py-4 flex items-center gap-4">
     <div class="w-10 h-10 bg-slate-500 rounded-lg flex items-center justify-center shrink-0">
@@ -169,7 +160,7 @@
     </div>
   @else
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="w-full text-sm min-w-[800px]">
         <thead>
           <tr class="bg-gray-50 border-b border-gray-200">
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
@@ -847,6 +838,7 @@
                                       'qty' => (int) $item->quantity,
                                       'price' => (float) $item->price,
                                       'subtotal' => (float) $item->subtotal,
+                                      'discount_amount' => (float) $item->discount_amount,
                                   ],
                               )
                               ->values()
@@ -1368,14 +1360,18 @@
         cancelled: 'bg-red-100 text-red-700',
       } [order.status] || 'bg-gray-100 text-gray-600';
 
-      const rows = order.items.map((item) => `
+      const rows = order.items.map((item) => {
+        const hasDiscount = Number(item.discount_amount || 0) > 0;
+        const total = Number(item.subtotal) - Number(item.discount_amount || 0);
+        return `
         <tr class="border-b border-gray-50 last:border-0">
           <td class="py-1.5 pr-3 text-sm text-gray-700">${item.name}</td>
           <td class="py-1.5 px-3 text-sm text-gray-500 text-center">${item.qty}</td>
-          <td class="py-1.5 pl-3 text-sm text-gray-500 text-right">Rp ${Number(item.price).toLocaleString('id-ID')}</td>
-          <td class="py-1.5 pl-3 text-sm font-medium text-gray-700 text-right">Rp ${Number(item.subtotal).toLocaleString('id-ID')}</td>
+          <td class="py-1.5 pl-3 text-sm text-gray-500 text-right">${hasDiscount ? `<span class="text-red-600">Diskon -${historyFormatRupiah(item.discount_amount)}</span>` : ''} Rp ${Number(item.price).toLocaleString('id-ID')}</td>
+          <td class="py-1.5 pl-3 text-sm font-medium text-gray-700 text-right">Rp ${Number(total).toLocaleString('id-ID')}</td>
         </tr>
-      `).join('');
+        `;
+      }).join('');
 
       return `
         <div class="mb-4 border border-gray-200 rounded-lg overflow-hidden">

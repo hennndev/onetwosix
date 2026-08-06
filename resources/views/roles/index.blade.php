@@ -1,8 +1,8 @@
 <x-app-layout title="Manajemen Peran & Akses">
-  <div class="py-8 px-6">
+  <div class="py-6 px-4 sm:py-8 sm:px-6">
     <!-- Header -->
     <div class="mb-8">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-3">
             <div class="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
@@ -21,7 +21,7 @@
           <p class="text-gray-600 mt-1">Kelola role dan permission sistem</p>
         </div>
         <button onclick="openModal()"
-                class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center gap-2">
+                class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2">
           <svg class="w-5 h-5"
                fill="none"
                stroke="currentColor"

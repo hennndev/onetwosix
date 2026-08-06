@@ -1,5 +1,5 @@
 <x-app-layout title="Pengaturan Tier Customer">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
 
     <!-- Back -->
     <a href="{{ route('admin.settings.index') }}"
@@ -158,7 +158,7 @@
                    value="{{ $tier->id }}">
 
             <!-- Fields -->
-            <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <div>
                 <label class="block text-sm font-medium text-slate-600 mb-1.5">Nama Tier</label>
                 <input type="text"

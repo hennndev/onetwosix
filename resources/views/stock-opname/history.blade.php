@@ -1,13 +1,13 @@
 <x-app-layout title="Riwayat Stock Opname">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Riwayat Stock Opname</h1>
         <p class="text-sm text-gray-500">Daftar semua stock opname yang pernah dilakukan</p>
       </div>
       <a href="{{ route('admin.stock-opname.index') }}"
-         class="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition flex items-center gap-2">
+         class="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition flex items-center justify-center gap-2">
         <svg class="w-4 h-4"
              fill="none"
              stroke="currentColor"

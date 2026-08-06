@@ -79,9 +79,11 @@ class TableReservationController extends Controller
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('category')) {
-            $query->whereHas('table.area', function ($areaQuery) use ($request) {
-                $areaQuery->where('id', $request->category);
+        $activeAreaId = auth()->user()?->resolveActiveAreaId($request->input('area_id'), $request->has('area_id'));
+
+        if ($activeAreaId) {
+            $query->whereHas('table.area', function ($areaQuery) use ($activeAreaId) {
+                $areaQuery->where('id', $activeAreaId);
             });
         }
 
@@ -130,15 +132,19 @@ class TableReservationController extends Controller
             $bookings = $bookings->get();
         }
 
-        $totalBookings = TableReservation::count();
-        $pendingBookings = TableReservation::where('status', 'pending')->count();
-        $confirmedBookings = TableReservation::where('status', 'confirmed')->count();
-        $checkedInBookings = TableReservation::where('status', 'checked_in')->count();
+        $areaScope = fn ($q) => $q->when($activeAreaId, fn ($sub) => $sub->whereHas('table.area', fn ($t) => $t->where('id', $activeAreaId)));
+
+        $totalBookings = TableReservation::tap($areaScope)->count();
+        $pendingBookings = TableReservation::where('status', 'pending')->tap($areaScope)->count();
+        $confirmedBookings = TableReservation::where('status', 'confirmed')->tap($areaScope)->count();
+        $checkedInBookings = TableReservation::where('status', 'checked_in')->tap($areaScope)->count();
         $partialBookingsCount = TableReservation::whereHas('tableSession.billing', function ($bQuery) {
             $bQuery->where('remaining_balance', '>', 0);
-        })->count();
+        })->tap($areaScope)->count();
 
-        $tables = Tabel::with('area')->where('is_active', true)->orderBy('table_number')->get();
+        $tables = Tabel::with('area')->where('is_active', true)
+            ->when($activeAreaId, fn ($q) => $q->where('area_id', $activeAreaId))
+            ->orderBy('table_number')->get();
         $customers = User::whereHas('customerUser')->with(['profile', 'customerUser'])->orderBy('name')->get();
         $user = auth()->user();
         $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
@@ -152,6 +158,7 @@ class TableReservationController extends Controller
         $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
             ->whereIn('status', ['checked_in', 'confirmed'])
             ->whereNotNull('table_id')
+            ->tap($areaScope)
             ->orderByRaw("CASE WHEN status = 'checked_in' THEN 0 ELSE 1 END")
             ->orderByDesc('reservation_date')
             ->orderByDesc('reservation_time')
@@ -168,6 +175,7 @@ class TableReservationController extends Controller
             'orders.items.inventoryItem',
         ])
             ->where('status', 'active')
+            ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
             ->orderBy('checked_in_at')
             ->get();
 
@@ -233,12 +241,14 @@ class TableReservationController extends Controller
 
         $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser'])
             ->where('status', 'pending')
+            ->tap($areaScope)
             ->orderBy('reservation_date')
             ->orderBy('reservation_time')
             ->get();
 
         // Pending tab: identify competing bookings (same table + date, >1 pending)
         $conflictingPendingKeys = TableReservation::where('status', 'pending')
+            ->tap($areaScope)
             ->selectRaw('table_id, reservation_date, COUNT(*) as cnt')
             ->groupBy('table_id', 'reservation_date')
             ->having('cnt', '>', 1)
@@ -248,18 +258,20 @@ class TableReservationController extends Controller
 
         // Pending tab: slots already taken by a confirmed/checked-in booking
         $blockedPendingKeys = TableReservation::whereIn('status', ['confirmed', 'checked_in'])
+            ->tap($areaScope)
             ->selectRaw('DISTINCT table_id, reservation_date')
             ->get()
             ->map(fn ($r) => $r->table_id.'_'.($r->reservation_date instanceof \Carbon\Carbon ? $r->reservation_date->toDateString() : $r->reservation_date))
             ->toArray();
 
         // History stats
-        $historyTotalCount = TableReservation::whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed'])->count();
-        $historyCompletedCount = TableReservation::where('status', 'completed')->count();
-        $historyForceClosedCount = TableReservation::where('status', 'force_closed')->count();
-        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q): void {
-            $q->whereHas('reservation', function ($q2): void {
-                $q2->whereIn('status', ['completed', 'force_closed']);
+        $historyTotalCount = TableReservation::whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed'])->tap($areaScope)->count();
+        $historyCompletedCount = TableReservation::where('status', 'completed')->tap($areaScope)->count();
+        $historyForceClosedCount = TableReservation::where('status', 'force_closed')->tap($areaScope)->count();
+        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q) use ($activeAreaId): void {
+            $q->whereHas('reservation', function ($q2) use ($activeAreaId): void {
+                $q2->whereIn('status', ['completed', 'force_closed'])
+                    ->when($activeAreaId, fn ($t) => $t->whereHas('table.area', fn ($a) => $a->where('id', $activeAreaId)));
             });
         })->sum('grand_total');
         $historyAvgSpending = $historyCompletedCount > 0
@@ -273,6 +285,7 @@ class TableReservationController extends Controller
 
         $activeSessionCustomerIds = TableSession::query()
             ->where('status', 'active')
+            ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
             ->pluck('customer_id')
             ->unique()
             ->values();
@@ -313,6 +326,7 @@ class TableReservationController extends Controller
             'tables',
             'customers',
             'areas',
+            'activeAreaId',
             'tab',
             'activeBookingsByTable',
             'activeSessions',

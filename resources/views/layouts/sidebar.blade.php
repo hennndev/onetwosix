@@ -1,5 +1,4 @@
-<aside class="bg-slate-800 text-white flex flex-col shrink-0 overflow-hidden transition-all duration-300"
-       :class="sidebarOpen ? 'w-64' : 'w-0'">
+<aside class="bg-slate-800 text-white flex flex-col h-full overflow-hidden">
   <!-- Logo -->
   <div class="p-6 border-b border-slate-700">
     <div class="flex items-center space-x-3">

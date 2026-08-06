@@ -34,8 +34,9 @@ class TableController extends Controller
             ->where('status', 'active');
 
         $activeAreaId = $request->input('area_id', session('active_area_id'));
+        $activeAreaId = ($activeAreaId && $activeAreaId !== 'all') ? (int) $activeAreaId : null;
 
-        if ($activeAreaId && $activeAreaId !== 'all') {
+        if ($activeAreaId) {
             $query->whereHas('table', function ($q) use ($activeAreaId) {
                 $q->where('area_id', $activeAreaId);
             });
@@ -105,11 +106,15 @@ class TableController extends Controller
         return [
             'sessions' => $sessions,
             'areas' => auth()->user() ? auth()->user()->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get(),
-            'totalActiveSessions' => \App\Models\TableSession::where('status', 'active')->count(),
-            'totalRevenue' => Billing::whereHas('tableSession', function ($q) {
-                $q->where('status', 'active');
+            'activeAreaId' => $activeAreaId,
+            'totalActiveSessions' => \App\Models\TableSession::where('status', 'active')
+                ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
+                ->count(),
+            'totalRevenue' => Billing::whereHas('tableSession', function ($q) use ($activeAreaId) {
+                $q->where('status', 'active')
+                    ->when($activeAreaId, fn ($t) => $t->whereHas('table', fn ($tb) => $tb->where('area_id', $activeAreaId)));
             })->sum('grand_total'),
-            'topSpenders' => app(RealtimeTopSpenderBanner::class)->topSpenders(3),
+            'topSpenders' => app(RealtimeTopSpenderBanner::class)->topSpenders(3, $activeAreaId),
             'activeSessionChargePreviews' => $activeSessionChargePreviews,
             'activeSessionEventAdjustments' => $activeSessionEventAdjustments,
             'activeSessionSubtotals' => $activeSessionSubtotals,
@@ -288,8 +293,12 @@ class TableController extends Controller
             });
         }
 
-        if ($request->has('area_id') && $request->area_id != '') {
-            $query->where('area_id', $request->area_id);
+        $activeAreaId = auth()->user()
+            ? auth()->user()->resolveActiveAreaId($request->input('area_id'), $request->has('area_id'))
+            : null;
+
+        if ($activeAreaId) {
+            $query->where('area_id', $activeAreaId);
         }
 
         if ($request->has('status') && $request->status != '') {
@@ -298,17 +307,18 @@ class TableController extends Controller
 
         $tables = $query->orderBy('area_id')->orderBy('table_number')->get();
 
-        $totalTables = Tabel::count();
-        $availableTables = Tabel::where('status', 'available')->where('is_active', true)->count();
-        $totalCapacity = Tabel::where('is_active', true)->sum('capacity');
-
         $areas = auth()->user() ? auth()->user()->getAccessibleAreas() : Area::where('is_active', true)->orderBy('sort_order')->get();
-        $areaStats = Area::where('is_active', true)
+        $areaStats = Area::whereIn('id', $areas->pluck('id'))
+            ->when($activeAreaId, fn ($q) => $q->where('id', $activeAreaId))
             ->withCount(['tables' => function ($q) {
                 $q->where('is_active', true);
             }])
             ->orderBy('sort_order')
             ->get();
+
+        $totalTables = $areaStats->sum('tables_count');
+        $availableTables = $tables->where('status', 'available')->where('is_active', true)->count();
+        $totalCapacity = $tables->where('is_active', true)->sum('capacity');
 
         // Get active reservations for reserved tables
         $reservations = \App\Models\TableReservation::with(['customer.profile', 'customer.customerUser', 'table.area'])
@@ -420,7 +430,19 @@ class TableController extends Controller
 
     public function activeTablesReadonly(Request $request)
     {
-        return view('active-tables.readonly', $this->activeTablesViewData($request));
+        $data = $this->activeTablesViewData($request);
+
+        if ($request->headers->get('X-Live')) {
+            $partial = $request->get('live') === 'table'
+                ? 'active-tables._partials.table'
+                : 'active-tables._partials.stats';
+
+            return response(
+                view($partial, $data)
+            )->withHeaders(['X-Live' => '1']);
+        }
+
+        return view('active-tables.readonly', $data);
     }
 
     // UPDATE PAX PADA ACTIVE TABLE

@@ -64,7 +64,7 @@
     }
   </style>
 
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
 
     <!-- Back -->
     <a href="{{ route('admin.settings.index') }}"
@@ -121,7 +121,8 @@
             action="{{ route('admin.settings.pos-categories.save') }}">
         @csrf
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <table class="w-full text-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
             <thead class="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Kategori</th>
@@ -170,6 +171,7 @@
               @endforeach
             </tbody>
           </table>
+          </div>
         </div>
 
         <div class="mt-5 flex justify-end">

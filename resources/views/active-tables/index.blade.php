@@ -1,5 +1,5 @@
 <x-app-layout title="Meja Aktif">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div class="flex items-center gap-3">
@@ -20,6 +20,24 @@
         </div>
       </div>
     </div>
+
+    <!-- Area Tabs (multi-area header) -->
+    @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
+      <div class="mb-6">
+        <div class="flex gap-2 overflow-x-auto pb-2">
+          <a href="{{ route('admin.active-tables.index') }}"
+             class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ is_null($activeAreaId) ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            Semua Area
+          </a>
+          @foreach ($areas as $area)
+            <a href="{{ route('admin.active-tables.index', ['area_id' => $area->id]) }}"
+               class="px-4 py-2 rounded-lg whitespace-nowrap transition {{ $activeAreaId === $area->id ? 'bg-slate-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+              {{ $area->name }}
+            </a>
+          @endforeach
+        </div>
+      </div>
+    @endif
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -115,22 +133,11 @@
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
         </div>
 
-        <!-- Area Filter -->
-        <div class="w-48">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Area</label>
-          <select name="area_id"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-            @if (($areas ?? collect())->count() > 1)
-              <option value="">Semua Area</option>
-            @endif
-            @foreach ($areas as $area)
-              <option value="{{ $area->id }}"
-                      {{ request('area_id') == $area->id ? 'selected' : '' }}>
-                {{ $area->name }}
-              </option>
-            @endforeach
-          </select>
-        </div>
+        @if (! is_null($activeAreaId))
+          <input type="hidden"
+                 name="area_id"
+                 value="{{ $activeAreaId }}">
+        @endif
 
         <!-- Buttons -->
         <div class="flex items-end gap-2">

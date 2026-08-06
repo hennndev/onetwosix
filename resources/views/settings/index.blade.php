@@ -1,5 +1,5 @@
 <x-app-layout title="Pengaturan Sistem">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
     <!-- Header -->
     <div class="flex items-center gap-3 mb-8">
       <div class="w-12 h-12 bg-slate-700 rounded-xl flex items-center justify-center">

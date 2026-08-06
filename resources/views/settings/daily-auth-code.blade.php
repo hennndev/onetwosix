@@ -1,5 +1,5 @@
 <x-app-layout title="Kode Otorisasi Harian">
-  <div class="p-6">
+  <div class="p-4 sm:p-6">
 
     <!-- Back -->
     <a href="{{ route('admin.settings.index') }}"

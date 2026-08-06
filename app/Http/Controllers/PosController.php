@@ -155,14 +155,14 @@ class PosController extends Controller
         });
 
         $user = Auth::user();
-        $assignedAreaId = ($user && ! $user->hasMultiAreaAccess()) ? $user->getAssignedArea()?->id : null;
+        $activeAreaId = $user ? $user->resolveActiveAreaId() : null;
 
         // Get active table sessions for booking customers
         $tableSessions = TableSession::with(['customer.profile', 'customer.customerUser', 'table.area', 'billing', 'waiter.profile', 'reservation'])
             ->where('status', 'active')
             ->whereNotNull('checked_in_at')
             ->whereNull('checked_out_at')
-            ->when($assignedAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $assignedAreaId)))
+            ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
             ->get();
 
         // Get tiers for discount calculation (highest level first)
@@ -181,10 +181,12 @@ class PosController extends Controller
         $currentCounter = session()->get('pos_counter_location');
 
         // Tables without an active session (available for walk-in)
-        $activetableIds = TableSession::where('status', 'active')->pluck('table_id');
+        $activetableIds = TableSession::where('status', 'active')
+            ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
+            ->pluck('table_id');
         $availableTables = Tabel::with('area')
             ->where('is_active', true)
-            ->when($assignedAreaId, fn ($q) => $q->where('area_id', $assignedAreaId))
+            ->when($activeAreaId, fn ($q) => $q->where('area_id', $activeAreaId))
             ->whereNotIn('id', $activetableIds)
             ->orderBy('table_number')
             ->get()

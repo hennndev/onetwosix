@@ -470,13 +470,17 @@
       ? `<p class="px-2 py-3 text-center text-xs text-gray-500">${message}</p>`
       : cbDiscountItems.length === 0
         ? '<p class="px-2 py-3 text-center text-xs text-gray-500">Tidak ada order item aktif pada billing ini.</p>'
-        : cbDiscountItems.map(item => `
+        : cbDiscountItems.map(item => {
+          const hasDiscount = Number(item.discount_amount) > 0;
+          return `
           <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50">
             <input type="checkbox" name="cb_discount_order_item_ids" value="${item.id}" onchange="updateGrandTotalFromDiscount()" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
             <span class="min-w-0 flex-1 truncate text-xs text-gray-700">${item.quantity}x ${item.name}</span>
+            ${hasDiscount ? `<span class="shrink-0 text-xs font-semibold text-red-600">Diskon -${formatRupiah(item.discount_amount)}</span>` : ''}
             <span class="text-xs font-semibold text-gray-700">${formatRupiah(item.subtotal)}</span>
           </label>
-        `).join('');
+          `;
+        }).join('');
   }
 
   function updateDiscountUI() {

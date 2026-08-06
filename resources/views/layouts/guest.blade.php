@@ -8,7 +8,7 @@
   <meta name="csrf-token"
         content="{{ csrf_token() }}">
 
-  <title>{{ config('app.name', 'Laravel') }}</title>
+  <title>{{ isset($title) && filled($title) ? $title . ' — ' . config('app.name', '126 Club') : config('app.name', '126 Club') }}</title>
 
   <!-- Fonts -->
   <link rel="preconnect"

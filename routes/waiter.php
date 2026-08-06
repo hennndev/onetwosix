@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WaiterController::class, 'index'])->name('index');
 Route::get('/pos', [WaiterController::class, 'pos'])->name('pos');
+Route::get('/pos/live', [WaiterController::class, 'posLive'])->name('pos.live');
 Route::post('/pos/select-session', [WaiterPosController::class, 'selectSession'])->name('pos.select-session');
 Route::post('/pos/{productId}/add-to-cart', [WaiterPosController::class, 'addToCart'])->name('pos.add-to-cart');
 Route::post('/pos/{productId}/update-cart', [WaiterPosController::class, 'updateCart'])->name('pos.update-cart');
