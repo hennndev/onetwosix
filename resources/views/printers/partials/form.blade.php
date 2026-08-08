@@ -82,6 +82,7 @@
             <option value="bar">Bar</option>
             <option value="cashier">Kasir</option>
             <option value="checker">Checker</option>
+            <option value="food_lift">Food Lift</option>
           </select>
           <p class="mt-1 text-xs text-gray-400">Menentukan tipe print job yang dikirim ke printer ini.</p>
         </div>

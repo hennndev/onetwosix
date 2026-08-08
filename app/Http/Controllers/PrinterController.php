@@ -44,6 +44,7 @@ class PrinterController extends Controller
             'bar' => 'Bar',
             'cashier' => 'Cashier',
             'checker' => 'Checker',
+            'food_lift' => 'Food Lift',
         ];
     }
 

@@ -1176,3 +1176,87 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.item_'.$groupItem->id.'.qty', 1);
 });
+
+test('waiter checkout prints checker ticket to assigned food lift printer', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-LIFT');
+    $session = posSession($table, $customer, $waiter);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $liftPrinter = Printer::create([
+        'name' => 'Waiter Food Lift',
+        'location' => 'food_lift',
+        'printer_type' => 'food_lift',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Food Lift Menu',
+        'code' => 'MENU-WAITER-LIFT-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$liftPrinter->id]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($liftPrinter): void {
+        $mock->shouldReceive('printCheckerTicket')
+            ->once()
+            ->withArgs(function ($order, $printer) use ($liftPrinter): bool {
+                return (int) $printer->id === (int) $liftPrinter->id
+                    && (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printKitchenTicket')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+        $mock->shouldReceive('printCashierTicket')->never();
+    });
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    $order = Order::query()->where('table_session_id', $session->id)->latest('id')->first();
+
+    expect($order)->not->toBeNull()
+        ->and(KitchenOrder::query()->where('order_id', $order->id)->exists())->toBeTrue()
+        ->and(BarOrder::query()->where('order_id', $order->id)->exists())->toBeFalse();
+});

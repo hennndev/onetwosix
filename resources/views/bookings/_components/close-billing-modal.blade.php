@@ -424,6 +424,51 @@
   </div>
 </div>
 
+<!-- Payment Type Chooser (Step 0) -->
+<div id="cbPaymentTypeModal"
+     class="fixed inset-0 z-[60] hidden items-end justify-center overflow-y-auto bg-black/50 sm:items-center">
+  <div class="w-full max-w-sm rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+       onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <h3 class="font-bold text-gray-900 text-sm">Pilih Metode Pembayaran</h3>
+      <button type="button"
+              onclick="closePaymentTypeModal()"
+              class="text-gray-400 hover:text-gray-600 transition">
+        <svg class="w-5 h-5"
+             fill="none"
+             stroke="currentColor"
+             viewBox="0 0 24 24">
+          <path stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <div class="px-5 py-4 space-y-2">
+      <p class="text-xs text-gray-500 mb-3">Pilih jenis pembayaran sebelum detail billing ditampilkan.</p>
+      <button type="button"
+              onclick="proceedCloseBilling('')"
+              class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
+        <p class="text-sm font-semibold text-gray-800">Pembayaran Biasa</p>
+        <p class="text-xs text-gray-500 mt-0.5">Tunai, Debit, QRIS, Transfer, Split, Parsial / Hutang</p>
+      </button>
+      <button type="button"
+              onclick="proceedCloseBilling('FOC')"
+              class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
+        <p class="text-sm font-semibold text-gray-800">FOC</p>
+        <p class="text-xs text-gray-500 mt-0.5">Free of charge — seluruh billing dibebaskan</p>
+      </button>
+      <button type="button"
+              onclick="proceedCloseBilling('Compliment')"
+              class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
+        <p class="text-sm font-semibold text-gray-800">Compliment</p>
+        <p class="text-xs text-gray-500 mt-0.5">Diskon 100% — wajib auth code</p>
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
   const cbVerifyAuthCodeUrl = @json(route('admin.settings.daily-auth-code.verify'));
   const cbSendAuthCodeEmailUrl = @json(route('admin.settings.daily-auth-code.send-email'));
@@ -570,7 +615,36 @@
       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg> Tutup & Cetak Struk';
   }
 
-  async function openCloseBillingModal(trigger) {
+  let cbPendingCloseTrigger = null;
+
+  function openCloseBillingModal(trigger) {
+    cbPendingCloseTrigger = trigger;
+    document.getElementById('cbPaymentTypeModal').classList.remove('hidden');
+  }
+
+  function closePaymentTypeModal() {
+    document.getElementById('cbPaymentTypeModal').classList.add('hidden');
+    cbPendingCloseTrigger = null;
+  }
+
+  function proceedCloseBilling(type) {
+    closePaymentTypeModal();
+    const trigger = cbPendingCloseTrigger;
+    cbPendingCloseTrigger = null;
+    if (!trigger) {
+      return;
+    }
+
+    showCloseBillingDetail(trigger).then(() => {
+      const select = document.getElementById('cb_foc_comp_payment_method');
+      if (select) {
+        select.value = type || '';
+        updateDiscountUI();
+      }
+    });
+  }
+
+  async function showCloseBillingDetail(trigger) {
     const bookingId = Number(trigger?.dataset?.bookingId || 0);
     const minimumCharge = Number(trigger?.dataset?.minimumCharge || 0);
     const ordersTotal = Number(trigger?.dataset?.ordersTotal || 0);

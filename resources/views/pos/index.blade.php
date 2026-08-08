@@ -193,6 +193,7 @@
           historyLoading: false,
           showCustomerTypeModal: false,
           showCheckoutModal: false,
+          showPaymentTypeModal: false,
           isRequestingAuthCodeEmail: false,
           showConfirmModal: false,
           showReceiptModal: false,
@@ -788,8 +789,15 @@
             this.checkoutForm.discount_percentage = 0;
             this.checkoutForm.discount_nominal = 0;
             this.checkoutForm.discount_auth_code = '';
+            this.checkoutForm.foc_comp_payment_method = '';
             this.showCustomerTypeModal = false;
             this.bookingStep = 'type';
+            this.showPaymentTypeModal = true;
+          },
+
+          selectWalkInPaymentType(type) {
+            this.checkoutForm.foc_comp_payment_method = type;
+            this.showPaymentTypeModal = false;
             this.showCheckoutModal = true;
           },
 
@@ -1036,6 +1044,10 @@
 
             if (this.checkoutForm.customer_type === 'walk-in') {
               const discountBase = this.walkInPreDiscountTotal();
+
+              if (this.checkoutForm.foc_comp_payment_method === 'Compliment') {
+                return Math.round(discountBase);
+              }
 
               if (this.checkoutForm.discount_type === 'percentage') {
                 const amount = discountBase * (this.getWalkInDiscountPercentage() / 100);

@@ -13,7 +13,7 @@ class PrinterRequest extends FormRequest
 
     public function rules(): array
     {
-        $serviceLocations = ['kitchen', 'bar', 'cashier', 'checker'];
+        $serviceLocations = ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'];
         $areaCodes = \App\Models\Area::where('is_active', true)->pluck('code')->filter()->map(fn ($c) => (string) $c)->toArray();
         $areaCodesLower = array_map('strtolower', $areaCodes);
         $areaCodesUpper = array_map('strtoupper', $areaCodes);
@@ -23,7 +23,7 @@ class PrinterRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'in:'.implode(',', $validLocations)],
             'area_id' => ['nullable', 'exists:areas,id'],
-            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker'],
+            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker,food_lift'],
             'connection_type' => ['required', 'in:network,file,windows,log'],
             'ip' => ['required_if:connection_type,network', 'nullable', 'ip'],
             'port' => ['required_if:connection_type,network', 'nullable', 'integer', 'min:1', 'max:65535'],

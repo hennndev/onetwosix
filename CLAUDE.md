@@ -28,6 +28,22 @@ Contoh pertanyaan yang cocok dijawab lewat graph:
 
 Untuk pertanyaan arsitektural tingkat tinggi, **baca `GRAPH_REPORT.md` dulu** sebelum menyelam ke file.
 
+## Aturan WAJIB: Cek `.agents/` Sebelum Perubahan
+
+`.agents/` berisi skill yang mengatur cara menulis kode & test di repo ini. Claude Code
+tidak membaca `.agents/` secara otomatis — jadi **wajib baca manual**:
+
+- Sebelum mengubah kode PHP, baca `.agents/AGENTS.md` dan `.agents/skills/pest-testing/SKILL.md`
+  (mengatur test: Pest 4, `php artisan test --compact`).
+- Sebelum mengubah tampilan/UI, baca `.agents/skills/tailwindcss-development/SKILL.md`
+  (mengatur Tailwind v3, dark mode, gap utilities).
+- Setiap selesai edit kode, **jalankan test dulu** sebelum finalisasi:
+  ```bash
+  php artisan test --compact --filter=testName   # minimal: filter test yang tersentuh
+  php artisan test --compact                     # penuh bila perlu
+  ```
+- JANGAN menghapus test tanpa persetujuan — test adalah core application code.
+
 ## Kapan Boleh Langsung Baca File
 
 Graph untuk memahami *keterkaitan* dan *lokasi*. Untuk mengedit atau melihat implementasi
@@ -36,8 +52,8 @@ tidak menggantikan pembacaan kode saat menulis perubahan.
 
 ## Menjaga Graph Tetap Terkini
 
-Setiap kali ada **modul atau fitur baru** (controller, model, service, migration, route, atau
-view baru), **perbarui graph** agar tetap akurat:
+Setiap kali ada **modul atau fitur baru** — juga **setiap perubahan file** PHP/Blade/JS
+(controller, model, service, migration, route, view) — **perbarui graph** agar tetap akurat:
 
 ```
 /graphify . --update
@@ -54,4 +70,6 @@ Saat menjalankan `--update`, pertahankan scope yang sama agar konsisten dengan b
 ## Ringkas
 1. Mau paham codebase / cari keterkaitan → `/graphify query "..."` atau baca `GRAPH_REPORT.md`.
 2. Mau edit implementasi detail → baca file sumbernya langsung.
-3. Ada modul/fitur baru → `/graphify . --update` (scope tetap: app, routes, resources, database, config).
+3. **Sebelum edit kode → baca `.agents/AGENTS.md` + skill relevan (pest-testing, tailwindcss-development).**
+4. **Setelah edit kode → jalankan test** (`php artisan test --compact --filter=...`).
+5. **Ada perubahan file PHP/Blade/JS → `/graphify . --update`** (scope tetap: app, routes, resources, database, config).

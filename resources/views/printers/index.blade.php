@@ -96,8 +96,9 @@
                         'bar' => 'bg-purple-100 text-purple-700',
                         'cashier' => 'bg-green-100 text-green-700',
                         'checker' => 'bg-blue-100 text-blue-700',
+                        'food_lift' => 'bg-orange-100 text-orange-700',
                     ];
-                    $typeLabels = ['kitchen' => 'Kitchen', 'bar' => 'Bar', 'cashier' => 'Kasir', 'checker' => 'Checker'];
+                    $typeLabels = ['kitchen' => 'Kitchen', 'bar' => 'Bar', 'cashier' => 'Kasir', 'checker' => 'Checker', 'food_lift' => 'Food Lift'];
                   @endphp
                   @if ($printer->printer_type)
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold {{ $typeColors[$printer->printer_type] ?? 'bg-gray-100 text-gray-500' }}">

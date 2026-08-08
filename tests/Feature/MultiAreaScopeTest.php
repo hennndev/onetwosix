@@ -47,6 +47,23 @@ it('allows super admin to switch active area in session', function () {
     expect($admin->resolveActiveArea()->id)->toBe($this->loungeArea->id);
 });
 
+it('returns null from resolveActiveArea when session is set to all areas', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole('Administrator');
+
+    $profile = \App\Models\UserProfile::create(['user_id' => $admin->id]);
+    InternalUser::create([
+        'user_id' => $admin->id,
+        'user_profile_id' => $profile->id,
+        'area_id' => null,
+    ]);
+
+    session()->put('active_area_id', 'all');
+
+    expect($admin->resolveActiveArea())->toBeNull();
+    expect($admin->resolveActiveAreaId())->toBeNull();
+});
+
 it('restricts regular cashier to their assigned area', function () {
     $cashierUser = User::factory()->create();
     $cashierUser->assignRole('Cashier');

@@ -183,7 +183,12 @@
                          x-model="form.printer_ids"
                          class="mt-0.5 h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500">
                   <span>
-                    <span class="block font-medium text-gray-800">{{ $printer->name }}</span>
+                    <span class="block font-medium text-gray-800">
+                      {{ $printer->name }}
+                      @if ($printer->printer_type === 'food_lift')
+                        <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">Food Lift</span>
+                      @endif
+                    </span>
                     <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                   </span>
                 </label>
@@ -678,7 +683,12 @@
                            data-menu-modal-printer="{{ $printer->id }}"
                            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500">
                     <span>
-                      <span class="block font-medium text-gray-800">{{ $printer->name }}</span>
+                      <span class="block font-medium text-gray-800">
+                        {{ $printer->name }}
+                        @if ($printer->printer_type === 'food_lift')
+                          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">Food Lift</span>
+                        @endif
+                      </span>
                       <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                     </span>
                   </label>
