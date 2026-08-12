@@ -1015,7 +1015,8 @@ class RecapController extends Controller
     private function resolveEndDayPrinter(?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $contextAreaId = $areaId ?: (session('active_area_id') ?: auth()->user()?->getAssignedArea()?->id);
+        $sessionArea = session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null;
+        $contextAreaId = $areaId ?: ($sessionArea ?: auth()->user()?->getAssignedArea()?->id);
         $configuredPrinterId = $settings->getPrinterIdForArea($contextAreaId, 'end_day_receipt');
 
         if ($configuredPrinterId && $configuredPrinterId > 0) {

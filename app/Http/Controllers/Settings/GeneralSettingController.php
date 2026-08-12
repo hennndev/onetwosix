@@ -27,6 +27,7 @@ class GeneralSettingController extends Controller
         $validated = $request->validate([
             'tax_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'service_charge_percentage' => ['required', 'integer', 'min:0', 'max:100'],
+            'operational_anchor_time' => ['nullable', 'regex:/^(?:[01]\d|2[0-3]):[0-5]\d$/'],
             'accurate_tax_account_no' => ['nullable', 'string', 'max:50'],
             'accurate_service_charge_account_no' => ['nullable', 'string', 'max:50'],
             'accurate_bank_account_no' => ['nullable', 'string', 'max:50'],

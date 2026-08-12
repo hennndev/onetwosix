@@ -13,7 +13,7 @@ class PrinterRequest extends FormRequest
 
     public function rules(): array
     {
-        $serviceLocations = ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'];
+        $serviceLocations = ['kitchen', 'bar', 'cashier', 'checker'];
         $areaCodes = \App\Models\Area::where('is_active', true)->pluck('code')->filter()->map(fn ($c) => (string) $c)->toArray();
         $areaCodesLower = array_map('strtolower', $areaCodes);
         $areaCodesUpper = array_map('strtoupper', $areaCodes);
@@ -23,7 +23,7 @@ class PrinterRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'in:'.implode(',', $validLocations)],
             'area_id' => ['nullable', 'exists:areas,id'],
-            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker,food_lift'],
+            'printer_type' => ['nullable', 'string', 'in:kitchen,bar,cashier,checker'],
             'connection_type' => ['required', 'in:network,file,windows,log'],
             'ip' => ['required_if:connection_type,network', 'nullable', 'ip'],
             'port' => ['required_if:connection_type,network', 'nullable', 'integer', 'min:1', 'max:65535'],
@@ -34,6 +34,7 @@ class PrinterRequest extends FormRequest
             'logo' => ['nullable', 'image', 'max:2048', 'dimensions:max_width=300,max_height=200'],
             'show_qr_code' => ['boolean'],
             'width' => ['nullable', 'integer', 'min:24', 'max:48'],
+            'copies' => ['nullable', 'integer', 'min:1', 'max:10'],
             'is_default' => ['boolean'],
             'is_active' => ['boolean'],
         ];

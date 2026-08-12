@@ -57,6 +57,14 @@ class PrinterService
      */
     protected function printBillingTemplatePayload(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
     {
+        return $this->printWithCopies($printer, fn (): bool => $this->printBillingTemplatePayloadSingle($payload, $printer, $logTitle, $previewTitle));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function printBillingTemplatePayloadSingle(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
+    {
         $width = max((int) ($printer->width ?: 42), 42);
 
         if ($printer->connection_type === 'log') {
@@ -178,6 +186,11 @@ class PrinterService
                         $escpos->text($this->formatClosedBillingPair('Ref 2', (string) ($payload['split_second_non_cash_reference_number'] ?? ''), $width)."\n");
                     }
                 }
+            }
+
+            $focCompPaymentMethod = (string) ($payload['foc_comp_payment_method'] ?? '');
+            if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
+                $escpos->text($this->formatClosedBillingPair('Jenis Transaksi', $focCompPaymentMethod, $width)."\n");
             }
 
             $escpos->text($separator."\n");
@@ -351,6 +364,22 @@ class PrinterService
     }
 
     /**
+     * Run a single print job N times based on the printer's copies setting.
+     */
+    protected function printWithCopies(Printer $printer, \Closure $job): bool
+    {
+        $copies = $printer->copiesCount();
+
+        for ($i = 1; $i <= $copies; $i++) {
+            if (! $job()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Write a human-readable print simulation to storage/logs/printer.log.
      */
     protected function logPrint(string $title, array $lines): void
@@ -382,6 +411,11 @@ class PrinterService
      * Print a receipt for the given order.
      */
     public function printReceipt(Order $order, Printer $printer): bool
+    {
+        return $this->printWithCopies($printer, fn (): bool => $this->printReceiptSingle($order, $printer));
+    }
+
+    public function printReceiptSingle(Order $order, Printer $printer): bool
     {
         $receiptTotals = $this->calculateReceiptTotals($order);
         Log::info('data', ['data' => $receiptTotals]);
@@ -518,6 +552,11 @@ class PrinterService
      * Print a test receipt to verify printer connection.
      */
     public function testPrint(Printer $printer): bool
+    {
+        return $this->printWithCopies($printer, fn (): bool => $this->testPrintSingle($printer));
+    }
+
+    public function testPrintSingle(Printer $printer): bool
     {
         Log::info('Starting printer test print', [
             'printer_id' => $printer->id,
@@ -777,6 +816,7 @@ class PrinterService
             'split_second_non_cash_amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
             'split_second_non_cash_method' => $splitSecondNonCashMethod,
             'split_second_non_cash_reference_number' => $billing->split_second_non_cash_reference_number,
+            'foc_comp_payment_method' => (string) ($billing->foc_comp_payment_method ?? ''),
         ];
     }
 
@@ -836,6 +876,7 @@ class PrinterService
             'split_second_non_cash_amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
             'split_second_non_cash_method' => $splitSecondNonCashMethod,
             'split_second_non_cash_reference_number' => $billing->split_second_non_cash_reference_number,
+            'foc_comp_payment_method' => (string) ($billing->foc_comp_payment_method ?? ''),
         ];
     }
 
@@ -948,6 +989,11 @@ class PrinterService
             }
         }
 
+        $focCompPaymentMethod = (string) ($payload['foc_comp_payment_method'] ?? '');
+        if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
+            $lines[] = $this->formatClosedBillingPair('Jenis Transaksi', $focCompPaymentMethod, $width);
+        }
+
         $lines[] = $separator;
         $lines[] = 'Terima Kasih Atas Kunjungan Anda!';
         $lines[] = "Printer: {$printer->name} ({$printer->location}) #{$printer->id}";
@@ -984,6 +1030,11 @@ class PrinterService
      * Print a checker ticket (serve notification for floor staff).
      */
     public function printCheckerTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
+    {
+        return $this->printWithCopies($printer, fn (): bool => $this->printCheckerTicketSingle($order, $printer));
+    }
+
+    public function printCheckerTicketSingle(KitchenOrder|BarOrder $order, Printer $printer): bool
     {
         $order->loadMissing(['order.tableSession.waiter.profile']);
         $waiterName = $this->resolveBookingWaiterName($order);
@@ -1095,6 +1146,11 @@ class PrinterService
      * @param  array<string, mixed>  $recapData
      */
     public function printEndDayRecap(array $recapData, Printer $printer, bool $includeTransactionHistory = true): bool
+    {
+        return $this->printWithCopies($printer, fn (): bool => $this->printEndDayRecapSingle($recapData, $printer, $includeTransactionHistory));
+    }
+
+    public function printEndDayRecapSingle(array $recapData, Printer $printer, bool $includeTransactionHistory = true): bool
     {
         $width = max((int) ($printer->width ?: 42), 32);
         $lines = $this->buildEndDayRecapLines($recapData, $printer, $width, $includeTransactionHistory);
@@ -1368,6 +1424,11 @@ class PrinterService
      * @param  array<int, array{name: string, quantity: int}>  $items
      */
     protected function printEndDayItemSummary(string $section, array $items, string $endDay, Printer $printer): bool
+    {
+        return $this->printWithCopies($printer, fn (): bool => $this->printEndDayItemSummarySingle($section, $items, $endDay, $printer));
+    }
+
+    protected function printEndDayItemSummarySingle(string $section, array $items, string $endDay, Printer $printer): bool
     {
         $width = max((int) ($printer->width ?: 42), 32);
         $separator = str_repeat('-', $width);

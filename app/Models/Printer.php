@@ -22,6 +22,7 @@ class Printer extends Model
         'logo_path',
         'show_qr_code',
         'width',
+        'copies',
         'is_default',
         'is_active',
     ];
@@ -50,6 +51,7 @@ class Printer extends Model
         'port' => 'integer',
         'timeout' => 'integer',
         'width' => 'integer',
+        'copies' => 'integer',
     ];
 
     public function scopeActive($query)
@@ -126,6 +128,16 @@ class Printer extends Model
     public function isNetwork(): bool
     {
         return $this->connection_type === 'network';
+    }
+
+    /**
+     * Number of print copies for this printer (clamped to 1..10).
+     */
+    public function copiesCount(): int
+    {
+        $copies = (int) ($this->copies ?? 1);
+
+        return max(1, min(10, $copies));
     }
 
     public function isFile(): bool

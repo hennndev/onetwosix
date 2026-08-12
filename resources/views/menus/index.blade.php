@@ -185,9 +185,6 @@
                   <span>
                     <span class="block font-medium text-gray-800">
                       {{ $printer->name }}
-                      @if ($printer->printer_type === 'food_lift')
-                        <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">Food Lift</span>
-                      @endif
                     </span>
                     <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                   </span>
@@ -685,9 +682,6 @@
                     <span>
                       <span class="block font-medium text-gray-800">
                         {{ $printer->name }}
-                        @if ($printer->printer_type === 'food_lift')
-                          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">Food Lift</span>
-                        @endif
                       </span>
                       <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                     </span>

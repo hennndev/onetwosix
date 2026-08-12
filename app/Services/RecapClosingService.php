@@ -18,6 +18,28 @@ class RecapClosingService
         $closingAt = $closingAt->copy()->timezone('Asia/Jakarta');
         $endDay = RecapHistory::resolveNextEndDay($areaId);
 
+        // Tolak close kedua dalam rentang pre-anchor: jika sudah ada recap dengan
+        // created_at pada kalender hari yang sama untuk end_day yang berbeda,
+        // berarti close dini-hari sudah terjadi — jangan seal hari baru prematur.
+        $earlyClosedToday = RecapHistory::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+            ->whereDate('created_at', $closingAt->toDateString())
+            ->whereDate('end_day', '<>', $endDay)
+            ->exists();
+
+        if ($earlyClosedToday) {
+            return [
+                'status' => 'already_closed',
+                'end_day' => $endDay,
+                'recap_history' => RecapHistory::query()
+                    ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+                    ->whereDate('created_at', $closingAt->toDateString())
+                    ->whereDate('end_day', '<>', $endDay)
+                    ->latest('created_at')
+                    ->first(),
+            ];
+        }
+
         return DB::transaction(function () use ($endDay, $areaId): array {
             $dashboardQuery = Dashboard::query();
             if ($areaId) {
@@ -55,9 +77,17 @@ class RecapClosingService
                 ];
             }
 
+            // Window hari ini dibuka saat recap sebelumnya ditutup (atau anchor utk recap pertama)
+            $previousRecap = RecapHistory::query()
+                ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+                ->whereDate('end_day', '<', $endDay)
+                ->orderByDesc('end_day')
+                ->first();
+
             $recapHistory = RecapHistory::query()->create([
                 'area_id' => $areaId,
                 'end_day' => $endDay,
+                'opened_at' => $previousRecap?->created_at ?? RecapHistory::resolveOperationalAnchor(Carbon::parse($endDay, 'Asia/Jakarta')),
                 'total_amount' => (float) $dashboard->total_amount,
                 'total_food' => (float) $dashboard->total_food,
                 'total_alcohol' => (float) $dashboard->total_alcohol,

@@ -17,6 +17,65 @@ beforeEach(function () {
     }
 });
 
+it('prints the configured number of copies in log mode', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-42';
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-COPY-001';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect());
+
+    $printer = Printer::make([
+        'name' => 'Copies Test',
+        'connection_type' => 'log',
+        'width' => 42,
+        'copies' => 3,
+    ]);
+
+    $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    // 3 copies => the CHECKER log block appears exactly 3 times
+    expect($result)->toBeTrue()
+        ->and(substr_count($log, '[PRINT SIMULATION] CHECKER'))->toBe(3);
+});
+
+it('defaults to a single copy when copies is not set', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-42';
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-COPY-002';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect());
+
+    $printer = Printer::make(['name' => 'Copies Test', 'connection_type' => 'log', 'width' => 42]);
+
+    (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect(substr_count($log, '[PRINT SIMULATION] CHECKER'))->toBe(1);
+});
+
+it('prints the configured number of copies for test print', function () {
+    $printer = Printer::make([
+        'name' => 'Copies Test',
+        'connection_type' => 'log',
+        'width' => 42,
+        'copies' => 2,
+    ]);
+
+    $result = (new PrinterService)->testPrint($printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and(substr_count($log, '[PRINT SIMULATION] TEST PRINT'))->toBe(2);
+});
+
 it('prints kitchen ticket with the correct table_number', function () {
     $table = new Tabel;
     $table->table_number = 'T-42';
@@ -278,6 +337,89 @@ it('prints compliment and foc prices using their original values in closed billi
         ->and($log)->toContain('Rp 60.000')
         ->and(substr_count($log, 'Harga: Rp 0'))->toBe(0)
         ->and(substr_count($log, 'Total: Rp 0'))->toBe(0);
+});
+
+it('prints Jenis Transaksi FOC on walk-in billing receipt', function () {
+    $order = new \App\Models\Order;
+    $order->order_number = 'WALKIN-FOC-01';
+    $order->ordered_at = now();
+    $order->setRelation('items', collect());
+    $order->setRelation('customer', null);
+    $order->setRelation('createdBy', null);
+
+    $billing = new \App\Models\Billing;
+    $billing->transaction_code = 'WALKIN-FOC-001';
+    $billing->updated_at = now();
+    $billing->minimum_charge = 0;
+    $billing->subtotal = 50000;
+    $billing->tax = 0;
+    $billing->tax_percentage = 0;
+    $billing->service_charge = 0;
+    $billing->service_charge_percentage = 0;
+    $billing->discount_amount = 0;
+    $billing->grand_total = 50000;
+    $billing->payment_mode = 'normal';
+    $billing->payment_method = 'cash';
+    $billing->foc_comp_payment_method = 'FOC';
+
+    $printer = Printer::make([
+        'name' => 'Walkin FOC Test',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $result = (new PrinterService)->printWalkInBillingReceipt($order, $billing, $printer);
+
+    $log = (string) file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('Jenis Transaksi')
+        ->and($log)->toContain('FOC');
+});
+
+it('prints Jenis Transaksi Compliment on closed billing receipt', function () {
+    $table = new \App\Models\Tabel;
+    $table->table_number = 'C-12';
+
+    $order = new \App\Models\Order;
+    $order->order_number = 'CLOSED-COMP-01';
+    $order->ordered_at = now();
+    $order->setRelation('items', collect());
+
+    $session = new \App\Models\TableSession;
+    $session->setRelation('table', $table);
+    $session->setRelation('customer', null);
+    $session->setRelation('reservation', null);
+    $session->setRelation('orders', collect([$order]));
+
+    $billing = new \App\Models\Billing;
+    $billing->transaction_code = 'CLOSED-COMP-001';
+    $billing->updated_at = now();
+    $billing->minimum_charge = 0;
+    $billing->subtotal = 0;
+    $billing->tax = 0;
+    $billing->tax_percentage = 0;
+    $billing->service_charge = 0;
+    $billing->service_charge_percentage = 0;
+    $billing->discount_amount = 0;
+    $billing->grand_total = 0;
+    $billing->payment_mode = 'normal';
+    $billing->payment_method = 'cash';
+    $billing->foc_comp_payment_method = 'Compliment';
+
+    $printer = Printer::make([
+        'name' => 'Closed Comp Test',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $result = (new PrinterService)->printClosedBillingReceipt($billing, $session, $printer);
+
+    $log = (string) file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('Jenis Transaksi')
+        ->and($log)->toContain('Compliment');
 });
 
 it('prints end day recap with LD quantity row', function () {

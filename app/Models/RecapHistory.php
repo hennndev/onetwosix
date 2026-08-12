@@ -11,6 +11,7 @@ class RecapHistory extends Model
     protected $fillable = [
         'area_id',
         'end_day',
+        'opened_at',
         'total_amount',
         'total_food',
         'total_alcohol',
@@ -41,6 +42,7 @@ class RecapHistory extends Model
     protected $casts = [
         'area_id' => 'integer',
         'end_day' => 'date',
+        'opened_at' => 'datetime',
         'total_amount' => 'decimal:2',
         'total_food' => 'decimal:2',
         'total_alcohol' => 'decimal:2',
@@ -74,12 +76,30 @@ class RecapHistory extends Model
     }
 
     /**
+     * Jam mulai operasional dari GeneralSetting (fallback '09:00').
+     *
+     * Hanya dipakai sebagai fallback window saat recap belum ada pada tanggal yang
+     * bersangkutan; tanggal yang sudah di-close selalu dipandu oleh opened_at/created_at recap.
+     *
+     * @return \Illuminate\Support\Carbon Carbon $base dengan jam mulai operasional (Asia/Jakarta)
+     */
+    public static function resolveOperationalAnchor(\Illuminate\Support\Carbon $base): \Illuminate\Support\Carbon
+    {
+        [$hour, $minute] = array_map('intval', explode(':', \App\Models\GeneralSetting::instance()->operationalAnchorTime()));
+
+        return $base->copy()->setTime($hour, $minute, 0);
+    }
+
+    /**
      * Determine the end_day date label for the next closing.
+     *
+     * Uses the latest RecapHistory to calculate the next day sequentially,
+     * avoiding collision bugs caused by hardcoded hour-based heuristics.
      */
     public static function resolveNextEndDay(?int $areaId = null): string
     {
         $now = now('Asia/Jakarta');
-        $maxOperationalDay = $now->hour < 9
+        $maxOperationalDay = $now->lt(self::resolveOperationalAnchor($now))
             ? $now->copy()->subDay()->toDateString()
             : $now->toDateString();
 
@@ -102,6 +122,83 @@ class RecapHistory extends Model
     }
 
     /**
+     * End_day berikutnya untuk consumer yang butuh label hari operasi berjalan
+     * (kitchen, bar, waiter performance).
+     *
+     * Jika recap terakhir menutup kemarin lebih awal (created_at di bawah anchor
+     * hari ini), hari operasi baru sudah berjalan sejak created_at tersebut —
+     * end_day = hari ini, bukan hasil clamp resolveNextEndDay() yang masih
+     * menunjuk kemarin (sudah ditutup). Mencegah order dini-hari (mis. jam 7
+     * pagi) jatuh di luar window.
+     */
+    public static function resolveNextEndDayForEarlyClose(?int $areaId = null): string
+    {
+        $now = now('Asia/Jakarta');
+        $latestRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->latest('end_day')
+            ->first();
+
+        if ($latestRecap
+            && $latestRecap->created_at
+            && $latestRecap->created_at->timezone('Asia/Jakarta')->lt(self::resolveOperationalAnchor($now))
+            && $latestRecap->end_day->toDateString() === $now->copy()->subDay()->toDateString()
+        ) {
+            return $now->toDateString();
+        }
+
+        return self::resolveNextEndDay($areaId);
+    }
+
+    /**
+     * Window end_day untuk consumer kitchen/bar hari berjalan.
+     *
+     * Preventif gap: jika recap utama terakhir menutup lebih dari sehari sebelum
+     * hari operasi aktif (libur/off), collapse end_day ke hari aktif dan extend
+     * window dari opened_at recap terakhir sampai anchor(now)+1d — konsisten
+     * dengan resolveActiveWindow (dashboard). Kasus normal memakai
+     * resolveNextEndDayForEarlyClose + resolveWindowForDate (perilaku existing).
+     *
+     * @return array{0: string, 1: \Illuminate\Support\Carbon, 2: \Illuminate\Support\Carbon} [endDay, startAt, endAt]
+     */
+    public static function resolveEndDayWindowForToday(?int $areaId = null): array
+    {
+        $now = now('Asia/Jakarta');
+        $latestRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->latest('end_day')
+            ->first();
+
+        if (! $latestRecap) {
+            $endDay = self::resolveNextEndDayForEarlyClose($areaId);
+            [$startAt, $endAt] = self::resolveWindowForDate(\Illuminate\Support\Carbon::parse($endDay, 'Asia/Jakarta'), $areaId);
+
+            return [$endDay, $startAt, $endAt];
+        }
+
+        $lastEndDay = $latestRecap->end_day->copy()->timezone('Asia/Jakarta')->startOfDay();
+        $activeDay = ($now->lt(self::resolveOperationalAnchor($now))
+                ? $now->copy()->subDay()
+                : $now->copy())->startOfDay();
+
+        // Gap ≥ 1 hari penuh (libur/off): hari operasi aktif lebih dari 1 hari setelah end_day terakhir
+        if ($lastEndDay->diffInDays($activeDay) > 1) {
+            $endDay = $activeDay->toDateString();
+            $startAt = ($latestRecap->opened_at ?? $latestRecap->created_at)?->copy()->timezone('Asia/Jakarta')
+                ?? self::resolveOperationalAnchor($endDay);
+            $endAt = self::resolveOperationalAnchor($now)->addDay()->subSecond();
+
+            return [$endDay, $startAt, $endAt];
+        }
+
+        // Normal (no gap): perilaku existing
+        $endDay = self::resolveNextEndDayForEarlyClose($areaId);
+        [$startAt, $endAt] = self::resolveWindowForDate(\Illuminate\Support\Carbon::parse($endDay, 'Asia/Jakarta'), $areaId);
+
+        return [$endDay, $startAt, $endAt];
+    }
+
+    /**
      * Resolve the active operational window based on the latest closed recap.
      *
      * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
@@ -109,7 +206,7 @@ class RecapHistory extends Model
     public static function resolveActiveWindow(?int $areaId = null): array
     {
         $now = now('Asia/Jakarta');
-        $defaultAnchor = $now->copy()->setTime(9, 0, 0);
+        $defaultAnchor = self::resolveOperationalAnchor($now);
 
         // Find the latest closed recap
         $latestRecap = self::query()
@@ -155,12 +252,12 @@ class RecapHistory extends Model
             ];
         }
 
-        // Start time is the exact time the previous recap was closed
-        $startAt = $latestRecap->created_at->copy()->timezone('Asia/Jakarta');
+        // Start time is the exact time the previous recap was closed (stored opened_at, or created_at fallback)
+        $startAt = ($latestRecap->opened_at ?? $latestRecap->created_at)->copy()->timezone('Asia/Jakarta');
 
         // Calculate expected end time based on next day to close
         $nextDayToClose = $latestRecap->end_day->copy()->addDay()->timezone('Asia/Jakarta');
-        $expectedEndAt = $nextDayToClose->copy()->setTime(9, 0, 0)->addDay()->subSecond();
+        $expectedEndAt = self::resolveOperationalAnchor($nextDayToClose)->addDay()->subSecond();
 
         // If now() has passed the expected end (e.g., outlet was closed for holidays),
         // extend the window to cover today's operational cycle
@@ -184,27 +281,27 @@ class RecapHistory extends Model
     {
         $endDay = $endDay->copy()->timezone('Asia/Jakarta');
 
-        // Find if the previous day was closed
-        $previousRecap = self::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
-            ->whereDate('end_day', $endDay->copy()->subDay()->toDateString())
-            ->first();
-
-        // Start time is the previous day's closing time, or fallback to default anchor (09:00 AM on $endDay)
-        $startAt = $previousRecap
-            ? $previousRecap->created_at->copy()->timezone('Asia/Jakarta')
-            : $endDay->copy()->setTime(9, 0, 0);
-
         // Find if the current day itself was closed
         $currentRecap = self::query()
             ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->whereDate('end_day', $endDay->toDateString())
             ->first();
 
-        // End time is the current day's closing time, or fallback to default anchor (08:59:59 AM next day)
+        // Find if the previous day was closed
+        $previousRecap = self::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereDate('end_day', $endDay->copy()->subDay()->toDateString())
+            ->first();
+
+        // Start time is the current day's stored opened_at, else the previous day's closing time, else default anchor
+        $startAt = $currentRecap?->opened_at
+            ?? $previousRecap?->created_at?->copy()->timezone('Asia/Jakarta')
+            ?? self::resolveOperationalAnchor($endDay);
+
+        // End time is the current day's closing time, or fallback to next day's default operational anchor minus 1s
         $endAt = $currentRecap
             ? $currentRecap->created_at->copy()->timezone('Asia/Jakarta')
-            : $endDay->copy()->setTime(9, 0, 0)->addDay()->subSecond();
+            : self::resolveOperationalAnchor($endDay)->addDay()->subSecond();
 
         return [$startAt, $endAt];
     }

@@ -441,13 +441,13 @@ class WaiterPosController extends Controller
                 ->map(function (Printer $printer): ?string {
                     $type = strtolower(trim((string) $printer->printer_type));
 
-                    if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'], true)) {
+                    if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
                         return $type;
                     }
 
                     $location = strtolower(trim((string) $printer->location));
 
-                    return in_array($location, ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'], true) ? $location : null;
+                    return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
                 })
                 ->filter()
                 ->values() ?? collect();
@@ -536,7 +536,6 @@ class WaiterPosController extends Controller
             // Auto-print kitchen ticket safely
             try {
                 $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
-                $this->printFoodLiftTicket($kitchenOrder, $kitchenItems, $resolvedAreaId);
             } catch (\Throwable $e) {
                 logger()->error('Failed auto-printing kitchen ticket: '.$e->getMessage());
             }
@@ -617,44 +616,12 @@ class WaiterPosController extends Controller
                 fn (KitchenOrder|BarOrder $preparationOrder, Printer $printer): bool => match ($printer->printer_type) {
                     'checker' => $this->queuePreparationTicket($preparationOrder, $printer, 'checker'),
                     'cashier' => $this->queuePreparationTicket($preparationOrder, $printer, 'cashier'),
-                    'food_lift' => $this->queuePreparationTicket($preparationOrder, $printer, 'checker'),
                     default => false,
                 },
                 $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
-        }
-    }
-
-    /**
-     * Print a checker ticket to the area's food lift printer (if configured).
-     */
-    protected function printFoodLiftTicket(KitchenOrder|BarOrder $order, Collection $items, ?int $areaId): void
-    {
-        if (! $areaId) {
-            return;
-        }
-
-        $printerId = GeneralSetting::instance()->getPrinterIdForArea($areaId, 'food_lift');
-
-        if (! $printerId || $printerId <= 0) {
-            return;
-        }
-
-        $printer = Printer::active()->find($printerId);
-
-        if (! $printer) {
-            return;
-        }
-
-        $orderForLift = clone $order;
-        $orderForLift->setRelation('items', $items);
-
-        try {
-            $this->queuePreparationTicket($orderForLift, $printer, 'checker');
-        } catch (\Throwable $e) {
-            logger()->error('Failed printing food lift ticket: '.$e->getMessage());
         }
     }
 
@@ -669,7 +636,6 @@ class WaiterPosController extends Controller
                     'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
                     'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
                     'bar' => $this->queuePreparationTicket($order, $printer, 'bar'),
-                    'food_lift' => $this->queuePreparationTicket($order, $printer, 'checker'),
                     default => $this->queuePreparationTicket($order, $printer, 'kitchen'),
                 },
                 $selectedCheckerPrinterIds
@@ -690,7 +656,6 @@ class WaiterPosController extends Controller
                     'checker' => $this->queuePreparationTicket($order, $printer, 'checker'),
                     'cashier' => $this->queuePreparationTicket($order, $printer, 'cashier'),
                     'kitchen' => $this->queuePreparationTicket($order, $printer, 'kitchen'),
-                    'food_lift' => $this->queuePreparationTicket($order, $printer, 'checker'),
                     default => $this->queuePreparationTicket($order, $printer, 'bar'),
                 },
                 $selectedCheckerPrinterIds
@@ -814,13 +779,13 @@ class WaiterPosController extends Controller
     {
         $type = strtolower(trim((string) $printer->printer_type));
 
-        if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'], true)) {
+        if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
             return $type;
         }
 
         $location = strtolower(trim((string) $printer->location));
 
-        return in_array($location, ['kitchen', 'bar', 'cashier', 'checker', 'food_lift'], true) ? $location : null;
+        return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
     }
 
     protected function resolvePreparationLocationFromPrinters(InventoryItem $inventoryItem): ?string
