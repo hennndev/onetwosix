@@ -310,8 +310,9 @@ class RecapController extends Controller
                     ?? $order->tableSession?->customer?->name
                     ?? $order->customer?->user?->name
                     ?? 'Walk-in';
+                $sessionBilling = $order->table_session_id ? $billingsBySessionId->get($order->table_session_id) : null;
                 $billing = $billingsByOrderId->get($order->id)
-                    ?? ($order->table_session_id ? $billingsBySessionId->get($order->table_session_id) : null);
+                    ?? (($sessionBilling?->billing_status ?? '') === 'paid' ? $sessionBilling : null);
                 $paymentMode = $order->payment_mode ?? $billing?->payment_mode;
                 $paymentMethod = $order->payment_method ?? $billing?->payment_method;
                 $orderItems = $order->items
@@ -333,7 +334,11 @@ class RecapController extends Controller
                 $subTotal = $totalBill + $taxTotal + $serviceChargeTotal;
 
                 $discountAmount = (float) ($billing?->discount_amount ?? $order->discount_amount ?? 0);
-                $downPaymentAmount = (float) ($order->tableSession?->reservation?->down_payment_amount ?? 0);
+                // DP (down payment) hanya relevan saat billing closed/paid — bukan per transaksi
+                // booking yang belum closed. Untuk order per-order (belum paid), DP tidak dikurangkan.
+                $downPaymentAmount = $billing
+                    ? (float) ($order->tableSession?->reservation?->down_payment_amount ?? 0)
+                    : 0.0;
 
                 $remainingTotal = max($subTotal - $discountAmount - $downPaymentAmount, 0);
 
@@ -372,15 +377,20 @@ class RecapController extends Controller
             ->filter(function (array $transaction): bool {
                 $isPaidByBilling = $transaction['billing_status'] === 'paid';
                 $isCompletedOrder = $transaction['order_status'] === 'completed';
-
-                if (! $isPaidByBilling && ! $isCompletedOrder) {
-                    return false;
-                }
-
-                return $transaction['items_count'] > 0
+                // Transaksi booking yang belum closed (billing belum paid) tetap ditampilkan
+                // per-order selama transaksi tersebut punya nilai/barang.
+                $isMeaningfulTransaction = $transaction['items_count'] > 0
                     || (float) $transaction['total'] > 0
                     || filled($transaction['payment_reference_number'])
                     || ($transaction['payment_method'] ?? '-') !== '-';
+
+                if (! $isMeaningfulTransaction) {
+                    return false;
+                }
+
+                // Hanya tampilkan order yang relevan: completed, billing paid, atau
+                // transaksi bermakna dari sesi yang belum ditutup.
+                return $isPaidByBilling || $isCompletedOrder || $transaction['billing_status'] !== 'paid';
             })
             ->map(function (array $transaction): array {
                 unset($transaction['order_status'], $transaction['billing_status']);
