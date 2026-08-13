@@ -10,8 +10,6 @@ class YouTubeMusicService
 {
     private const ENDPOINT = 'https://music.youtube.com/youtubei/v1/search';
 
-    private const API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-NKNELL6As';
-
     /**
      * Search params for filtering by type.
      *
@@ -28,6 +26,12 @@ class YouTubeMusicService
      */
     public function search(string $query, string $filter = 'songs'): array
     {
+        $apiKey = config('services.youtube_music.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            throw new \RuntimeException('YouTube Music API key belum dikonfigurasi.');
+        }
+
         try {
             $body = [
                 'context' => [
@@ -44,7 +48,8 @@ class YouTubeMusicService
                 $body['params'] = self::FILTER_PARAMS[$filter];
             }
 
-            $response = Http::timeout(10)
+            $response = Http::connectTimeout(5)
+                ->timeout(10)
                 ->withHeaders([
                     'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                     'Accept' => '*/*',
@@ -54,7 +59,7 @@ class YouTubeMusicService
                     'x-origin' => 'https://music.youtube.com',
                     'Referer' => 'https://music.youtube.com/',
                 ])
-                ->post(self::ENDPOINT.'?key='.self::API_KEY.'&prettyPrint=false', $body);
+                ->post(self::ENDPOINT.'?key='.urlencode($apiKey).'&prettyPrint=false', $body);
 
             if ($response->failed()) {
                 Log::error('YouTube Music API error', [

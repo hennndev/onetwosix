@@ -39,4 +39,8 @@ return [
         'service_account_file' => env('FIREBASE_SERVICE_ACCOUNT_FILE', base_path('service-account-file.json')),
     ],
 
+    'youtube_music' => [
+        'api_key' => env('YOUTUBE_API_KEY'),
+    ],
+
 ];
