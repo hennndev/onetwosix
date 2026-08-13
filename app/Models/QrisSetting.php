@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class QrisSetting extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'image_path',
+        'is_active',
+    ];
 
     /**
      * @return array<string, string>

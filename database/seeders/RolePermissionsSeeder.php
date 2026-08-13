@@ -35,6 +35,7 @@ class RolePermissionsSeeder extends Seeder
             'admin.song-requests.*',
             'admin.display-messages.*',
             'admin.events.*',
+            'admin.promos.*',
             'admin.waiter-performance.*',
             'admin.settings.*',
             'admin.accurate.*',
@@ -62,6 +63,7 @@ class RolePermissionsSeeder extends Seeder
             'admin.song-requests.*',
             'admin.display-messages.*',
             'admin.events.*',
+            'admin.promos.*',
         ],
         'Kitchen' => [
             'admin.dashboard',

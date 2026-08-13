@@ -1,8 +1,11 @@
 <?php
 
 use App\Http\Controllers\TableController;
+use App\Http\Controllers\TableLayoutController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('tables/layout', [TableLayoutController::class, 'edit'])->name('tables.layout');
+Route::post('tables/layout/positions', [TableLayoutController::class, 'update'])->name('tables.layout.update');
 Route::resource('tables', TableController::class)->except(['show', 'create', 'edit']);
 Route::get('active-tables', [TableController::class, 'activeTables'])->name('active-tables.index');
 Route::get('active-tables/readonly', [TableController::class, 'activeTablesReadonly'])->name('active-tables.readonly');

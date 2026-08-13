@@ -21,6 +21,7 @@
     <form id="areaForm"
           method="POST"
           action="{{ route('admin.areas.store') }}"
+          enctype="multipart/form-data"
           class="p-6">
       @csrf
       <input type="hidden"
@@ -63,6 +64,28 @@
                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent">
         </div>
         <div class="md:col-span-2">
+          <label for="image" class="block text-sm font-semibold text-gray-700 mb-2">
+            Gambar Denah
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-4 items-start">
+            <div>
+              <input type="file"
+                     name="image"
+                     id="image"
+                     accept="image/jpeg,image/png,image/webp"
+                     class="block w-full text-sm text-gray-600 border border-gray-300 rounded-lg file:mr-4 file:py-3 file:px-4 file:border-0 file:bg-teal-50 file:text-teal-700 file:font-semibold hover:file:bg-teal-100">
+              <p class="mt-2 text-xs text-gray-500">JPG, PNG, atau WebP. Maksimal 2 MB. Gunakan gambar tampak atas.</p>
+            </div>
+            <div id="imagePreviewFrame"
+                 class="hidden overflow-hidden rounded-lg border border-gray-200 bg-slate-50 aspect-[4/3]">
+              <img id="imagePreview"
+                   src=""
+                   alt="Preview gambar denah"
+                   class="w-full h-full object-cover">
+            </div>
+          </div>
+        </div>
+        <div class="md:col-span-2">
           <label class="block text-sm font-semibold text-gray-700 mb-2">
             Deskripsi
           </label>
@@ -88,6 +111,7 @@
             <input type="checkbox"
                    name="is_active"
                    id="is_active"
+                   value="1"
                    checked
                    class="sr-only peer">
             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>

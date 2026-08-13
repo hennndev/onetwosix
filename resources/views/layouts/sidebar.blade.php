@@ -23,7 +23,7 @@
   <!-- Navigation -->
   <nav class="flex-1 overflow-y-auto py-4 px-3">
     <!-- OPERATIONS -->
-    @canany(['admin.dashboard', 'admin.tables.*', 'admin.events.*'])
+    @canany(['admin.dashboard', 'admin.tables.*', 'admin.events.*', 'admin.promos.*'])
       <div class="mb-6">
         <h3 class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Operations</h3>
         @can('admin.dashboard')
@@ -94,6 +94,23 @@
               </svg>
             </x-slot>
             Acara
+          </x-nav-link>
+        @endcan
+        @can('admin.promos.*')
+          <x-nav-link href="{{ route('admin.promos.index') }}"
+                      :active="request()->routeIs('admin.promos.*')">
+            <x-slot name="icon">
+              <svg class="w-5 h-5"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+            </x-slot>
+            Promo
           </x-nav-link>
         @endcan
       </div>

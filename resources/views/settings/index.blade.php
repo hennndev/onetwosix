@@ -181,6 +181,27 @@
         </div>
       </a>
 
+      <!-- Pengaturan Pembayaran -->
+      <a href="{{ route('admin.settings.payment.index') }}"
+         class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all">
+        <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6 text-emerald-600"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="font-semibold text-slate-800 mb-1">Pengaturan Pembayaran</h3>
+          <p class="text-sm text-slate-500 mb-3">Kelola rekening bank, WhatsApp konfirmasi, dan QRIS</p>
+          <span class="text-sm font-medium text-violet-600 hover:text-violet-700">Lihat Detail →</span>
+        </div>
+      </a>
+
       <!-- Printer Management -->
       <a href="{{ route('admin.printers.index') }}"
          class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all">

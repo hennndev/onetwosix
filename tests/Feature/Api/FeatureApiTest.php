@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\Area;
+use App\Models\Billing;
 use App\Models\CustomerKeep;
 use App\Models\CustomerUser;
+use App\Models\Order;
 use App\Models\Reward;
 use App\Models\SongRequest;
 use App\Models\Tabel;
@@ -160,6 +162,48 @@ it('leaderboard defaults to all_time when no period given', function () {
         ->assertJsonPath('data.period', 'all_time');
 });
 
+it('all time leaderboard uses stored lifetime spending and visits consistently', function () {
+    $topSpender = createFeatureCustomer([
+        'email' => 'stored-top@test.com',
+        'name' => 'Stored Top Spender',
+    ]);
+    $topSpender->customerUser->update([
+        'lifetime_spending' => 900000,
+        'total_visits' => 4,
+    ]);
+
+    $topVisitor = createFeatureCustomer([
+        'email' => 'stored-visits@test.com',
+        'name' => 'Stored Top Visitor',
+    ]);
+    $topVisitor->customerUser->update([
+        'lifetime_spending' => 100000,
+        'total_visits' => 20,
+    ]);
+
+    $this->getJson('/api/v1/leaderboard')
+        ->assertSuccessful()
+        ->assertJsonPath('data.period', 'all_time')
+        ->assertJsonPath('data.leaderboard.0.customer_user_id', $topSpender->customerUser->id)
+        ->assertJsonPath('data.leaderboard.0.lifetime_spending', 900000)
+        ->assertJsonPath('data.leaderboard.0.period_spending', 900000)
+        ->assertJsonPath('data.leaderboard.0.total_visits', 4)
+        ->assertJsonPath('data.leaderboard.0.period_visits', 4);
+
+    $this->getJson('/api/v1/leaderboard?sort_by=visits')
+        ->assertSuccessful()
+        ->assertJsonPath('data.leaderboard.0.customer_user_id', $topVisitor->customerUser->id)
+        ->assertJsonPath('data.leaderboard.0.total_visits', 20)
+        ->assertJsonPath('data.leaderboard.0.period_visits', 20);
+
+    $this->actingAs($topVisitor, 'sanctum')
+        ->getJson('/api/v1/leaderboard/my-rank')
+        ->assertSuccessful()
+        ->assertJsonPath('data.ranking.rank', 2)
+        ->assertJsonPath('data.ranking.period_spending', 100000)
+        ->assertJsonPath('data.ranking.period_visits', 20);
+});
+
 it('leaderboard ignores invalid period and defaults to all_time', function () {
     createFeatureCustomer(['email' => 'leader4@test.com', 'name' => 'Invalid Period Tester']);
 
@@ -176,6 +220,56 @@ it('leaderboard resource includes period_spending and period_visits', function (
 
     $response->assertSuccessful()
         ->assertJsonStructure(['data' => ['leaderboard' => [['period_spending', 'period_visits']]]]);
+});
+
+it('period leaderboard includes paid walk ins and excludes force closed bills', function () {
+    $customer = createFeatureCustomer([
+        'email' => 'period-walk-in@test.com',
+        'name' => 'Period Walk-in Customer',
+    ]);
+    $cashier = User::factory()->create();
+
+    foreach ([['paid', 75000], ['force_closed', 500000]] as [$status, $total]) {
+        $order = Order::create([
+            'table_session_id' => null,
+            'customer_user_id' => $customer->customerUser->id,
+            'created_by' => $cashier->id,
+            'order_number' => 'PERIOD-'.uniqid(),
+            'status' => 'pending',
+            'items_total' => $total,
+            'discount_amount' => 0,
+            'total' => $total,
+            'ordered_at' => now(),
+        ]);
+
+        Billing::create([
+            'table_session_id' => null,
+            'order_id' => $order->id,
+            'is_walk_in' => true,
+            'is_booking' => false,
+            'minimum_charge' => 0,
+            'orders_total' => $total,
+            'subtotal' => $total,
+            'tax' => 0,
+            'tax_percentage' => 0,
+            'service_charge' => 0,
+            'service_charge_percentage' => 0,
+            'discount_amount' => 0,
+            'grand_total' => $total,
+            'paid_amount' => $status === 'paid' ? $total : 0,
+            'billing_status' => $status,
+            'transaction_code' => 'PERIOD-BILL-'.uniqid(),
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+            'paid_at' => now(),
+        ]);
+    }
+
+    $this->getJson('/api/v1/leaderboard?period=month')
+        ->assertSuccessful()
+        ->assertJsonPath('data.leaderboard.0.customer_user_id', $customer->customerUser->id)
+        ->assertJsonPath('data.leaderboard.0.period_spending', 75000)
+        ->assertJsonPath('data.leaderboard.0.period_visits', 1);
 });
 
 // === Rewards ===

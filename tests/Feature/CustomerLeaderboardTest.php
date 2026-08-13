@@ -160,7 +160,7 @@ function createBookingBillingHistory(
     ]);
 }
 
-test('admin customers leaderboard is sorted by leaderboard score', function () {
+test('admin customers lifetime leaderboard uses stored spending and visits', function () {
     $admin = adminUser();
 
     $alice = createCustomerForLeaderboard([
@@ -177,8 +177,8 @@ test('admin customers leaderboard is sorted by leaderboard score', function () {
         'email' => 'bravo.score@example.com',
         'accurate_id' => 991002,
         'customer_code' => 'CUST-991002',
-        'total_visits' => 0,
-        'lifetime_spending' => 0,
+        'total_visits' => 2,
+        'lifetime_spending' => 300000,
     ]);
 
     $charlie = createCustomerForLeaderboard([
@@ -186,8 +186,8 @@ test('admin customers leaderboard is sorted by leaderboard score', function () {
         'email' => 'charlie.score@example.com',
         'accurate_id' => 991003,
         'customer_code' => 'CUST-991003',
-        'total_visits' => 0,
-        'lifetime_spending' => 0,
+        'total_visits' => 1,
+        'lifetime_spending' => 120000,
     ]);
 
     createWalkInTransactionOnly($charlie, 120000);
@@ -203,24 +203,24 @@ test('admin customers leaderboard is sorted by leaderboard score', function () {
     $response->assertViewHas('leaderboard', function ($leaderboard) use ($alice, $bravo, $charlie) {
         $orderedIds = $leaderboard->pluck('id')->values()->all();
 
-        if ($orderedIds !== [$charlie->id, $bravo->id, $alice->id]) {
+        if ($orderedIds !== [$alice->id, $bravo->id, $charlie->id]) {
             return false;
         }
 
         $topScore = (int) ($leaderboard->first()->leaderboard_score ?? 0);
 
-        return $topScore === 13;
+        return $topScore === 198;
     });
 
     $response->assertSeeInOrder([
-        'Charlie Score',
-        'Bravo Score',
         'Alice Score',
+        'Bravo Score',
+        'Charlie Score',
     ]);
 
+    $response->assertSee('Rp 999.999');
+    $response->assertSee('Rp 300.000');
     $response->assertSee('Rp 120.000');
-    $response->assertSee('Rp 50.000');
-    $response->assertSee('Rp 0');
     $response->assertDontSee('Points');
     $response->assertDontSee(' points');
 });

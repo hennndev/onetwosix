@@ -23,7 +23,7 @@ class LeaderboardController extends Controller
     private array $allowedPeriods = ['day', 'week', 'month', 'year'];
 
     /** @var array<string> */
-    private array $paidStatuses = ['paid', 'partially_paid', 'force_closed'];
+    private array $paidStatuses = ['paid', 'partially_paid', 'partial_paid'];
 
     public function index(Request $request): JsonResponse
     {
@@ -38,12 +38,11 @@ class LeaderboardController extends Controller
             $period = null;
         }
 
-        [$startDate, $endDate] = $this->resolveDateRange($period);
-
         $orderColumn = $this->resolveOrderColumn($period, $sortBy);
 
-        $leaderboard = $this->buildLeaderboardQuery($startDate, $endDate)
+        $leaderboard = $this->leaderboardQuery($period)
             ->orderByDesc($orderColumn)
+            ->orderBy('customer_users.id')
             ->limit(50)
             ->get();
 
@@ -79,9 +78,7 @@ class LeaderboardController extends Controller
             $period = null;
         }
 
-        [$startDate, $endDate] = $this->resolveDateRange($period);
-
-        $myCustomer = $this->buildLeaderboardQuery($startDate, $endDate)
+        $myCustomer = $this->leaderboardQuery($period)
             ->where('customer_users.id', $user->customerUser->id)
             ->first();
 
@@ -94,7 +91,7 @@ class LeaderboardController extends Controller
         $sortColumn = $this->resolveOrderColumn($period, $sortBy);
         $myValue = $myCustomer->{$sortColumn};
 
-        $rank = $this->buildLeaderboardQuery($startDate, $endDate)
+        $rank = $this->leaderboardQuery($period)
             ->where($sortColumn, '>', $myValue)
             ->count() + 1;
 
@@ -145,16 +142,52 @@ class LeaderboardController extends Controller
                     JOIN table_sessions ts ON ts.id = b.table_session_id
                     WHERE ts.customer_id = customer_users.user_id
                       AND b.billing_status IN ('{$statuses}')
-                      AND b.paid_at BETWEEN ? AND ?
+                      AND COALESCE(b.paid_at, b.created_at) BETWEEN ? AND ?
+                ), 0) + COALESCE((
+                    SELECT SUM(b.grand_total)
+                    FROM billings b
+                    JOIN orders o ON o.id = b.order_id
+                    WHERE b.table_session_id IS NULL
+                      AND o.customer_user_id = customer_users.id
+                      AND b.billing_status IN ('{$statuses}')
+                      AND COALESCE(b.paid_at, b.created_at) BETWEEN ? AND ?
                 ), 0) AS period_spending,
-                (
-                    SELECT COUNT(DISTINCT ts.id)
-                    FROM table_sessions ts
-                    JOIN billings b ON b.table_session_id = ts.id
+                COALESCE((
+                    SELECT COUNT(DISTINCT b.id)
+                    FROM billings b
+                    JOIN table_sessions ts ON ts.id = b.table_session_id
                     WHERE ts.customer_id = customer_users.user_id
                       AND b.billing_status IN ('{$statuses}')
-                      AND b.paid_at BETWEEN ? AND ?
-                ) AS period_visits
-            ", [$startDate, $endDate, $startDate, $endDate]);
+                      AND COALESCE(b.paid_at, b.created_at) BETWEEN ? AND ?
+                ), 0) + COALESCE((
+                    SELECT COUNT(DISTINCT b.id)
+                    FROM billings b
+                    JOIN orders o ON o.id = b.order_id
+                    WHERE b.table_session_id IS NULL
+                      AND o.customer_user_id = customer_users.id
+                      AND b.billing_status IN ('{$statuses}')
+                      AND COALESCE(b.paid_at, b.created_at) BETWEEN ? AND ?
+                ), 0) AS period_visits
+            ", [
+                $startDate, $endDate,
+                $startDate, $endDate,
+                $startDate, $endDate,
+                $startDate, $endDate,
+            ]);
+    }
+
+    private function leaderboardQuery(?string $period): Builder
+    {
+        if ($period === null) {
+            return CustomerUser::with(['user', 'profile', 'tier'])
+                ->whereHas('user')
+                ->select('customer_users.*')
+                ->selectRaw('customer_users.lifetime_spending as period_spending')
+                ->selectRaw('customer_users.total_visits as period_visits');
+        }
+
+        [$startDate, $endDate] = $this->resolveDateRange($period);
+
+        return $this->buildLeaderboardQuery($startDate, $endDate);
     }
 }

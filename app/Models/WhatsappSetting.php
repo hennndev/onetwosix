@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class WhatsappSetting extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'phone_number',
+        'description',
+        'is_active',
+    ];
 
     /**
      * @return array<string, string>

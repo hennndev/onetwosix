@@ -35,7 +35,7 @@ class CustomerController extends Controller
             $leaderboardLimit = 10;
         }
 
-        $query = $this->customerQueryWithTransactionStats()->with(['user', 'profile']);
+        $query = CustomerUser::query()->with(['user', 'profile']);
 
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
@@ -56,22 +56,20 @@ class CustomerController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $totalCustomers = CustomerUser::count();
-
-        $summaryStats = (clone $query)
-            ->reorder()
-            ->select(DB::raw('SUM(COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) as aggregate_total_spending, SUM(COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0)) as aggregate_total_visits'))
-            ->first();
-
-        $totalSpending = (float) ($summaryStats->aggregate_total_spending ?? 0);
-        $totalVisits = (int) ($summaryStats->aggregate_total_visits ?? 0);
+        $totalCustomers = (clone $query)->reorder()->count();
+        $totalSpending = (float) (clone $query)->reorder()->sum('lifetime_spending');
+        $totalVisits = (int) (clone $query)->reorder()->sum('total_visits');
         $avgSpending = $totalCustomers > 0 ? $totalSpending / $totalCustomers : 0;
 
         // Leaderboard data (points + visits)
-        $leaderboard = $this->customerQueryWithTransactionStats()
+        $leaderboard = CustomerUser::query()
             ->with(['user', 'profile'])
+            ->whereHas('user')
+            ->select('customer_users.*')
+            ->selectRaw('FLOOR(customer_users.lifetime_spending / 10000) + customer_users.total_visits as leaderboard_score')
             ->orderByDesc('leaderboard_score')
-            ->orderByDesc('transaction_lifetime_spending')
+            ->orderByDesc('customer_users.lifetime_spending')
+            ->orderBy('customer_users.id')
             ->take($leaderboardLimit)
             ->get();
 
@@ -241,78 +239,44 @@ class CustomerController extends Controller
         }
     }
 
-    protected function customerQueryWithTransactionStats()
-    {
-        $bookingBillingAgg = DB::table('billings')
-            ->join('table_sessions', 'table_sessions.id', '=', 'billings.table_session_id')
-            ->where('billings.billing_status', 'paid')
-            ->where('billings.is_booking', true)
-            ->groupBy('table_sessions.customer_id')
-            ->selectRaw('table_sessions.customer_id as user_id')
-            ->selectRaw('SUM(billings.grand_total) as booking_spending')
-            ->selectRaw('COUNT(billings.id) as booking_visits');
-
-        $walkInTransactionAgg = DB::table('orders')
-            ->whereNull('orders.table_session_id')
-            ->whereNotNull('orders.customer_user_id')
-            ->where('orders.status', '!=', 'cancelled')
-            ->groupBy('orders.customer_user_id')
-            ->selectRaw('orders.customer_user_id as customer_user_id')
-            ->selectRaw('SUM(orders.total) as walk_in_spending')
-            ->selectRaw('COUNT(orders.id) as walk_in_visits');
-
-        return CustomerUser::query()
-            ->leftJoinSub($bookingBillingAgg, 'booking_billing_agg', function ($join): void {
-                $join->on('booking_billing_agg.user_id', '=', 'customer_users.user_id');
-            })
-            ->leftJoinSub($walkInTransactionAgg, 'walk_in_transaction_agg', function ($join): void {
-                $join->on('walk_in_transaction_agg.customer_user_id', '=', 'customer_users.id');
-            })
-            ->select('customer_users.*')
-            ->selectRaw('COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0) as transaction_lifetime_spending')
-            ->selectRaw('COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0) as transaction_total_visits')
-            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) as transaction_points')
-            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) + (COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0)) as leaderboard_score');
-    }
-
     protected function customerQueryWithTransactionStatsByDateRange($startTime, $endTime)
     {
-        // Booking orders: resolve customer via table_sessions.customer_id -> customer_users.user_id
-        $bookingOrderAgg = DB::table('orders')
-            ->join('table_sessions', 'table_sessions.id', '=', 'orders.table_session_id')
+        $recognizedStatuses = ['paid', 'partially_paid', 'partial_paid'];
+
+        $bookingBillingAgg = DB::table('billings')
+            ->join('table_sessions', 'table_sessions.id', '=', 'billings.table_session_id')
             ->join('customer_users as booking_customers', 'booking_customers.user_id', '=', 'table_sessions.customer_id')
-            ->whereNotNull('orders.table_session_id')
-            ->where('orders.status', '!=', 'cancelled')
-            ->whereBetween('orders.created_at', [$startTime, $endTime])
+            ->whereNotNull('billings.table_session_id')
+            ->whereIn('billings.billing_status', $recognizedStatuses)
+            ->whereBetween(DB::raw('COALESCE(billings.paid_at, billings.created_at)'), [$startTime, $endTime])
             ->groupBy('booking_customers.id')
             ->selectRaw('booking_customers.id as customer_user_id')
-            ->selectRaw('SUM(orders.total) as booking_order_spending')
-            ->selectRaw('COUNT(orders.id) as booking_order_visits');
+            ->selectRaw('SUM(billings.grand_total) as booking_spending')
+            ->selectRaw('COUNT(DISTINCT billings.id) as booking_visits');
 
-        // Walk-in: if table_session_id is null, take from billings in the same time window
         $walkInBillingAgg = DB::table('billings')
             ->join('orders', 'orders.id', '=', 'billings.order_id')
             ->whereNull('billings.table_session_id')
             ->whereNotNull('orders.customer_user_id')
-            ->where('billings.billing_status', 'paid')
-            ->whereBetween('billings.created_at', [$startTime, $endTime])
+            ->whereIn('billings.billing_status', $recognizedStatuses)
+            ->whereBetween(DB::raw('COALESCE(billings.paid_at, billings.created_at)'), [$startTime, $endTime])
             ->groupBy('orders.customer_user_id')
             ->selectRaw('orders.customer_user_id as customer_user_id')
-            ->selectRaw('SUM(billings.grand_total) as walk_in_billing_spending')
-            ->selectRaw('COUNT(billings.id) as walk_in_billing_visits');
+            ->selectRaw('SUM(billings.grand_total) as walk_in_spending')
+            ->selectRaw('COUNT(DISTINCT billings.id) as walk_in_visits');
 
         return CustomerUser::query()
-            ->leftJoinSub($bookingOrderAgg, 'booking_order_agg', function ($join): void {
-                $join->on('booking_order_agg.customer_user_id', '=', 'customer_users.id');
+            ->leftJoinSub($bookingBillingAgg, 'booking_billing_agg', function ($join): void {
+                $join->on('booking_billing_agg.customer_user_id', '=', 'customer_users.id');
             })
             ->leftJoinSub($walkInBillingAgg, 'walk_in_billing_agg', function ($join): void {
                 $join->on('walk_in_billing_agg.customer_user_id', '=', 'customer_users.id');
             })
             ->select('customer_users.*')
-            ->selectRaw('COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0) as transaction_daily_spending')
-            ->selectRaw('COALESCE(booking_order_agg.booking_order_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_visits, 0) as transaction_daily_visits')
-            ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) as transaction_daily_points')
-            ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) + (COALESCE(booking_order_agg.booking_order_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_visits, 0)) as daily_leaderboard_score');
+            ->selectRaw('COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_spending, 0) as transaction_daily_spending')
+            ->selectRaw('COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_visits, 0) as transaction_daily_visits')
+            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_spending, 0)) / 10000) as transaction_daily_points')
+            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_spending, 0)) / 10000) + (COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_visits, 0)) as daily_leaderboard_score');
     }
 
     public function syncAccurate(CustomerUser $customer)

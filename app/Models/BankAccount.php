@@ -6,7 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class BankAccount extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'bank_name',
+        'account_number',
+        'account_holder',
+        'is_active',
+    ];
 
     /**
      * @return array<string, string>
