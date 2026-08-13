@@ -113,6 +113,10 @@ class KitchenController extends Controller
 
         [$endDay, $startAt, $endAt] = $this->resolveEndDayRange($areaId);
 
+        if ($this->isEarlyClosedToday($endDay)) {
+            return back()->with('error', 'End day untuk hari ini sudah ditutup lebih awal. Menunggu jam operasional.');
+        }
+
         $existingHistory = RecapHistoryKitchen::query()
             ->whereDate('end_day', $endDay)
             ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
@@ -335,7 +339,8 @@ class KitchenController extends Controller
     private function resolveEndDayKitchenPrinter(?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $contextAreaId = $areaId ?: (session('active_area_id') ?: auth()->user()?->getAssignedArea()?->id);
+        $sessionArea = session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null;
+        $contextAreaId = $areaId ?: ($sessionArea ?: auth()->user()?->getAssignedArea()?->id);
         $configuredPrinterId = $settings->getPrinterIdForArea($contextAreaId, 'end_day_kitchen');
 
         if ($configuredPrinterId && $configuredPrinterId > 0) {
@@ -418,16 +423,24 @@ class KitchenController extends Controller
      */
     private function resolveEndDayRange(?int $areaId = null): array
     {
-        $endDayDate = \App\Models\RecapHistory::resolveNextEndDay($areaId);
+        return \App\Models\RecapHistory::resolveEndDayWindowForToday($areaId);
+    }
 
-        $day = Carbon::parse($endDayDate, 'Asia/Jakarta');
-        [$startAt, $endAt] = \App\Models\RecapHistory::resolveWindowForDate($day, $areaId);
+    /**
+     * Tolak close kedua dalam rentang pre-anchor (sebelum jam operasional).
+     *
+     * Jika sudah ada recap (utama) dengan created_at pada kalender hari yang
+     * sama untuk end_day yang berbeda, berarti close dini-hari sudah terjadi dan
+     * hari baru jangan di-seal prematur.
+     */
+    private function isEarlyClosedToday(string $endDay): bool
+    {
+        $anchor = now('Asia/Jakarta');
 
-        return [
-            $endDayDate,
-            $startAt,
-            $endAt,
-        ];
+        return \App\Models\RecapHistory::query()
+            ->whereDate('created_at', $anchor->toDateString())
+            ->whereDate('end_day', '<>', $endDay)
+            ->exists();
     }
 
     /**

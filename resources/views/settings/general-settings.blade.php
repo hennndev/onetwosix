@@ -92,6 +92,25 @@
             @enderror
           </div>
 
+          <!-- Operational Anchor Time -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="operational_anchor_time">
+              Jam Awal Siklus End Day
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Batas waktu pergeseran hari operasional untuk recap, dashboard, dan sync (Format: HH:MM).</p>
+            <div class="flex items-center gap-3">
+              <input type="time"
+                     id="operational_anchor_time"
+                     name="operational_anchor_time"
+                     value="{{ old('operational_anchor_time', $settings->operationalAnchorTime()) }}"
+                     step="60"
+                     class="w-full border @error('operational_anchor_time') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            </div>
+            @error('operational_anchor_time')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
           <!-- Accurate Stock Warehouse Name -->
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_stock_warehouse_name">

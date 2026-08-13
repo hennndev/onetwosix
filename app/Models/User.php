@@ -122,7 +122,8 @@ class User extends Authenticatable
             }
         }
 
-        return Area::where('is_active', true)->orderBy('sort_order')->first();
+        // 'all' (or no selection) means no specific area context.
+        return null;
     }
 
     /**

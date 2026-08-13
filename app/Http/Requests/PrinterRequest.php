@@ -34,6 +34,7 @@ class PrinterRequest extends FormRequest
             'logo' => ['nullable', 'image', 'max:2048', 'dimensions:max_width=300,max_height=200'],
             'show_qr_code' => ['boolean'],
             'width' => ['nullable', 'integer', 'min:24', 'max:48'],
+            'copies' => ['nullable', 'integer', 'min:1', 'max:10'],
             'is_default' => ['boolean'],
             'is_active' => ['boolean'],
         ];

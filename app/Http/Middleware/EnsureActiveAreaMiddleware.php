@@ -22,10 +22,8 @@ class EnsureActiveAreaMiddleware
             if (! $user->hasMultiAreaAccess() && $user->getAssignedArea()) {
                 session(['active_area_id' => $user->getAssignedArea()->id]);
             } elseif (! session()->has('active_area_id')) {
-                $activeArea = $user->resolveActiveArea();
-                if ($activeArea) {
-                    session(['active_area_id' => $activeArea->id]);
-                }
+                // Multi-area users default to all areas until they pick one.
+                session(['active_area_id' => 'all']);
             }
         }
 

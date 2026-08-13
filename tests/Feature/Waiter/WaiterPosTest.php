@@ -1176,3 +1176,4 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.item_'.$groupItem->id.'.qty', 1);
 });
+

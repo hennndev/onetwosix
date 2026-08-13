@@ -273,6 +273,7 @@
         document.getElementById('header').value = printer.header || '126 Club';
         document.getElementById('footer').value = printer.footer || 'Thank you!';
         document.getElementById('width').value = printer.width || 42;
+        document.getElementById('copies').value = printer.copies || 1;
         document.getElementById('show_qr_code').checked = printer.show_qr_code;
         document.getElementById('is_default').checked = printer.is_default;
         document.getElementById('is_active').checked = printer.is_active;

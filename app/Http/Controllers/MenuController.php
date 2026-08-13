@@ -38,7 +38,7 @@ class MenuController extends Controller
         $menusByCategory = $menuCategoryTypes
             ->mapWithKeys(function (string $categoryType) {
                 $menus = InventoryItem::query()
-                    ->with(['printers:id,name,location'])
+                    ->with(['printers:id,name,location,printer_type'])
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
@@ -66,7 +66,7 @@ class MenuController extends Controller
             ->active()
             ->orderBy('location')
             ->orderBy('name')
-            ->get(['id', 'name', 'location']);
+            ->get(['id', 'name', 'location', 'printer_type']);
 
         return view('menus.index', compact('inventoryItems', 'inventoryCategoryTypes', 'menuCategoryTypes', 'menusByCategory', 'printers', 'search'));
     }
@@ -253,9 +253,9 @@ class MenuController extends Controller
         $inventory->printers()->sync($validated['printer_ids'] ?? []);
 
         $printers = $inventory->printers()
-            ->select('printers.id', 'printers.name', 'printers.location')
+            ->select('printers.id', 'printers.name', 'printers.location', 'printers.printer_type')
             ->get()
-            ->map(fn ($printer) => ['id' => $printer->id, 'name' => $printer->name, 'location' => $printer->location])
+            ->map(fn ($printer) => ['id' => $printer->id, 'name' => $printer->name, 'location' => $printer->location, 'printer_type' => $printer->printer_type])
             ->all();
 
         return response()->json([

@@ -10,6 +10,7 @@ class GeneralSetting extends Model
     protected $fillable = [
         'tax_percentage',
         'service_charge_percentage',
+        'operational_anchor_time',
         'accurate_tax_account_no',
         'accurate_service_charge_account_no',
         'accurate_bank_account_no',
@@ -53,6 +54,7 @@ class GeneralSetting extends Model
         return self::firstOrCreate([], [
             'tax_percentage' => 0,
             'service_charge_percentage' => 0,
+            'operational_anchor_time' => '09:00',
             'accurate_tax_account_no' => '210201',
             'accurate_service_charge_account_no' => '210202',
             'accurate_bank_account_no' => '110102',
@@ -83,6 +85,21 @@ class GeneralSetting extends Model
         }
 
         return (string) (config('accurate.stock_warehouse_name') ?: 'GD. OUTLET');
+    }
+
+    /**
+     * Operational anchor hour (e.g. "09:00") marking the start of the daily recap cycle.
+     * Falls back to config/env, then 09:00.
+     */
+    public function operationalAnchorTime(): string
+    {
+        $value = trim((string) ($this->operational_anchor_time ?: config('recap.anchor_time', '09:00')));
+
+        if (! preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value)) {
+            return '09:00';
+        }
+
+        return $value;
     }
 
     /**

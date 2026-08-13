@@ -2525,3 +2525,106 @@ test('user with recap permission can access recap route', function () {
         ->get(route('admin.recap.index'))
         ->assertSuccessful();
 });
+
+test('recap shows distinct per-order totals for unpaid booking transactions', function () {
+    $admin = adminUser();
+    $rangeStart = now()->startOfDay()->addHours(8);
+    $rangeEnd = now()->startOfDay()->addHours(23);
+
+    // Session billing exists but is NOT paid (belum closed).
+    $session = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'billing_status' => 'draft',
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'service_charge' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'payment_method' => null,
+    ]);
+
+    $t1 = makeRecapOrder($admin->id, $rangeStart->copy()->addHours(10), 'RCP-UNPAID-001', [
+        'table_session_id' => $session->id,
+        'items_total' => 10000,
+        'total' => 10000,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+    $t2 = makeRecapOrder($admin->id, $rangeStart->copy()->addHours(11), 'RCP-UNPAID-002', [
+        'table_session_id' => $session->id,
+        'items_total' => 20000,
+        'total' => 20000,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+    $t3 = makeRecapOrder($admin->id, $rangeStart->copy()->addHours(12), 'RCP-UNPAID-003', [
+        'table_session_id' => $session->id,
+        'items_total' => 30000,
+        'total' => 30000,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    // Each order has its own item so the per-order subtotal is computed from items.
+    $item = makeRecapInventoryItem(['name' => 'Unpaid Booking Item']);
+
+    foreach ([
+        [$t1, 10000],
+        [$t2, 20000],
+        [$t3, 30000],
+    ] as [$order, $subtotal]) {
+        OrderItem::create([
+            'order_id' => $order->id,
+            'inventory_item_id' => $item->id,
+            'item_name' => $item->name,
+            'item_code' => $item->code,
+            'quantity' => 1,
+            'price' => $subtotal,
+            'subtotal' => $subtotal,
+            'discount_amount' => 0,
+            'tax_amount' => 0,
+            'service_charge_amount' => 0,
+            'preparation_location' => 'kitchen',
+            'status' => 'served',
+        ]);
+    }
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 0,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_transfer' => 0,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_cash' => 0,
+            'total_transactions' => 0,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    $response = actingAs($admin)->get(route('admin.recap.index', [
+        'start_datetime' => $rangeStart->format('Y-m-d\TH:i'),
+        'end_datetime' => $rangeEnd->format('Y-m-d\TH:i'),
+    ]));
+
+    $response->assertSuccessful();
+
+    // Cashier transactions render one row per order, each with its own total.
+    $transactions = $response->viewData('cashierTransactions');
+
+    expect($transactions)
+        ->toHaveCount(3)
+        ->each->toMatchArray(['down_payment_amount' => 0.0]);
+
+    $byNumber = collect($transactions)->keyBy('order_number');
+
+    expect((float) $byNumber['RCP-UNPAID-001']['total'])->toBe(10000.0)
+        ->and((float) $byNumber['RCP-UNPAID-002']['total'])->toBe(20000.0)
+        ->and((float) $byNumber['RCP-UNPAID-003']['total'])->toBe(30000.0);
+});

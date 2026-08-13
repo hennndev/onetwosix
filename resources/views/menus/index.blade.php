@@ -183,7 +183,9 @@
                          x-model="form.printer_ids"
                          class="mt-0.5 h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500">
                   <span>
-                    <span class="block font-medium text-gray-800">{{ $printer->name }}</span>
+                    <span class="block font-medium text-gray-800">
+                      {{ $printer->name }}
+                    </span>
                     <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                   </span>
                 </label>
@@ -678,7 +680,9 @@
                            data-menu-modal-printer="{{ $printer->id }}"
                            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500">
                     <span>
-                      <span class="block font-medium text-gray-800">{{ $printer->name }}</span>
+                      <span class="block font-medium text-gray-800">
+                        {{ $printer->name }}
+                      </span>
                       <span class="text-xs text-gray-400">{{ $printer->location ?: 'Tanpa lokasi' }}</span>
                     </span>
                   </label>
