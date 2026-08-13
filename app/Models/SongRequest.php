@@ -8,6 +8,7 @@ class SongRequest extends Model
 {
     protected $fillable = [
         'customer_user_id',
+        'table_session_id',
         'song_title',
         'artist',
         'cover_image',
@@ -23,6 +24,11 @@ class SongRequest extends Model
     public function customerUser()
     {
         return $this->belongsTo(CustomerUser::class);
+    }
+
+    public function tableSession()
+    {
+        return $this->belongsTo(TableSession::class);
     }
 
     public function customer()

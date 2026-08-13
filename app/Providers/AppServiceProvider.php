@@ -5,8 +5,10 @@ namespace App\Providers;
 use App\Models\DisplayMessageRequest;
 use App\Models\SongRequest;
 use App\Models\TableReservation;
+use App\Models\User;
 use App\Services\AccurateService;
 use App\Support\RealtimeTopSpenderBanner;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -31,6 +33,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('viewApiDocs', fn (?User $user = null): bool => app()->isLocal()
+            || app()->runningUnitTests()
+            || $user?->hasRole('Administrator') === true);
+
         View::composer('layouts.sidebar', function ($view) {
             $areaId = $this->activeAreaId();
 

@@ -11,6 +11,7 @@ class Area extends Model
         'name',
         'capacity',
         'description',
+        'image',
         'is_active',
         'sort_order',
     ];
