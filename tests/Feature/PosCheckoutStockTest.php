@@ -416,8 +416,6 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Auth Code Diskon (4 digit)', false)
         ->assertSee('Request Auth Code', false)
         ->assertSee('requestAuthCodeEmail()', false)
-        ->assertSee('requestSelectedDiscountAuthCode()', false)
-        ->assertSee('selectedDiscount.authCodeRequested', false)
         ->assertSee('x-show="calculatedServiceCharge() > 0"', false)
         ->assertSee('x-show="calculatedTax() > 0"', false)
         ->assertDontSee('x-text="receiptData?.tableDisplay"', false)
@@ -624,21 +622,22 @@ test('walk in checkout calculates percentage discount after tax and service char
             'foc_comp_payment_method' => 'Compliment',
             'discount_type' => 'percentage',
             'discount_percentage' => 10,
-            'discount_auth_code' => '9753',
+            'foc_comp_auth_code' => '9753',
         ]);
 
     $response
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('items_total', 50000)
-        ->assertJsonPath('discount_amount', 61050)
+        // Compliment 100% kini per-item: diskon = subtotal item (50000), bukan base + tax + service.
+        ->assertJsonPath('discount_amount', 50000)
         ->assertJsonPath('total', 0);
 
     $billing = Billing::query()->latest('id')->first();
 
     expect($billing)->not->toBeNull()
         ->and((float) $billing->grand_total)->toBe(0.0)
-        ->and((float) $billing->discount_amount)->toBe(61050.0)
+        ->and((float) $billing->discount_amount)->toBe(50000.0)
         ->and($billing->foc_comp_payment_method)->toBe('Compliment');
 });
 
@@ -713,8 +712,8 @@ test('walk in checkout keeps compliment and foc items at original price', functi
 
     expect((float) $orderItem->price)->toBe(30000.0)
         ->and((float) $orderItem->subtotal)->toBe(60000.0)
-        ->and((float) $orderItem->tax_amount)->toBe(6600.0)
-        ->and((float) $orderItem->service_charge_amount)->toBe(6660.0);
+        ->and((float) $orderItem->tax_amount)->toBe(5940.0)
+        ->and((float) $orderItem->service_charge_amount)->toBe(5994.0);
 })->with([
     'compliment' => 'compliment',
     'foc' => 'foc',

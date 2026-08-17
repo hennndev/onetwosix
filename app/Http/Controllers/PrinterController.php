@@ -23,7 +23,8 @@ class PrinterController extends Controller
      */
     public function index(): View
     {
-        $printers = Printer::orderBy('is_default', 'desc')
+        $printers = Printer::with('receiverPrinter')
+            ->orderBy('is_default', 'desc')
             ->orderBy('name')
             ->get();
 

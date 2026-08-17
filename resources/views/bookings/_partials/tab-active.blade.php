@@ -1,7 +1,7 @@
 {{-- ACTIVE TABLES TAB --}}
 
 {{-- Stats row --}}
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-3 gap-4 mb-5">
   <div class="bg-blue-800 rounded-xl px-5 py-4 flex items-center gap-4">
     <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
       <svg class="w-5 h-5 text-white"
@@ -144,15 +144,6 @@
               $checkerItems = $session->orders->flatMap->items->where('status', '!=', 'cancelled');
               $checkerTotalItems = $checkerItems->count();
               $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
-              $closeBillingDiscountItems = $checkerItems->map(fn ($item) => [
-                'id' => $item->id,
-                'name' => $item->item_name,
-                'quantity' => $item->quantity,
-                'subtotal' => (float) $item->subtotal,
-                'discount_amount' => (float) $item->discount_amount,
-                'include_tax' => (bool) ($item->inventoryItem?->include_tax ?? true),
-                'include_service_charge' => (bool) ($item->inventoryItem?->include_service_charge ?? true),
-              ])->values();
             @endphp
             <tr class="hover:bg-gray-50 transition-colors">
 
@@ -399,8 +390,7 @@
                               data-grand-total="{{ (float) $computedGrandTotal }}"
                               data-checker-checked="{{ $checkerCheckedItems }}"
                               data-checker-total="{{ $checkerTotalItems }}"
-                              data-discount-items="{{ base64_encode($closeBillingDiscountItems->toJson()) }}"
-                              data-discount-items-url="{{ route('admin.bookings.discountItems', $reservation) }}"
+                              data-items-json="{{ json_encode($session->orders->where('status', '!=', 'cancelled')->flatMap(fn ($o) => $o->items->where('status', '!=', 'cancelled')->map(fn ($i) => ['id' => $i->id, 'name' => $i->item_name, 'quantity' => $i->quantity, 'subtotal' => (float) $i->subtotal]))->values()) }}"
                               onclick="openCloseBillingModal(this)"
                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition">
                         <svg class="w-3.5 h-3.5"

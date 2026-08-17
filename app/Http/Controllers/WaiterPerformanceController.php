@@ -92,6 +92,10 @@ class WaiterPerformanceController extends Controller
                     ->join('table_sessions', 'billings.table_session_id', '=', 'table_sessions.id')
                     ->where('table_sessions.waiter_id', $selectedWaiter->id)
                     ->where('billings.billing_status', 'paid')
+                    ->where(function ($q) {
+                        $q->whereNull('billings.foc_comp_payment_method')
+                            ->orWhereNotIn('billings.foc_comp_payment_method', ['FOC', 'Compliment']);
+                    })
                     ->whereBetween('table_sessions.checked_in_at', [$dateRange['start'], $dateRange['end']])
                     ->sum('billings.grand_total');
 

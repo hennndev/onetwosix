@@ -218,8 +218,8 @@
         </div>
         @if (($item['discount_amount'] ?? 0) > 0)
           <div class="item-meta item-price-total">
-            <span>Diskon Item</span>
-            <span class="item-total">- Rp {{ number_format($item['discount_amount'], 0, ',', '.') }}</span>
+            <span></span>
+            <span class="item-total" style="color: #dc2626;">Diskon Item - Rp {{ number_format($item['discount_amount'], 0, ',', '.') }}</span>
           </div>
         @endif
       </div>
@@ -235,20 +235,12 @@
     $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
     $subTotalAmount = $totalBillAmount + $taxAmount + $serviceChargeAmount;
     $downPaymentAmount = (float) ($booking?->down_payment_amount ?? 0);
-    $discountAmount = (float) ($billing?->discount_amount ?? 0);
   @endphp
 
   <div class="total-row">
     <span>Total Bill</span>
     <span>Rp {{ number_format($totalBillAmount, 0, ',', '.') }}</span>
   </div>
-
-  @if ($discountAmount > 0)
-    <div class="total-row" style="color: #c2410c;">
-      <span>Diskon</span>
-      <span>- Rp {{ number_format($discountAmount, 0, ',', '.') }}</span>
-    </div>
-  @endif
 
   @if ($taxAmount > 0)
     <div class="total-row">
@@ -276,68 +268,24 @@
     </div>
   @endif
 
-  @if ($billing?->is_parsial_payment || $billing?->is_debt || ($billing?->payment_mode ?? '') === 'partial' || ($billing?->remaining_balance ?? 0) > 0)
-    <div class="two-col grand-total">
-      <span>Total Tagihan</span>
-      <span>Rp {{ number_format($billing?->grand_total ?? 0, 0, ',', '.') }}</span>
-    </div>
-    <div class="two-col font-bold" style="color: #15803d;">
-      <span>Telah Dibayar</span>
-      <span>Rp {{ number_format($billing?->paid_amount ?? 0, 0, ',', '.') }}</span>
-    </div>
-    @if (($billing?->remaining_balance ?? 0) > 0)
-      <div class="two-col grand-total" style="color: #dc2626;">
-        <span>Sisa Tagihan (Hutang)</span>
-        <span>Rp {{ number_format($billing?->remaining_balance ?? 0, 0, ',', '.') }}</span>
-      </div>
-    @else
-      <div class="two-col grand-total" style="color: #16a34a;">
-        <span>Status</span>
-        <span>LUNAS</span>
-      </div>
-    @endif
-  @else
-    <div class="two-col grand-total">
-      <span>Sisa Bayar</span>
-      <span>Rp {{ number_format($billing?->grand_total ?? 0, 0, ',', '.') }}</span>
-    </div>
-  @endif
-
-  @if ($billing?->payments && $billing->payments->count() > 0)
-    <hr class="sep">
-    <div class="bold" style="margin-bottom: 4px; font-size: 11px; text-align: center;">RIWAYAT PEMBAYARAN</div>
-    @foreach ($billing->payments as $index => $pm)
-      <div class="two-col" style="font-size: 11px;">
-        <span class="label">#{{ $index + 1 }} {{ strtoupper($pm->payment_type === 'initial_partial' ? 'DP / Parsial' : ($pm->payment_type === 'debt_settlement' ? 'Pelunasan' : 'Pembayaran')) }} ({{ strtoupper($pm->payment_method) }})</span>
-        <span class="value">Rp {{ number_format($pm->amount_paid, 0, ',', '.') }}</span>
-      </div>
-      @if ($pm->paid_at || $pm->payment_reference_number)
-        <div style="font-size: 9px; color: #555; text-align: right; margin-bottom: 3px;">
-          {{ $pm->paid_at ? $pm->paid_at->format('d/m/Y H:i') : '' }} {{ $pm->payment_reference_number ? '| Ref: '.$pm->payment_reference_number : '' }}
-        </div>
-      @endif
-    @endforeach
-  @endif
+  <div class="two-col grand-total">
+    <span>Sisa Bayar</span>
+    <span>Rp {{ number_format($billing?->grand_total ?? 0, 0, ',', '.') }}</span>
+  </div>
 
   <hr class="sep">
-
-  <div class="two-col">
-    <span class="label">Mode Pembayaran</span>
-    <span class="value">
-      @if ($billing?->is_parsial_payment || $billing?->is_debt || ($billing?->payment_mode ?? '') === 'partial')
-        BAYAR PARSIAL / HUTANG
-      @elseif (($billing?->payment_mode ?? 'normal') === 'split')
-        SPLIT BILL
-      @else
-        BIASA
-      @endif
-    </span>
-  </div>
 
   <div class="two-col">
     <span class="label">Metode Pembayaran</span>
     <span class="value">{{ strtoupper($billing?->payment_method ?? (($billing?->payment_mode ?? 'normal') === 'split' ? 'split' : '-')) }}</span>
   </div>
+
+  @if (filled($billing?->foc_comp_payment_method) && strtoupper($billing->foc_comp_payment_method) !== strtoupper($billing?->payment_method ?? ''))
+    <div class="two-col">
+      <span class="label">FOC / Compliment</span>
+      <span class="value">{{ strtoupper($billing->foc_comp_payment_method) }}</span>
+    </div>
+  @endif
 
   @if (($billing?->payment_mode ?? 'normal') !== 'split' && filled($billing?->payment_reference_number))
     <div class="two-col">
@@ -347,6 +295,11 @@
   @endif
 
   @if (($billing?->payment_mode ?? 'normal') === 'split')
+    <div class="two-col">
+      <span class="label">Mode Pembayaran</span>
+      <span class="value">SPLIT BILL</span>
+    </div>
+
     @if (($billing?->split_cash_amount ?? 0) > 0)
       <div class="two-col">
         <span class="label">Cash</span>

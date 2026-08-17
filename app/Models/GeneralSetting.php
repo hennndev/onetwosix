@@ -29,6 +29,12 @@ class GeneralSetting extends Model
         'fonnte_token',
         'auth_code_delivery_channel',
         'daily_auth_code_access_emails',
+        'foc_enabled',
+        'compliment_enabled',
+        'foc_requires_auth_code',
+        'compliment_requires_auth_code',
+        'foc_discount_percentage',
+        'compliment_discount_percentage',
     ];
 
     protected function casts(): array
@@ -43,6 +49,12 @@ class GeneralSetting extends Model
             'end_day_kitchen_printer_id' => 'integer',
             'end_day_bar_printer_id' => 'integer',
             'area_printer_settings' => 'array',
+            'foc_enabled' => 'boolean',
+            'compliment_enabled' => 'boolean',
+            'foc_requires_auth_code' => 'boolean',
+            'compliment_requires_auth_code' => 'boolean',
+            'foc_discount_percentage' => 'integer',
+            'compliment_discount_percentage' => 'integer',
         ];
     }
 
@@ -72,6 +84,12 @@ class GeneralSetting extends Model
             'fonnte_token' => null,
             'auth_code_delivery_channel' => 'both',
             'daily_auth_code_access_emails' => null,
+            'foc_enabled' => true,
+            'compliment_enabled' => true,
+            'foc_requires_auth_code' => true,
+            'compliment_requires_auth_code' => true,
+            'foc_discount_percentage' => 0,
+            'compliment_discount_percentage' => 100,
         ]);
     }
 
@@ -122,6 +140,45 @@ class GeneralSetting extends Model
         }
 
         return in_array(Str::lower(trim($email)), $this->dailyAuthCodeAccessEmails(), true);
+    }
+
+    /**
+     * Persentase diskon FOC/Compliment dari setting.
+     */
+    public function focDiscountPercentage(): int
+    {
+        return (int) $this->foc_discount_percentage;
+    }
+
+    public function complimentDiscountPercentage(): int
+    {
+        return (int) $this->compliment_discount_percentage;
+    }
+
+    /**
+     * Apakah tipe FOC/Compliment aktif (bisa dipilih kasir).
+     */
+    public function focEnabled(): bool
+    {
+        return (bool) $this->foc_enabled;
+    }
+
+    public function complimentEnabled(): bool
+    {
+        return (bool) $this->compliment_enabled;
+    }
+
+    /**
+     * Apakah tipe FOC/Compliment butuh auth code.
+     */
+    public function focRequiresAuthCode(): bool
+    {
+        return (bool) $this->foc_requires_auth_code;
+    }
+
+    public function complimentRequiresAuthCode(): bool
+    {
+        return (bool) $this->compliment_requires_auth_code;
     }
 
     /**

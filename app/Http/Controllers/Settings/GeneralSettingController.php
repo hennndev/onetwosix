@@ -46,6 +46,12 @@ class GeneralSettingController extends Controller
             'auth_code_target_whatsapp' => ['nullable', 'string', 'max:20'],
             'fonnte_token' => ['nullable', 'string'],
             'auth_code_delivery_channel' => ['required', 'string', 'in:both,email,whatsapp'],
+            'foc_enabled' => ['nullable', 'boolean'],
+            'compliment_enabled' => ['nullable', 'boolean'],
+            'foc_requires_auth_code' => ['nullable', 'boolean'],
+            'compliment_requires_auth_code' => ['nullable', 'boolean'],
+            'foc_discount_percentage' => ['required', 'integer', 'min:0', 'max:100'],
+            'compliment_discount_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'daily_auth_code_access_emails' => [
                 'nullable',
                 'string',
@@ -66,6 +72,10 @@ class GeneralSettingController extends Controller
         ]);
 
         $validated['can_choose_checker'] = $request->boolean('can_choose_checker');
+        $validated['foc_enabled'] = $request->boolean('foc_enabled');
+        $validated['compliment_enabled'] = $request->boolean('compliment_enabled');
+        $validated['foc_requires_auth_code'] = $request->boolean('foc_requires_auth_code');
+        $validated['compliment_requires_auth_code'] = $request->boolean('compliment_requires_auth_code');
         $validated['daily_auth_code_access_emails'] = $this->normalizeEmailList(
             $validated['daily_auth_code_access_emails'] ?? null
         );

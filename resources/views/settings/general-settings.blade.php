@@ -329,6 +329,117 @@
               <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
             @enderror
           </div>
+
+          <div class="px-6 py-4 bg-slate-50">
+            <h2 class="text-sm font-bold text-slate-800">FOC / Compliment</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Kontrol perilaku transaksi FOC (Free of Charge) dan Compliment di kasir.</p>
+          </div>
+
+          <div class="p-6"
+               x-data="{ focEnabled: @js((bool) old('foc_enabled', $settings->foc_enabled)), focAuth: @js((bool) old('foc_requires_auth_code', $settings->foc_requires_auth_code)) }">
+            <p class="text-sm font-semibold text-slate-700 mb-1">FOC (Free of Charge)</p>
+            <p class="text-xs text-slate-400 mb-3">Transaksi dibebaskan tanpa metode pembayaran. Nonaktif = opsi FOC disembunyikan di kasir.</p>
+
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm font-medium text-slate-600">Aktifkan FOC</span>
+                <span class="relative inline-flex items-center">
+                  <input type="hidden" name="foc_enabled" value="0">
+                  <input type="checkbox"
+                         name="foc_enabled"
+                         value="1"
+                         {{ old('foc_enabled', $settings->foc_enabled) ? 'checked' : '' }}
+                         x-model="focEnabled"
+                         class="peer sr-only">
+                  <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+                </span>
+              </label>
+
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm font-medium text-slate-600">Wajib Auth Code</span>
+                <span class="relative inline-flex items-center">
+                  <input type="hidden" name="foc_requires_auth_code" value="0">
+                  <input type="checkbox"
+                         name="foc_requires_auth_code"
+                         value="1"
+                         {{ old('foc_requires_auth_code', $settings->foc_requires_auth_code) ? 'checked' : '' }}
+                         x-model="focAuth"
+                         class="peer sr-only">
+                  <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+                </span>
+              </label>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1" for="foc_discount_percentage">Diskon (%)</label>
+                <p class="text-xs text-slate-400 mb-2">0% = dibebaskan penuh. > 0% = charge sebagian.</p>
+                <input type="number"
+                       id="foc_discount_percentage"
+                       name="foc_discount_percentage"
+                       value="{{ old('foc_discount_percentage', $settings->foc_discount_percentage) }}"
+                       min="0"
+                       max="100"
+                       step="1"
+                       class="w-28 border @error('foc_discount_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+                <span class="text-sm text-slate-500">%</span>
+                @error('foc_discount_percentage')
+                  <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                @enderror
+              </div>
+            </div>
+          </div>
+
+          <div class="p-6"
+               x-data="{ compEnabled: @js((bool) old('compliment_enabled', $settings->compliment_enabled)), compAuth: @js((bool) old('compliment_requires_auth_code', $settings->compliment_requires_auth_code)) }">
+            <p class="text-sm font-semibold text-slate-700 mb-1">Compliment</p>
+            <p class="text-xs text-slate-400 mb-3">Diskon untuk item/transaksi gratis. Nonaktif = opsi Compliment disembunyikan di kasir.</p>
+
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm font-medium text-slate-600">Aktifkan Compliment</span>
+                <span class="relative inline-flex items-center">
+                  <input type="hidden" name="compliment_enabled" value="0">
+                  <input type="checkbox"
+                         name="compliment_enabled"
+                         value="1"
+                         {{ old('compliment_enabled', $settings->compliment_enabled) ? 'checked' : '' }}
+                         x-model="compEnabled"
+                         class="peer sr-only">
+                  <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+                </span>
+              </label>
+
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm font-medium text-slate-600">Wajib Auth Code</span>
+                <span class="relative inline-flex items-center">
+                  <input type="hidden" name="compliment_requires_auth_code" value="0">
+                  <input type="checkbox"
+                         name="compliment_requires_auth_code"
+                         value="1"
+                         {{ old('compliment_requires_auth_code', $settings->compliment_requires_auth_code) ? 'checked' : '' }}
+                         x-model="compAuth"
+                         class="peer sr-only">
+                  <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+                </span>
+              </label>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1" for="compliment_discount_percentage">Diskon (%)</label>
+                <p class="text-xs text-slate-400 mb-2">100% = gratis penuh (default).</p>
+                <input type="number"
+                       id="compliment_discount_percentage"
+                       name="compliment_discount_percentage"
+                       value="{{ old('compliment_discount_percentage', $settings->compliment_discount_percentage) }}"
+                       min="0"
+                       max="100"
+                       step="1"
+                       class="w-28 border @error('compliment_discount_percentage') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+                <span class="text-sm text-slate-500">%</span>
+                @error('compliment_discount_percentage')
+                  <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                @enderror
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>

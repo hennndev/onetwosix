@@ -1,4 +1,4 @@
-<div class="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-100 flex flex-col h-64 lg:h-full">
+<div class="w-96 bg-white border-l border-gray-100 flex flex-col h-full">
   <!-- Cart Header -->
   <div class="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
     <div class="flex items-center justify-between">
@@ -75,8 +75,7 @@
       <div class="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
         <button type="button"
                 @click="toggleDiscountItem(item.id)"
-                :aria-pressed="selectedDiscountItemIds.includes(inventoryId(item.id))"
-                :class="selectedDiscountItemIds.includes(inventoryId(item.id)) ? 'border-amber-500 bg-amber-100 text-amber-700' : 'border-gray-200 bg-white text-gray-400'"
+                :class="checkoutForm.discount_item_ids.includes(inventoryId(item.id)) ? 'border-amber-500 bg-amber-100 text-amber-700' : 'border-gray-200 bg-white text-gray-400'"
                 class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold transition"
                 title="Pilih item untuk diskon">%</button>
         <div :class="getItemBgColor(item.id)"
@@ -94,9 +93,9 @@
         <div class="flex-1 min-w-0">
           <h4 class="text-sm font-semibold text-gray-900 truncate"
               x-text="item.name"></h4>
-           <p class="text-xs text-gray-400 mt-0.5"
-              x-text="formatCurrency(item.price)"></p>
-          <p x-show="selectedDiscountItemIds.includes(inventoryId(item.id))"
+          <p class="text-xs text-gray-400 mt-0.5"
+             x-text="formatCurrency(item.price)"></p>
+          <p x-show="checkoutForm.discount_item_ids.includes(inventoryId(item.id))"
              class="mt-1 text-[11px] font-semibold text-amber-600">Dipilih untuk diskon</p>
           <div class="flex items-center gap-2 mt-2">
             <button type="button"

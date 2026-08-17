@@ -226,16 +226,20 @@
         </div>
 
         <div>
-          <label for="copies"
-                 class="block text-sm font-medium text-gray-700 mb-1">Jumlah Cetak (Copies)</label>
-          <input type="number"
-                 id="copies"
-                 name="copies"
-                 value="1"
-                 min="1"
-                 max="10"
-                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-          <p class="mt-1 text-xs text-gray-400">Berapa lembar setiap print job dikirim ke printer ini.</p>
+          <label for="receiver_printer_id"
+                 class="block text-sm font-medium text-gray-700 mb-1">Printer Receiver</label>
+          <select id="receiver_printer_id"
+                  name="receiver_printer_id"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <option value="">-- Pakai Printer Ini (Utama) --</option>
+            @foreach ($printers ?? [] as $subPrinter)
+              @if (($editingPrinter ?? null) && $subPrinter->id === $editingPrinter->id)
+                @continue
+              @endif
+              <option value="{{ $subPrinter->id }}">{{ $subPrinter->name }} ({{ $subPrinter->printer_type ?: 'tanpa tipe' }})</option>
+            @endforeach
+          </select>
+          <p class="mt-1 text-xs text-gray-400">Opsional. Tiket Receiver (1 per item order, untuk waiter) dicetak ke printer ini dengan format berbeda.</p>
         </div>
 
         <div class="flex items-center space-x-6">

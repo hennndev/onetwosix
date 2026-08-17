@@ -89,34 +89,10 @@ function selectedDiscountFixture(): array
     return compact('cashier', 'customer', 'table', 'session', 'billing', 'items', 'cart');
 }
 
-test('manager approval discounts only selected items before tax and service', function () {
+test('manager per-item discount marks only selected items before tax and service', function () {
     GeneralSetting::instance()->update(['tax_percentage' => 10, 'service_charge_percentage' => 10]);
     $fixture = selectedDiscountFixture();
     $code = DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code;
-
-    $approvalResponse = actingAs($fixture['cashier'])
-        ->withSession([
-            'pos_cart' => $fixture['cart'],
-            'pos_discount_auth_code_requested_at' => now()->timestamp,
-        ])
-        ->postJson(route('admin.pos.discount-approvals.store'), [
-            'customer_type' => 'booking',
-            'customer_user_id' => $fixture['customer']->id,
-            'table_id' => $fixture['table']->id,
-            'selected_item_ids' => [$fixture['items'][0]->id],
-            'discount_type' => 'percentage',
-            'discount_value' => 10,
-            'reason' => 'Service recovery',
-            'manager_auth_code' => $code,
-        ])
-        ->assertCreated()
-        ->assertJsonPath('discount_amount', 10000);
-
-    $token = $approvalResponse->json('approval_token');
-    $approval = PosDiscountApproval::query()->firstOrFail();
-
-    expect($approval->token_hash)->toBe(hash('sha256', $token))
-        ->and($approval->token_hash)->not->toBe($token);
 
     actingAs($fixture['cashier'])
         ->withSession(['pos_cart' => $fixture['cart']])
@@ -124,8 +100,11 @@ test('manager approval discounts only selected items before tax and service', fu
             'customer_type' => 'booking',
             'customer_user_id' => $fixture['customer']->id,
             'table_id' => $fixture['table']->id,
-            'discount_percentage' => 0,
-            'discount_approval_token' => $token,
+            'discount_type' => 'item',
+            'discount_item_ids' => [$fixture['items'][0]->id],
+            'discount_item_type' => 'percentage',
+            'discount_item_value' => 10,
+            'discount_auth_code' => $code,
         ])
         ->assertSuccessful()
         ->assertJsonPath('success', true);
@@ -136,54 +115,38 @@ test('manager approval discounts only selected items before tax and service', fu
     $billing = $fixture['billing']->fresh();
 
     expect((float) $selected->discount_amount)->toBe(10000.0)
-        ->and($selected->discount_reason)->toBe('Service recovery')
+        ->and($selected->is_discount)->toBeTrue()
         ->and((float) $regular->discount_amount)->toBe(0.0)
+        ->and($regular->is_discount)->toBeFalse()
         ->and((float) $order->items_total)->toBe(200000.0)
         ->and((float) $order->discount_amount)->toBe(10000.0)
         ->and((float) $order->total)->toBe(190000.0)
         ->and((float) $billing->tax)->toBe(19000.0)
         ->and((float) $billing->service_charge)->toBe(20900.0)
-        ->and((float) $billing->grand_total)->toBe(229900.0)
-        ->and($approval->fresh()->consumed_order_id)->toBe($order->id);
+        ->and((float) $billing->grand_total)->toBe(229900.0);
 });
 
-test('discount approval is rejected after cart quantity changes', function () {
+test('per-item discount rejects combining with transaction discount', function () {
     $fixture = selectedDiscountFixture();
     $code = DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code;
 
-    $approval = actingAs($fixture['cashier'])
-        ->withSession([
-            'pos_cart' => $fixture['cart'],
-            'pos_discount_auth_code_requested_at' => now()->timestamp,
-        ])
-        ->postJson(route('admin.pos.discount-approvals.store'), [
-            'customer_type' => 'booking',
-            'customer_user_id' => $fixture['customer']->id,
-            'table_id' => $fixture['table']->id,
-            'selected_item_ids' => [$fixture['items'][0]->id],
-            'discount_type' => 'nominal',
-            'discount_value' => 10000,
-            'reason' => 'Manager approval',
-            'manager_auth_code' => $code,
-        ])->assertCreated();
-
-    $changedCart = $fixture['cart'];
-    $changedCart['item_'.$fixture['items'][0]->id]['quantity'] = 2;
-
     actingAs($fixture['cashier'])
-        ->withSession(['pos_cart' => $changedCart])
+        ->withSession(['pos_cart' => $fixture['cart']])
         ->postJson(route('admin.pos.checkout'), [
             'customer_type' => 'booking',
             'customer_user_id' => $fixture['customer']->id,
             'table_id' => $fixture['table']->id,
-            'discount_percentage' => 0,
-            'discount_approval_token' => $approval->json('approval_token'),
+            'discount_type' => 'item',
+            'discount_item_ids' => [$fixture['items'][0]->id],
+            'discount_item_type' => 'percentage',
+            'discount_item_value' => 10,
+            'discount_percentage' => 10,
+            'discount_auth_code' => $code,
         ])
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'Cart berubah setelah approval. Ajukan approval ulang.');
+        ->assertJsonPath('errors.discount_item_ids.0', 'Diskon per item tidak dapat digabung dengan diskon transaksi atau FOC/Compliment.');
 
-    expect(Order::query()->where('table_session_id', $fixture['session']->id)->count())->toBe(0)
-        ->and(PosDiscountApproval::query()->firstOrFail()->consumed_at)->toBeNull();
+    expect(Order::query()->where('table_session_id', $fixture['session']->id)->count())->toBe(0);
 });
 
 test('walk in selected item discount is sent to accurate sales order and invoice', function () {
@@ -208,21 +171,6 @@ test('walk in selected item discount is sent to accurate sales order and invoice
         })->andReturn(['r' => ['number' => 'INV-DISCOUNT']]);
     });
 
-    $approval = actingAs($fixture['cashier'])
-        ->withSession([
-            'pos_cart' => $fixture['cart'],
-            'pos_discount_auth_code_requested_at' => now()->timestamp,
-        ])
-        ->postJson(route('admin.pos.discount-approvals.store'), [
-            'customer_type' => 'walk-in',
-            'walk_in_customer_id' => $fixture['customer']->id,
-            'selected_item_ids' => [$fixture['items'][0]->id],
-            'discount_type' => 'percentage',
-            'discount_value' => 10,
-            'reason' => 'Service recovery',
-            'manager_auth_code' => $code,
-        ])->assertCreated();
-
     actingAs($fixture['cashier'])
         ->withSession(['pos_cart' => $fixture['cart']])
         ->postJson(route('admin.pos.checkout'), [
@@ -230,8 +178,11 @@ test('walk in selected item discount is sent to accurate sales order and invoice
             'walk_in_customer_id' => $fixture['customer']->id,
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
-            'discount_type' => 'none',
-            'discount_approval_token' => $approval->json('approval_token'),
+            'discount_type' => 'item',
+            'discount_item_ids' => [$fixture['items'][0]->id],
+            'discount_item_type' => 'percentage',
+            'discount_item_value' => 10,
+            'discount_auth_code' => $code,
             'auto_print_receipt' => false,
         ])->assertSuccessful();
 
@@ -242,24 +193,45 @@ test('walk in selected item discount is sent to accurate sales order and invoice
         ->and($payloads['sales_invoice']['detailItem'][1]['discountPercent'])->toBe(0.0);
 });
 
-test('selected item discount rejects direct auth code without requesting it first', function () {
+test('per-item discount requires valid auth code', function () {
     $fixture = selectedDiscountFixture();
-    $code = DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code;
 
     actingAs($fixture['cashier'])
         ->withSession(['pos_cart' => $fixture['cart']])
-        ->postJson(route('admin.pos.discount-approvals.store'), [
+        ->postJson(route('admin.pos.checkout'), [
             'customer_type' => 'booking',
             'customer_user_id' => $fixture['customer']->id,
             'table_id' => $fixture['table']->id,
-            'selected_item_ids' => [$fixture['items'][0]->id],
-            'discount_type' => 'percentage',
-            'discount_value' => 10,
-            'reason' => 'Service recovery',
-            'manager_auth_code' => $code,
+            'discount_type' => 'item',
+            'discount_item_ids' => [$fixture['items'][0]->id],
+            'discount_item_type' => 'percentage',
+            'discount_item_value' => 10,
+            'discount_auth_code' => '',
         ])
         ->assertUnprocessable()
-        ->assertJsonPath('errors.manager_auth_code.0', 'Request auth code terlebih dahulu sebelum mengajukan diskon.');
+        ->assertJsonPath('errors.discount_auth_code.0', 'Auth code wajib diisi untuk diskon.');
 
-    expect(PosDiscountApproval::query()->count())->toBe(0);
+    expect(Order::query()->where('table_session_id', $fixture['session']->id)->count())->toBe(0);
+});
+
+test('booking checkout rejects selected item discount combined with FOC', function () {
+    $fixture = selectedDiscountFixture();
+    $code = DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code;
+
+    // FOC transaksi tidak boleh digabung dengan diskon per item (hanya pembayaran biasa).
+    actingAs($fixture['cashier'])
+        ->withSession(['pos_cart' => $fixture['cart']])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $fixture['customer']->id,
+            'table_id' => $fixture['table']->id,
+            'discount_type' => 'item',
+            'discount_item_ids' => [$fixture['items'][0]->id],
+            'discount_item_type' => 'percentage',
+            'discount_item_value' => 10,
+            'foc_comp_payment_method' => 'FOC',
+            'foc_comp_auth_code' => $code,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.discount_item_ids.0', 'Diskon per item tidak dapat digabung dengan diskon transaksi atau FOC/Compliment.');
 });

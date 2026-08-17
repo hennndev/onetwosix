@@ -247,6 +247,11 @@ class CustomerController extends Controller
             ->join('table_sessions', 'table_sessions.id', '=', 'billings.table_session_id')
             ->where('billings.billing_status', 'paid')
             ->where('billings.is_booking', true)
+            // FOC/Compliment bukan spending (bukan revenue).
+            ->where(function ($q) {
+                $q->whereNull('billings.foc_comp_payment_method')
+                    ->orWhereNotIn('billings.foc_comp_payment_method', ['FOC', 'Compliment']);
+            })
             ->groupBy('table_sessions.customer_id')
             ->selectRaw('table_sessions.customer_id as user_id')
             ->selectRaw('SUM(billings.grand_total) as booking_spending')
@@ -256,6 +261,13 @@ class CustomerController extends Controller
             ->whereNull('orders.table_session_id')
             ->whereNotNull('orders.customer_user_id')
             ->where('orders.status', '!=', 'cancelled')
+            // FOC/Compliment bukan spending — exclude order dengan billing FOC.
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('billings')
+                    ->whereColumn('billings.order_id', 'orders.id')
+                    ->whereIn('billings.foc_comp_payment_method', ['FOC', 'Compliment']);
+            })
             ->groupBy('orders.customer_user_id')
             ->selectRaw('orders.customer_user_id as customer_user_id')
             ->selectRaw('SUM(orders.total) as walk_in_spending')

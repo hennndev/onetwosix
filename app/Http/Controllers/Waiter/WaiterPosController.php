@@ -839,7 +839,7 @@ class WaiterPosController extends Controller
     {
         $categoryMain = strtolower(trim((string) $inventoryItem->category_main));
 
-        if ($categoryMain === 'compliment') {
+        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
             return 0.0;
         }
 

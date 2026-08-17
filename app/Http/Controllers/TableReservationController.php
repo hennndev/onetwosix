@@ -38,6 +38,8 @@ class TableReservationController extends Controller
 
     public function index(Request $request)
     {
+        $generalSettings = \App\Models\GeneralSetting::instance();
+
         $this->reconcileTableStatuses();
 
         $query = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing']);
@@ -346,7 +348,8 @@ class TableReservationController extends Controller
             'historyForceClosedCount',
             'historyTotalRevenue',
             'historyAvgSpending',
-            'activeSessionCustomerIds'
+            'activeSessionCustomerIds',
+            'generalSettings'
         ));
     }
 
@@ -671,9 +674,10 @@ class TableReservationController extends Controller
     {
         $validated = $request->validate([
             'payment_mode' => 'required|in:normal,split,partial,debt',
-            'payment_method' => 'required_if:payment_mode,normal,partial,debt|nullable|in:cash,kredit,debit,qris,transfer',
+            'payment_method' => 'required_if:payment_mode,normal,partial,debt|nullable|in:cash,kredit,debit,qris,transfer,FOC,Compliment',
             'partial_paid_amount' => 'nullable|numeric|min:0',
             'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
+            'foc_comp_auth_code' => 'nullable|digits:4',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_amount' => 'nullable|numeric|min:0',
@@ -682,12 +686,16 @@ class TableReservationController extends Controller
             'split_second_non_cash_amount' => 'nullable|numeric|min:0',
             'split_second_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
             'split_second_non_cash_reference_number' => 'nullable|string|max:100',
-            'discount_type' => 'nullable|in:percentage,nominal',
+            'discount_type' => 'nullable|in:percentage,nominal,item',
             'discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_nominal' => 'nullable|numeric|min:0',
             'discount_auth_code' => 'nullable|digits:4',
             'discount_order_item_ids' => 'nullable|array',
-            'discount_order_item_ids.*' => 'integer|distinct|exists:order_items,id',
+            'discount_order_item_ids.*' => 'integer|exists:order_items,id',
+            'discount_items' => 'nullable|array',
+            'discount_items.*' => 'numeric|min:0',
+            'discount_item_type' => 'nullable|in:percentage,nominal',
+            'discount_item_value' => 'nullable|numeric|min:0',
         ]);
 
         $session = TableSession::with(['billing', 'orders.items'])
@@ -746,32 +754,80 @@ class TableReservationController extends Controller
                 $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
                 $discountNominal = (float) ($validated['discount_nominal'] ?? 0);
                 $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
-                $selectedItemIds = collect($validated['discount_order_item_ids'] ?? [])->map(fn ($id): int => (int) $id)->unique()->values();
+                $focCompAuthCode = (string) ($validated['foc_comp_auth_code'] ?? '');
+                $generalSettings = \App\Models\GeneralSetting::instance();
+                $isFocComp = in_array((string) ($focCompPaymentMethod ?? ''), ['FOC', 'Compliment'], true);
+
+                // Diskon FOC/Compliment dari setting (default: Compliment 100%, FOC 0%).
+                if ($focCompPaymentMethod === 'Compliment') {
+                    $discountType = 'percentage';
+                    $discountPercentage = $generalSettings->complimentDiscountPercentage();
+                } elseif ($focCompPaymentMethod === 'FOC') {
+                    $discountType = $generalSettings->focDiscountPercentage() > 0 ? 'percentage' : 'none';
+                    $discountPercentage = $generalSettings->focDiscountPercentage();
+                }
+                $discountOrderItemIds = collect($validated['discount_order_item_ids'] ?? [])->map(fn ($id): int => (int) $id)->unique()->values();
+                // Mode item → pakai discount_item_type; mode %/nominal lama → per-item default semua item.
+                $discountItemType = $validated['discount_item_type'] ?? ($discountType === 'percentage' ? 'percentage' : ($discountType === 'nominal' ? 'nominal' : null));
+                $discountItemValue = $discountItemType === 'nominal' && filled($validated['discount_item_value'] ?? null)
+                    ? (float) $validated['discount_item_value']
+                    : ($discountItemType === 'percentage' && filled($validated['discount_item_value'] ?? null)
+                        ? (float) $validated['discount_item_value']
+                        : ($discountType === 'nominal' ? (float) ($validated['discount_nominal'] ?? 0) : (float) ($validated['discount_percentage'] ?? 0)));
+                // Map id→nilai (nilai berbeda per item); fallback legacy bila map kosong.
+                $discountItemValues = $this->normalizeDiscountItems($validated['discount_items'] ?? [], $discountOrderItemIds->all(), $discountItemValue);
+
                 $activeItems = $session->orders
                     ->where('status', '!=', 'cancelled')
                     ->flatMap(fn ($order) => $order->items)
                     ->where('status', '!=', 'cancelled');
-                $selectedItems = $activeItems->whereIn('id', $selectedItemIds)->values();
-                $hasSelectedItemDiscount = $activeItems->sum(fn ($item): float => (float) $item->discount_amount) > 0;
+                $discountItemIdsMap = array_keys($discountItemValues);
+                $selectedItems = $activeItems->whereIn('id', $discountItemIdsMap)->values();
 
-                if ($hasSelectedItemDiscount && (($discountType ?? 'none') !== 'none' || $focCompPaymentMethod === 'Compliment')) {
+                // Validasi kepemilikan item diskon: semua id harus dari billing aktif.
+                if ($discountItemIdsMap !== [] && $selectedItems->count() !== count($discountItemIdsMap)) {
                     throw ValidationException::withMessages([
-                        'discount_type' => 'Billing sudah memiliki diskon item dan tidak dapat digabung dengan diskon transaksi atau Compliment.',
+                        'discount_order_item_ids' => 'Item diskon harus berasal dari billing aktif ini.',
                     ]);
                 }
 
-                if (($discountType ?? 'none') !== 'none') {
-                    if ($selectedItemIds->isEmpty()) {
-                        throw ValidationException::withMessages([
-                            'discount_order_item_ids' => 'Pilih minimal satu item yang akan didiskon.',
-                        ]);
+                // FOC/Compliment → semua item bulk; biasa → item terpilih (default semua bila tidak ada id).
+                $targetItems = $isFocComp ? $activeItems : ($selectedItems->isNotEmpty() ? $selectedItems : $activeItems);
+
+                $itemDiscountSum = 0.0;
+                $discountedOrderIds = [];
+                foreach ($targetItems as $item) {
+                    $old = (float) $item->discount_amount;
+                    $subtotal = (float) $item->subtotal;
+
+                    if ($isFocComp) {
+                        $pct = (float) $discountPercentage;
+                        $new = $pct > 0 ? round($subtotal * $pct / 100, 2) : 0.0;
+                    } elseif ($discountItemType === 'percentage') {
+                        $pct = min(max((float) ($discountItemValues[$item->id] ?? $discountItemValue), 0), 100);
+                        $new = $pct > 0 ? round($subtotal * $pct / 100, 2) : 0.0;
+                    } elseif ($discountItemType === 'nominal') {
+                        $new = min((float) ($discountItemValues[$item->id] ?? $discountItemValue), $subtotal);
+                        $pct = $subtotal > 0 ? round($new / $subtotal * 100, 2) : 0.0;
+                    } else {
+                        $pct = 0.0;
+                        $new = 0.0;
                     }
-                    if ($selectedItems->count() !== $selectedItemIds->count()) {
-                        throw ValidationException::withMessages([
-                            'discount_order_item_ids' => 'Item diskon harus berasal dari billing aktif ini.',
-                        ]);
-                    }
+
+                    $item->update([
+                        'is_discount' => $new > 0,
+                        'discount_pct' => $new > 0 ? $pct : 0,
+                        'discount_amount' => $new,
+                    ]);
+                    $itemDiscountSum += $new - $old; // increment — hindari double count item yang sudah is_discount
+                    $discountedOrderIds[$item->order_id] = true;
                 }
+
+                // Recalculate order totals agar subtotal/billing jadi net (tax/service atas nilai setelah diskon).
+                $session->orders
+                    ->whereIn('id', array_keys($discountedOrderIds))
+                    ->each(fn (Order $order) => $order->updateTotals());
+                $session->load('orders.items.inventoryItem');
 
                 $baseTotals = $this->calculateSessionBillingTotals(
                     $session,
@@ -781,84 +837,54 @@ class TableReservationController extends Controller
                 );
 
                 $discountBaseTotal = (float) ($baseTotals['discount_base_total'] ?? $baseTotals['grand_total_before_down_payment']);
-                $selectedItemsTotal = (float) $selectedItems->sum(fn ($item): float => (float) $item->subtotal);
 
-                if ($focCompPaymentMethod === 'Compliment') {
-                    $requestedDiscountAmount = $discountBaseTotal;
-                } else {
-                    $requestedDiscountAmount = match ($discountType) {
-                        'percentage' => round($selectedItemsTotal * ($discountPercentage / 100), 2),
-                        'nominal' => round($discountNominal, 2),
-                        default => 0,
-                    };
-                }
+                // Per-item/FOC: diskon = jumlah rupiah item. Nominal global (tanpa item): clamp ke base.
+                $requestedDiscountAmount = ($discountItemIdsMap !== [] || $isFocComp || $discountItemType !== null)
+                    ? max($itemDiscountSum, 0)
+                    : min(max((float) ($discountType === 'nominal' ? $discountNominal : round($discountBaseTotal * $discountPercentage / 100, 2)), 0), $discountBaseTotal);
 
-                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $focCompPaymentMethod === 'Compliment' ? $discountBaseTotal : $selectedItemsTotal);
+                // Auth code: regular discount selalu; FOC/Compliment sesuai setting (tidak otomatis).
+                $focTypeRequiresAuth = ($focCompPaymentMethod === 'FOC' && $generalSettings->focRequiresAuthCode())
+                    || ($focCompPaymentMethod === 'Compliment' && $generalSettings->complimentRequiresAuthCode());
 
-                $requiresAuthCode = $requestedDiscountAmount > 0 || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+                $requiresAuthCode = $focTypeRequiresAuth || (! $isFocComp && $requestedDiscountAmount > 0);
 
                 if ($requiresAuthCode) {
-                    $requestedAt = (int) request()->session()->get('booking_discount_auth_code_requested_at', 0);
-                    if ($requestedAt === 0 || now()->timestamp - $requestedAt > 300) {
+                    // FOC/Compliment pakai field auth sendiri; diskon biasa pakai discount_auth_code.
+                    $authCode = $isFocComp ? $focCompAuthCode : $discountAuthCode;
+
+                    if ($authCode === '') {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Request auth code terlebih dahulu sebelum memberikan diskon.',
-                        ]);
-                    }
-                    if ($discountAuthCode === '') {
-                        throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code wajib diisi untuk FOC, Compliment.'
+                                : 'Auth code wajib diisi untuk diskon.',
                         ]);
                     }
 
                     $today = now()->format('Y-m-d');
                     $authRecord = DailyAuthCode::forDate($today);
 
-                    if ($discountAuthCode !== $authRecord->active_code) {
+                    if ($authCode !== $authRecord->active_code) {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code diskon tidak valid.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code FOC / Compliment tidak valid.'
+                                : 'Auth code diskon tidak valid.',
                         ]);
                     }
-
-                    request()->session()->forget('booking_discount_auth_code_requested_at');
                 }
 
-                if ($requestedDiscountAmount > 0 && $focCompPaymentMethod !== 'Compliment') {
-                    $remainingDiscount = $requestedDiscountAmount;
-                    foreach ($selectedItems as $index => $item) {
-                        $itemSubtotal = (float) $item->subtotal;
-                        $lineDiscount = $index === $selectedItems->count() - 1
-                            ? $remainingDiscount
-                            : round($requestedDiscountAmount * ($itemSubtotal / $selectedItemsTotal), 2);
-                        $lineDiscount = min(max($lineDiscount, 0), $itemSubtotal);
-                        $item->update([
-                            'discount_amount' => $lineDiscount,
-                            'discount_reason' => 'Diskon saat tutup billing',
-                        ]);
-                        $remainingDiscount -= $lineDiscount;
-                    }
-                    $session->orders->each(fn (Order $order) => $order->updateTotals());
-                    $session->load('orders.items.inventoryItem');
-                }
-
+                // Percentage per-item: subtotal sudah net (updateTotals), diskon dilaporkan
+                // terpisah (tidak dikurang dua kali). Nominal global: dikurangkan dari grand total.
+                // Item-based (per-item/FOC/nominal-with-items): subtotal sudah net via updateTotals,
+                // diskon hanya dilaporkan (pass 0). Nominal global tanpa item: diskon transaksi dikurang.
+                $isItemBasedDiscount = $discountItemIdsMap !== [] || $isFocComp || $discountItemType !== null;
                 $totals = $this->calculateSessionBillingTotals(
                     $session,
-                    $focCompPaymentMethod === 'Compliment' ? $requestedDiscountAmount : 0,
+                    $isItemBasedDiscount ? 0 : $requestedDiscountAmount,
                     (float) $billing->minimum_charge,
                     (float) ($booking->down_payment_amount ?? 0),
                 );
-
-                if ($focCompPaymentMethod !== 'Compliment') {
-                    $lineDiscountTotal = (float) $session->orders
-                        ->where('status', '!=', 'cancelled')
-                        ->flatMap(fn (Order $order) => $order->items)
-                        ->where('status', '!=', 'cancelled')
-                        ->sum(fn (OrderItem $item): float => (float) $item->discount_amount);
-                    $netOrdersTotal = (float) $totals['orders_total'];
-                    $grossOrdersTotal = $netOrdersTotal + $lineDiscountTotal;
-                    $totals['orders_total'] = $grossOrdersTotal;
-                    $totals['subtotal'] += $lineDiscountTotal;
-                    $totals['discount_amount'] = $lineDiscountTotal;
-                }
+                $totals['discount_amount'] = $requestedDiscountAmount;
 
                 $billingSequence = Billing::query()
                     ->where('is_booking', true)
@@ -871,11 +897,17 @@ class TableReservationController extends Controller
                     ? null
                     : $validated['payment_method'];
                 $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
+
+                // FOC/Compliment → payment_method otomatis, tanpa metode normal.
+                if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
+                    $paymentMethod = $focCompPaymentMethod;
+                }
+
                 $paymentReferenceNumber = $paymentMode === 'normal'
-                    ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
+                    ? (in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true) ? null : ($validated['payment_reference_number'] ?? null))
                     : null;
 
-                if ($paymentMode === 'normal' && ($paymentMethod ?? null) !== 'cash' && blank($paymentReferenceNumber)) {
+                if ($paymentMode === 'normal' && ! in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true) && blank($paymentReferenceNumber)) {
                     throw ValidationException::withMessages([
                         'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
                     ]);
@@ -1038,7 +1070,11 @@ class TableReservationController extends Controller
 
                 if ($customerUser) {
                     $customerUser->increment('total_visits');
-                    $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+
+                    // FOC/Compliment tidak masuk spending (bukan revenue).
+                    if (! in_array((string) ($focCompPaymentMethod ?? ''), ['FOC', 'Compliment'], true)) {
+                        $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+                    }
                 }
 
                 $session->update([
@@ -1615,14 +1651,18 @@ class TableReservationController extends Controller
             // Consolidate all order items across all orders in the session
             $session->loadMissing('orders.items.inventoryItem');
             $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
+            $billing = $session->billing;
+            $discountAmount = (float) ($billing->discount_amount ?? 0);
+            $itemsTotal = (float) $session->orders
+                ->flatMap(fn ($order) => $order->items)
+                ->where('status', '!=', 'cancelled')
+                ->sum(fn ($item) => (float) $item->subtotal);
+            $discountPercent = $itemsTotal > 0 ? round(($discountAmount / $itemsTotal) * 100, 2) : 0;
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
                 ->where('status', '!=', 'cancelled')
-                ->map(function ($item) use ($warehouseName) {
-                    $gross = (float) $item->subtotal;
-                    $discountPercent = $gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0;
-
+                ->map(function ($item) use ($warehouseName, $discountPercent) {
                     return [
                         'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                         'quantity' => $item->quantity,
@@ -2734,5 +2774,26 @@ class TableReservationController extends Controller
                 'is_debt' => (bool) $billing->is_debt,
             ],
         ]);
+    }
+
+    /**
+     * Normalisasi diskon per item menjadi map id→nilai.
+     * Map baru (discount_items) menang; bila kosong, fallback legacy ids + satu nilai.
+     */
+    protected function normalizeDiscountItems(array $raw = [], array $legacyIds = [], ?float $legacyValue = null): array
+    {
+        $map = [];
+        foreach ($raw as $id => $value) {
+            $map[(int) $id] = (float) $value;
+        }
+
+        if ($map === [] && $legacyIds !== []) {
+            $v = (float) $legacyValue;
+            foreach ($legacyIds as $id) {
+                $map[(int) $id] = $v;
+            }
+        }
+
+        return $map;
     }
 }

@@ -19,7 +19,11 @@
           </svg>
         </div>
         <div>
-          <h3 class="font-bold text-gray-900 text-sm">Tutup Billing</h3>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="font-bold text-gray-900 text-sm">Tutup Billing</h3>
+            <span id="cbFocBadge"
+                  class="hidden px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full"></span>
+          </div>
           <p class="text-xs text-gray-500 mt-0.5"
              id="cbModalSubtitle">Konfirmasi pembayaran customer</p>
         </div>
@@ -119,11 +123,12 @@
         </div>
       </div>
 
-      <!-- Discount request -->
-      <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+      <!-- Discount request (hidden for FOC/Compliment — diskon otomatis dari setting) -->
+      <div id="cbDiscountRequestBlock"
+           class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-2">Discount (Opsional)</label>
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 gap-2">
             <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
               <input type="radio"
                      name="cb_discount_type"
@@ -135,52 +140,40 @@
             <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
               <input type="radio"
                      name="cb_discount_type"
-                     value="percentage"
+                     value="item"
                      class="sr-only">
-              <span class="text-xs font-semibold text-gray-700">%</span>
-            </label>
-            <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
-              <input type="radio"
-                     name="cb_discount_type"
-                     value="nominal"
-                     class="sr-only">
-              <span class="text-xs font-semibold text-gray-700">Nominal</span>
+              <span class="text-xs font-semibold text-gray-700">Item</span>
             </label>
           </div>
         </div>
 
-        <div id="cbDiscountPercentageBlock"
-             class="hidden">
-          <label for="cb_discount_percentage"
-                 class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Persentase</label>
-          <input id="cb_discount_percentage"
-                 type="number"
-                 min="0"
-                 max="100"
-                 step="0.01"
-                 placeholder="Contoh: 10"
-                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-        </div>
-
-        <div id="cbDiscountNominalBlock"
-             class="hidden">
-          <label for="cb_discount_nominal"
-                 class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Nominal</label>
-          <input id="cb_discount_nominal_display"
-                 type="text"
-                 inputmode="numeric"
-                 value="Rp 0"
-                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-          <input id="cb_discount_nominal"
-                 type="hidden"
-                  value="0">
-        </div>
-
         <div id="cbDiscountItemsBlock"
-             class="hidden space-y-2">
-          <p class="text-xs font-semibold text-gray-600">Pilih item yang mendapat diskon</p>
-          <div id="cbDiscountItems"
-               class="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2"></div>
+             class="hidden space-y-3">
+          <div>
+            <p class="block text-xs font-semibold text-gray-600 mb-2">Pilih item yang mendapat diskon</p>
+            <div id="cbDiscountItems"
+                 class="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2"></div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Jenis Diskon</label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="flex items-center justify-center gap-2 p-2 rounded-lg border cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
+                <input type="radio"
+                       name="cb_discount_item_type"
+                       value="percentage"
+                       class="sr-only"
+                       checked>
+                <span class="text-xs font-semibold text-gray-700">%</span>
+              </label>
+              <label class="flex items-center justify-center gap-2 p-2 rounded-lg border cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
+                <input type="radio"
+                       name="cb_discount_item_type"
+                       value="nominal"
+                       class="sr-only">
+                <span class="text-xs font-semibold text-gray-700">Nominal</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div id="cbDiscountAuthBlock"
@@ -189,10 +182,10 @@
                  class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code Diskon (4 digit)</label>
           <input id="cb_discount_auth_code"
                  type="password"
-                  inputmode="numeric"
-                  maxlength="4"
-                  placeholder="Masukkan auth code"
-                  class="hidden w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                 inputmode="numeric"
+                 maxlength="4"
+                 placeholder="Masukkan auth code"
+                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
           <button type="button"
                   onclick="requestAuthCodeEmailBooking()"
                   id="cbRequestAuthCodeBtn"
@@ -203,35 +196,43 @@
         </div>
       </div>
 
-      <!-- Payment mode -->
-      <div>
+      {{-- Auth code khusus FOC/Compliment (wajib jika setting requires_auth_code) — sibling di luar blok discount,
+           karena blok discount di-hide saat FOC/Compliment. --}}
+      <div id="cbFocAuthBlock"
+           class="hidden rounded-xl border border-gray-200 bg-green-50 p-3 space-y-3">
+        <label for="cb_foc_comp_auth_code"
+               class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code FOC / Compliment (4 digit)</label>
+        <input id="cb_foc_comp_auth_code"
+               type="password"
+               inputmode="numeric"
+               maxlength="4"
+               placeholder="Masukkan auth code"
+               class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+        <button type="button"
+                onclick="requestFocAuthCodeEmailBooking()"
+                id="cbRequestFocAuthCodeBtn"
+                class="mt-2 inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled>
+          Request Auth Code
+        </button>
+      </div>
+
+      <!-- Payment mode (hidden for FOC/Compliment) -->
+      <div id="cbPaymentModeBlock">
         <label class="block text-xs font-semibold text-gray-600 mb-2">Mode Pembayaran</label>
-        <div class="grid grid-cols-3 gap-2">
-          @foreach (['normal' => 'Biasa', 'split' => 'Split Bill', 'partial' => 'Parsial / Hutang'] as $val => $label)
+        <div class="grid grid-cols-2 gap-2">
+          @foreach (['normal' => 'Payment Biasa', 'split' => 'Split Bill'] as $val => $label)
             <label class="flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer
-                          has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition text-center">
+                          has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
               <input type="radio"
                      name="cb_payment_mode"
                      value="{{ $val }}"
                      class="sr-only"
-                     onchange="updatePaymentModeUI()"
                      {{ $val === 'normal' ? 'checked' : '' }}>
               <span class="text-xs font-semibold text-gray-700">{{ $label }}</span>
             </label>
           @endforeach
         </div>
-      </div>
-
-      <div>
-        <label for="cb_foc_comp_payment_method"
-               class="block text-xs font-semibold text-gray-600 mb-1.5">FOC / Compliment</label>
-        <select id="cb_foc_comp_payment_method"
-                onchange="updateDiscountUI()"
-                class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
-          <option value="">-</option>
-          <option value="FOC">FOC</option>
-          <option value="Compliment">Compliment</option>
-        </select>
       </div>
 
       <!-- Payment method (normal mode) -->
@@ -280,23 +281,6 @@
                  placeholder="Nomor kartu / approval / referensi QRIS"
                  class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
         </div>
-      </div>
-
-      <!-- Partial payment mode: nominal DP / partial payment -->
-      <div id="cbPartialBlock"
-           class="hidden rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
-        <label for="cb_partial_paid_amount_display"
-               class="block text-xs font-semibold text-blue-900">Nominal Diterima Saat Ini (DP / Parsial)</label>
-        <input id="cb_partial_paid_amount_display"
-               type="text"
-               inputmode="numeric"
-               value="Rp 0"
-               oninput="const val = extractNumber(this.value); document.getElementById('cb_partial_paid_amount').value = val; this.value = formatRupiah(val);"
-               class="w-full px-3 py-2 rounded-lg border border-blue-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-        <input id="cb_partial_paid_amount"
-               type="hidden"
-               value="0">
-        <p class="text-xs text-blue-700">Sisa tagihan akan tercatat sebagai hutang/piutang atas nama customer.</p>
       </div>
 
       <!-- Split mode: payment 1 + payment 2 (+ optional cash) -->
@@ -426,7 +410,7 @@
 
 <!-- Payment Type Chooser (Step 0) -->
 <div id="cbPaymentTypeModal"
-     class="fixed inset-0 z-[60] hidden items-end justify-center overflow-y-auto bg-black/50 sm:items-center">
+     class="fixed inset-0 z-[60] hidden flex items-end justify-center overflow-y-auto bg-black/50 sm:items-center">
   <div class="w-full max-w-sm rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
        onclick="event.stopPropagation()">
     <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -453,36 +437,56 @@
         <p class="text-sm font-semibold text-gray-800">Pembayaran Biasa</p>
         <p class="text-xs text-gray-500 mt-0.5">Tunai, Debit, QRIS, Transfer, Split, Parsial / Hutang</p>
       </button>
-      <button type="button"
-              onclick="proceedCloseBilling('FOC')"
-              class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
-        <p class="text-sm font-semibold text-gray-800">FOC</p>
-        <p class="text-xs text-gray-500 mt-0.5">Free of charge — seluruh billing dibebaskan</p>
-      </button>
-      <button type="button"
-              onclick="proceedCloseBilling('Compliment')"
-              class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
-        <p class="text-sm font-semibold text-gray-800">Compliment</p>
-        <p class="text-xs text-gray-500 mt-0.5">Diskon 100% — wajib auth code</p>
-      </button>
+      @if ($generalSettings->foc_enabled)
+        <button type="button"
+                onclick="proceedCloseBilling('FOC')"
+                class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
+          <p class="text-sm font-semibold text-gray-800">FOC</p>
+          @if ((int) $generalSettings->foc_discount_percentage > 0)
+            <p class="text-xs text-gray-500 mt-0.5">Diskon {{ (int) $generalSettings->foc_discount_percentage }}% {{ $generalSettings->foc_requires_auth_code ? '— wajib auth code' : '— tanpa auth code' }}</p>
+          @else
+            <p class="text-xs text-gray-500 mt-0.5">Free of charge — seluruh billing dibebaskan{{ $generalSettings->foc_requires_auth_code ? ' — wajib auth code' : ' — tanpa auth code' }}</p>
+          @endif
+        </button>
+      @endif
+      @if ($generalSettings->compliment_enabled)
+        <button type="button"
+                onclick="proceedCloseBilling('Compliment')"
+                class="w-full p-3 rounded-xl border border-gray-200 hover:border-green-500 hover:bg-green-50 transition text-left">
+          <p class="text-sm font-semibold text-gray-800">Compliment</p>
+          <p class="text-xs text-gray-500 mt-0.5">Diskon {{ (int) $generalSettings->compliment_discount_percentage }}% {{ $generalSettings->compliment_requires_auth_code ? '— wajib auth code' : '— tanpa auth code' }}</p>
+        </button>
+      @endif
     </div>
   </div>
 </div>
 
 <script>
   const cbVerifyAuthCodeUrl = @json(route('admin.settings.daily-auth-code.verify'));
+  // Apakah tipe FOC/Compliment butuh auth code (dari setting).
+  function cbFocRequiresAuth(type) {
+    if (type === 'FOC') return Boolean(cbFocSettings.focRequiresAuthCode);
+    if (type === 'Compliment') return Boolean(cbFocSettings.complimentRequiresAuthCode);
+
+    return false;
+  }
+
+  const cbFocSettings = {
+    focEnabled: @json((bool) $generalSettings->foc_enabled),
+    complimentEnabled: @json((bool) $generalSettings->compliment_enabled),
+    focRequiresAuthCode: @json((bool) $generalSettings->foc_requires_auth_code),
+    complimentRequiresAuthCode: @json((bool) $generalSettings->compliment_requires_auth_code),
+    focDiscountPercentage: @json((int) $generalSettings->foc_discount_percentage),
+    complimentDiscountPercentage: @json((int) $generalSettings->compliment_discount_percentage),
+  };
   const cbSendAuthCodeEmailUrl = @json(route('admin.settings.daily-auth-code.send-email'));
   let closeBillingBookingId = null;
   let cbCurrentGrandTotal = 0;
   let cbCheckerIncomplete = false;
   let isRequestingAuthCodeEmailBooking = false;
+  let isRequestingFocAuthCodeEmailBooking = false;
   let cbCurrentSubTotal = 0;
   let cbCurrentDownPayment = 0;
-  let cbDiscountItems = [];
-  let cbAuthCodeRequested = false;
-  let cbMinimumCharge = 0;
-  let cbTaxPercentage = 0;
-  let cbServiceChargePercentage = 0;
 
   function formatRupiah(value) {
     return 'Rp ' + new Intl.NumberFormat('id-ID').format(value || 0);
@@ -500,56 +504,52 @@
     display.value = formatRupiah(amount || 0);
   }
 
-  function setDiscountNominalInput(amount) {
-    const normalizedAmount = Math.max(Number(amount || 0), 0);
-    document.getElementById('cb_discount_nominal').value = String(normalizedAmount);
-    document.getElementById('cb_discount_nominal_display').value = formatRupiah(normalizedAmount);
-  }
-
   function getDiscountType() {
     return document.querySelector('input[name="cb_discount_type"]:checked')?.value || 'none';
   }
 
-  function renderCloseBillingDiscountItems(message = null) {
-    document.getElementById('cbDiscountItems').innerHTML = message
-      ? `<p class="px-2 py-3 text-center text-xs text-gray-500">${message}</p>`
-      : cbDiscountItems.length === 0
-        ? '<p class="px-2 py-3 text-center text-xs text-gray-500">Tidak ada order item aktif pada billing ini.</p>'
-        : cbDiscountItems.map(item => {
-          const hasDiscount = Number(item.discount_amount) > 0;
-          return `
-          <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50">
-            <input type="checkbox" name="cb_discount_order_item_ids" value="${item.id}" onchange="updateGrandTotalFromDiscount()" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
-            <span class="min-w-0 flex-1 truncate text-xs text-gray-700">${item.quantity}x ${item.name}</span>
-            ${hasDiscount ? `<span class="shrink-0 text-xs font-semibold text-red-600">Diskon -${formatRupiah(item.discount_amount)}</span>` : ''}
-            <span class="text-xs font-semibold text-gray-700">${formatRupiah(item.subtotal)}</span>
-          </label>
-          `;
-        }).join('');
-  }
-
   function updateDiscountUI() {
     const discountType = getDiscountType();
-    const focComp = document.getElementById('cb_foc_comp_payment_method')?.value || '';
-    const percentageBlock = document.getElementById('cbDiscountPercentageBlock');
-    const nominalBlock = document.getElementById('cbDiscountNominalBlock');
+    const focComp = cbFocCompType;
     const authBlock = document.getElementById('cbDiscountAuthBlock');
-    const itemsBlock = document.getElementById('cbDiscountItemsBlock');
+    const focAuthBlock = document.getElementById('cbFocAuthBlock');
     const requestBtn = document.getElementById('cbRequestAuthCodeBtn');
+    const focRequestBtn = document.getElementById('cbRequestFocAuthCodeBtn');
+    const discountRequestBlock = document.getElementById('cbDiscountRequestBlock');
 
-    percentageBlock.classList.toggle('hidden', discountType !== 'percentage');
-    nominalBlock.classList.toggle('hidden', discountType !== 'nominal');
-    authBlock.classList.toggle('hidden', discountType === 'none' && !['FOC', 'Compliment'].includes(focComp));
-    itemsBlock.classList.toggle('hidden', discountType === 'none');
+    // FOC/Compliment → diskon otomatis dari setting, sembunyikan seluruh blok discount.
+    const isFocComp = ['FOC', 'Compliment'].includes(focComp);
+    if (discountRequestBlock) {
+      discountRequestBlock.classList.toggle('hidden', isFocComp);
+    }
 
-    if (discountType === 'none') {
-      cbAuthCodeRequested = false;
-      document.getElementById('cb_discount_auth_code').classList.add('hidden');
+    const itemsBlock = document.getElementById('cbDiscountItemsBlock');
+    if (itemsBlock) {
+      itemsBlock.classList.toggle('hidden', discountType !== 'item');
+    }
+
+    // Auth split: FOC/Compliment pakai blok sendiri; diskon biasa pakai blok diskon.
+    const focAuthVisible = isFocComp && cbFocRequiresAuth(focComp);
+    const authVisible = isFocComp ? focAuthVisible : discountType !== 'none';
+
+    if (focAuthBlock) {
+      focAuthBlock.classList.toggle('hidden', !focAuthVisible);
+    }
+    authBlock.classList.toggle('hidden', !authVisible);
+
+    // Kosongkan auth code saat blok benar-benar tersembunyi.
+    if (authBlock.classList.contains('hidden')) {
       document.getElementById('cb_discount_auth_code').value = '';
+    }
+    if (focAuthBlock && focAuthBlock.classList.contains('hidden')) {
+      document.getElementById('cb_foc_comp_auth_code').value = '';
     }
 
     if (requestBtn) {
       requestBtn.disabled = false;
+    }
+    if (focRequestBtn) {
+      focRequestBtn.disabled = false;
     }
   }
 
@@ -616,9 +616,33 @@
   }
 
   let cbPendingCloseTrigger = null;
+  let cbFocCompType = '';
+  let cbDiscountItems = [];
+
+  function renderCloseBillingDiscountItems() {
+    const container = document.getElementById('cbDiscountItems');
+    if (!container) return;
+
+    container.innerHTML = cbDiscountItems.length === 0
+      ? '<p class="px-2 py-3 text-center text-xs text-gray-500">Tidak ada order item aktif pada billing ini.</p>'
+      : cbDiscountItems.map(item => `
+          <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50">
+            <input type="checkbox" name="cb_discount_order_item_ids" value="${item.id}" onchange="updateGrandTotalFromDiscount()" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-xs text-gray-700">${item.quantity}x ${item.name}</span>
+              <span class="block text-[11px] text-red-600" id="cbDiscountAmount_${item.id}"></span>
+            </span>
+            <span class="text-xs font-semibold text-gray-700">${formatRupiah(item.subtotal)}</span>
+            <input type="number" name="cb_discount_item_value_${item.id}" data-item-id="${item.id}" min="0" max="100" step="0.01"
+                   placeholder="%" oninput="updateGrandTotalFromDiscount()"
+                   class="w-20 rounded-md border border-gray-300 px-2 py-1 text-xs text-right focus:ring-2 focus:ring-green-500">
+          </label>
+        `).join('');
+  }
 
   function openCloseBillingModal(trigger) {
     cbPendingCloseTrigger = trigger;
+    cbFocCompType = '';
     document.getElementById('cbPaymentTypeModal').classList.remove('hidden');
   }
 
@@ -628,19 +652,20 @@
   }
 
   function proceedCloseBilling(type) {
-    closePaymentTypeModal();
     const trigger = cbPendingCloseTrigger;
-    cbPendingCloseTrigger = null;
+    closePaymentTypeModal();
     if (!trigger) {
       return;
     }
 
     showCloseBillingDetail(trigger).then(() => {
-      const select = document.getElementById('cb_foc_comp_payment_method');
-      if (select) {
-        select.value = type || '';
-        updateDiscountUI();
-      }
+      cbFocCompType = type || '';
+
+      // FOC/Compliment: diskon dihitung otomatis oleh backend dari settings.
+      updateFocBadge();
+      updateDiscountUI();
+      updateGrandTotalFromDiscount();
+      updatePaymentModeUI();
     });
   }
 
@@ -656,21 +681,20 @@
     const taxPercentage = Number(trigger?.dataset?.taxPercentage || 0);
     const checkerChecked = Number(trigger?.dataset?.checkerChecked || 0);
     const checkerTotal = Number(trigger?.dataset?.checkerTotal || 0);
-    try {
-      const encodedItems = trigger?.dataset?.discountItems || '';
-      const decodedItems = encodedItems ? new TextDecoder().decode(Uint8Array.from(atob(encodedItems), character => character.charCodeAt(0))) : '[]';
-      cbDiscountItems = JSON.parse(decodedItems);
-    } catch (error) {
-      cbDiscountItems = [];
-    }
-    cbMinimumCharge = minimumCharge;
-    cbTaxPercentage = taxPercentage;
-    cbServiceChargePercentage = serviceChargePercentage;
-    cbAuthCodeRequested = false;
-
-    renderCloseBillingDiscountItems();
 
     closeBillingBookingId = bookingId;
+
+    // Data item untuk diskon per item (dari data-items-json pada tombol trigger).
+    cbDiscountItems = (() => {
+      try {
+        const raw = trigger?.dataset?.itemsJson;
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+    renderCloseBillingDiscountItems();
 
     const fmt = v => formatRupiah(v || 0);
 
@@ -752,13 +776,11 @@
     // Reset payment mode + method defaults
     document.querySelector('input[name="cb_payment_mode"][value="normal"]').checked = true;
     document.querySelector('input[name="cb_payment_method"][value="cash"]').checked = true;
-    document.getElementById('cb_foc_comp_payment_method').value = '';
+    cbFocCompType = '';
+    updateFocBadge();
     document.getElementById('cb_payment_reference_number').value = '';
     document.querySelector('input[name="cb_discount_type"][value="none"]').checked = true;
-    document.getElementById('cb_discount_percentage').value = '';
-    setDiscountNominalInput(0);
     document.getElementById('cb_discount_auth_code').value = '';
-    document.getElementById('cb_discount_auth_code').classList.add('hidden');
     setSplitInput('cash', 0);
     setSplitInput('non_cash_amount', sistaBayar);
     setSplitInput('second_non_cash_amount', 0);
@@ -773,23 +795,6 @@
     updateCloseBillingSubmitButton();
 
     document.getElementById('closeBillingModal').classList.remove('hidden');
-
-    const discountItemsUrl = trigger?.dataset?.discountItemsUrl;
-    if (discountItemsUrl) {
-      renderCloseBillingDiscountItems('Memuat order item terbaru...');
-      try {
-        const response = await fetch(discountItemsUrl, {headers: {'Accept': 'application/json'}});
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || 'Gagal memuat order item.');
-        }
-        cbDiscountItems = Array.isArray(data.items) ? data.items : [];
-        renderCloseBillingDiscountItems();
-      } catch (error) {
-        cbDiscountItems = [];
-        renderCloseBillingDiscountItems('Gagal memuat order item terbaru. Tutup modal lalu coba lagi.');
-      }
-    }
   }
 
   function closeCloseBillingModal() {
@@ -797,35 +802,56 @@
     closeBillingBookingId = null;
     cbCurrentGrandTotal = 0;
     cbCheckerIncomplete = false;
+    cbFocCompType = '';
+    updateFocBadge();
     updateCloseBillingSubmitButton();
+  }
+
+  function updateFocBadge() {
+    const badge = document.getElementById('cbFocBadge');
+    if (!badge) {
+      return;
+    }
+
+    if (cbFocCompType) {
+      badge.textContent = cbFocCompType === 'FOC' ? 'FOC (free of charge)' : cbFocCompType;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
   }
 
   function updatePaymentModeUI() {
     const mode = document.querySelector('input[name="cb_payment_mode"]:checked')?.value || 'normal';
     const paymentMethod = document.querySelector('input[name="cb_payment_method"]:checked')?.value || 'cash';
+    const focComp = cbFocCompType;
     const normalBlock = document.getElementById('cbNormalMethodBlock');
     const splitBlock = document.getElementById('cbSplitBlock');
-    const partialBlock = document.getElementById('cbPartialBlock');
     const normalReferenceBlock = document.getElementById('cbNormalReferenceBlock');
+    const paymentModeBlock = document.getElementById('cbPaymentModeBlock');
+
+    // FOC/Compliment → payment_method otomatis, sembunyikan semua metode.
+    if (['FOC', 'Compliment'].includes(focComp)) {
+      normalBlock.classList.add('hidden');
+      splitBlock.classList.add('hidden');
+      normalReferenceBlock.classList.add('hidden');
+      if (paymentModeBlock) {
+        paymentModeBlock.classList.add('hidden');
+      }
+      return;
+    }
+
+    if (paymentModeBlock) {
+      paymentModeBlock.classList.remove('hidden');
+    }
 
     if (mode === 'split') {
       normalBlock.classList.add('hidden');
       splitBlock.classList.remove('hidden');
-      if (partialBlock) partialBlock.classList.add('hidden');
       normalReferenceBlock.classList.add('hidden');
-    } else if (mode === 'partial') {
-      normalBlock.classList.remove('hidden');
-      splitBlock.classList.add('hidden');
-      if (partialBlock) partialBlock.classList.remove('hidden');
-      if (paymentMethod === 'cash') {
-        normalReferenceBlock.classList.add('hidden');
-      } else {
-        normalReferenceBlock.classList.remove('hidden');
-      }
     } else {
-      normalBlock.classList.remove('hidden');
       splitBlock.classList.add('hidden');
-      if (partialBlock) partialBlock.classList.add('hidden');
+      normalBlock.classList.remove('hidden');
       if (paymentMethod === 'cash') {
         normalReferenceBlock.classList.add('hidden');
       } else {
@@ -855,30 +881,55 @@
     }
   }
 
+  function getSelectedDiscountItemIds() {
+    return [...document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked')].map(input => Number(input.value));
+  }
+
+  function getDiscountItemType() {
+    return document.querySelector('input[name="cb_discount_item_type"]:checked')?.value || 'percentage';
+  }
+
   function updateGrandTotalFromDiscount() {
     const discountType = getDiscountType();
     let discountAmount = 0;
-    const selectedIds = [...document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked')].map(input => Number(input.value));
-    const selectedTotal = cbDiscountItems.filter(item => selectedIds.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
 
-    if (discountType === 'percentage') {
-      const percentage = Number(document.getElementById('cb_discount_percentage')?.value || 0);
-      discountAmount = Math.round((selectedTotal * percentage) / 100);
-    } else if (discountType === 'nominal') {
-      discountAmount = Math.min(Number(document.getElementById('cb_discount_nominal')?.value || 0), selectedTotal);
+    // FOC/Compliment: diskon otomatis dari setting (mirip posApp.discountAmount()).
+    if (cbFocCompType === 'Compliment') {
+      discountAmount = Math.round(cbCurrentSubTotal * (cbFocSettings.complimentDiscountPercentage / 100));
+    } else if (cbFocCompType === 'FOC') {
+      discountAmount = Math.round(cbCurrentSubTotal * (cbFocSettings.focDiscountPercentage / 100));
+    } else if (discountType === 'item') {
+      const selectedIds = getSelectedDiscountItemIds();
+      const selected = cbDiscountItems.filter(item => selectedIds.includes(Number(item.id)));
+      const itemType = getDiscountItemType();
+      discountAmount = selected.reduce((sum, item) => {
+        const subtotal = Number(item.subtotal || 0);
+        const v = Number(document.querySelector(`input[name="cb_discount_item_value_${item.id}"]`)?.value || 0);
+        if (! v) return sum;
+        if (itemType === 'nominal') return sum + Math.min(v, subtotal);
+        return sum + Math.round(subtotal * (v / 100));
+      }, 0);
     }
 
-    const netItems = cbDiscountItems.map(item => {
-      const lineDiscount = selectedTotal > 0 && selectedIds.includes(Number(item.id)) ? discountAmount * Number(item.subtotal || 0) / selectedTotal : Number(item.discount_amount || 0);
-      return {...item, net: Math.max(Number(item.subtotal || 0) - lineDiscount, 0)};
+    // Keterangan potongan diskon per item (di bawah nama item).
+    cbDiscountItems.forEach((item) => {
+      const el = document.getElementById('cbDiscountAmount_' + item.id);
+      if (! el) return;
+      const subtotal = Number(item.subtotal || 0);
+      let amt = 0;
+      if (cbFocCompType === 'Compliment') {
+        amt = Math.round(subtotal * (cbFocSettings.complimentDiscountPercentage / 100));
+      } else if (cbFocCompType === 'FOC') {
+        amt = Math.round(subtotal * (cbFocSettings.focDiscountPercentage / 100));
+      } else if (discountType === 'item' && getSelectedDiscountItemIds().includes(Number(item.id))) {
+        const v = Number(document.querySelector(`input[name="cb_discount_item_value_${item.id}"]`)?.value || 0);
+        if (! v) return;
+        amt = getDiscountItemType() === 'nominal' ? Math.min(v, subtotal) : Math.round(subtotal * (v / 100));
+      }
+      el.textContent = amt > 0 ? 'Diskon -' + formatRupiah(amt) : '';
     });
-    const netOrdersTotal = netItems.reduce((sum, item) => sum + item.net, 0);
-    const taxBase = netItems.filter(item => item.include_tax).reduce((sum, item) => sum + item.net, 0);
-    const serviceBase = netItems.filter(item => item.include_service_charge).reduce((sum, item) => sum + item.net, 0);
-    const taxAndServiceBase = netItems.filter(item => item.include_tax && item.include_service_charge).reduce((sum, item) => sum + item.net, 0);
-    const tax = Math.round(taxBase * cbTaxPercentage / 100);
-    const serviceCharge = Math.round((serviceBase + taxAndServiceBase * cbTaxPercentage / 100) * cbServiceChargePercentage / 100);
-    const sistaBayar = Math.max(Math.round(Math.max(cbMinimumCharge, netOrdersTotal) + tax + serviceCharge - cbCurrentDownPayment), 0);
+
+    const sistaBayar = Math.max(Math.round(cbCurrentSubTotal - cbCurrentDownPayment - discountAmount), 0);
     cbCurrentGrandTotal = sistaBayar;
 
     // Update Sisa Bayar display
@@ -895,11 +946,6 @@
 
   async function requestAuthCodeEmailBooking() {
     if (isRequestingAuthCodeEmailBooking) return;
-
-    if (getDiscountType() !== 'none' && document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked').length === 0) {
-      alert('Pilih minimal satu item yang akan didiskon.');
-      return;
-    }
 
     isRequestingAuthCodeEmailBooking = true;
     const btn = document.getElementById('cbRequestAuthCodeBtn');
@@ -923,9 +969,7 @@
       const data = await response.json();
 
       if (data.success) {
-        cbAuthCodeRequested = true;
-        document.getElementById('cb_discount_auth_code').classList.remove('hidden');
-        alert('Auth code telah dikirim. Silakan masukkan kode untuk melanjutkan.');
+        alert('Auth code telah dikirim ke email yang terdaftar.');
       } else {
         alert(data.message || 'Gagal mengirim auth code.');
       }
@@ -933,6 +977,44 @@
       alert('Error: ' + error.message);
     } finally {
       isRequestingAuthCodeEmailBooking = false;
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  }
+
+  async function requestFocAuthCodeEmailBooking() {
+    if (isRequestingFocAuthCodeEmailBooking) return;
+
+    isRequestingFocAuthCodeEmailBooking = true;
+    const btn = document.getElementById('cbRequestFocAuthCodeBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Mengirim...';
+    btn.disabled = true;
+
+    try {
+      const response = await fetch(cbSendAuthCodeEmailUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          source: 'booking-close-foc'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('Auth code telah dikirim ke email yang terdaftar.');
+      } else {
+        alert(data.message || 'Gagal mengirim auth code.');
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      isRequestingFocAuthCodeEmailBooking = false;
       btn.textContent = originalText;
       btn.disabled = false;
     }
@@ -955,51 +1037,55 @@
 
     const payload = {
       payment_mode: paymentMode,
-      foc_comp_payment_method: document.getElementById('cb_foc_comp_payment_method').value || null,
+      foc_comp_payment_method: cbFocCompType || null,
     };
 
     const discountType = getDiscountType();
-    if (discountType !== 'none') {
-      const selectedItemIds = [...document.querySelectorAll('input[name="cb_discount_order_item_ids"]:checked')].map(input => Number(input.value));
-      if (selectedItemIds.length === 0) {
-        alert('Pilih minimal satu item yang akan didiskon.');
-        return;
-      }
-      if (!cbAuthCodeRequested) {
-        alert('Request auth code terlebih dahulu.');
-        return;
-      }
+    const isFocComp = ['FOC', 'Compliment'].includes(payload.foc_comp_payment_method);
+    if (discountType !== 'none' || cbFocRequiresAuth(payload.foc_comp_payment_method)) {
       payload.discount_type = discountType;
-      payload.discount_order_item_ids = selectedItemIds;
 
-      if (discountType === 'percentage') {
-        const discountPercentage = Number(document.getElementById('cb_discount_percentage').value || 0);
+      if (discountType === 'item') {
+        const selectedIds = getSelectedDiscountItemIds();
+        const itemType = getDiscountItemType();
 
-        if (discountPercentage <= 0 || discountPercentage > 100) {
-          alert('Diskon persentase harus lebih dari 0 dan maksimal 100.');
+        if (selectedIds.length === 0) {
+          alert('Pilih minimal satu item yang akan didiskon.');
           return;
         }
 
-        payload.discount_percentage = discountPercentage;
-      }
+        const values = {};
+        selectedIds.forEach(id => {
+          const v = Number(document.querySelector(`input[name="cb_discount_item_value_${id}"]`)?.value || 0);
+          if (v > 0) values[id] = v;
+        });
 
-      if (discountType === 'nominal') {
-        const discountNominal = Number(document.getElementById('cb_discount_nominal').value || 0);
-
-        if (discountNominal <= 0) {
-          alert('Diskon nominal harus lebih dari 0.');
+        if (Object.keys(values).length !== selectedIds.length) {
+          alert('Semua item terpilih wajib punya nilai diskon lebih dari 0.');
           return;
         }
 
-        payload.discount_nominal = discountNominal;
+        payload.discount_order_item_ids = selectedIds;
+        payload.discount_item_type = itemType;
+        payload.discount_items = values;
       }
 
       const discountAuthCode = document.getElementById('cb_discount_auth_code').value.trim();
-      if (!/^\d{4}$/.test(discountAuthCode)) {
+      const focCompAuthCode = document.getElementById('cb_foc_comp_auth_code').value.trim();
+      const focNeedsAuth = isFocComp && cbFocRequiresAuth(payload.foc_comp_payment_method);
+      const needsDiscountAuth = discountType !== 'none' && !isFocComp;
+
+      if (focNeedsAuth && !/^\d{4}$/.test(focCompAuthCode)) {
+        alert('Auth code FOC / Compliment harus 4 digit.');
+        return;
+      }
+
+      if (needsDiscountAuth && !/^\d{4}$/.test(discountAuthCode)) {
         alert('Auth code diskon harus 4 digit.');
         return;
       }
 
+      const codeToVerify = isFocComp ? focCompAuthCode : discountAuthCode;
       const verifyRes = await fetch(cbVerifyAuthCodeUrl, {
         method: 'POST',
         headers: {
@@ -1008,42 +1094,41 @@
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          code: discountAuthCode,
+          code: codeToVerify,
         }),
       });
       const verifyData = await verifyRes.json();
 
       if (!verifyData.valid) {
-        alert('Auth code diskon tidak valid.');
+        alert(isFocComp ? 'Auth code FOC / Compliment tidak valid.' : 'Auth code diskon tidak valid.');
         return;
       }
 
       payload.discount_auth_code = discountAuthCode;
+      payload.foc_comp_auth_code = focCompAuthCode;
     }
 
-    if (paymentMode === 'normal' || paymentMode === 'partial') {
-      const paymentMethod = document.querySelector('input[name="cb_payment_method"]:checked')?.value;
-      if (!paymentMethod) {
-        return;
-      }
-      payload.payment_method = paymentMethod;
+    if (paymentMode === 'normal') {
+      const isFocComp = ['FOC', 'Compliment'].includes(payload.foc_comp_payment_method);
 
-      if (paymentMethod !== 'cash') {
-        const paymentReferenceNumber = document.getElementById('cb_payment_reference_number').value.trim();
-        if (!paymentReferenceNumber) {
-          alert('Nomor referensi pembayaran non-cash wajib diisi.');
+      // FOC/Compliment → payment_method otomatis, tanpa metode normal.
+      if (isFocComp) {
+        payload.payment_method = payload.foc_comp_payment_method;
+      } else {
+        const paymentMethod = document.querySelector('input[name="cb_payment_method"]:checked')?.value;
+        if (!paymentMethod) {
           return;
         }
-        payload.payment_reference_number = paymentReferenceNumber;
-      }
+        payload.payment_method = paymentMethod;
 
-      if (paymentMode === 'partial') {
-        const partialPaidAmount = Number(document.getElementById('cb_partial_paid_amount').value || 0);
-        if (partialPaidAmount <= 0 || partialPaidAmount >= cbCurrentGrandTotal) {
-          alert('Nominal bayar sebagian (DP) harus lebih besar dari 0 dan kurang dari total tagihan.');
-          return;
+        if (paymentMethod !== 'cash') {
+          const paymentReferenceNumber = document.getElementById('cb_payment_reference_number').value.trim();
+          if (!paymentReferenceNumber) {
+            alert('Nomor referensi pembayaran non-cash wajib diisi.');
+            return;
+          }
+          payload.payment_reference_number = paymentReferenceNumber;
         }
-        payload.partial_paid_amount = partialPaidAmount;
       }
     } else {
       const splitCashAmount = Number(document.getElementById('cb_split_cash').value || 0);
@@ -1165,24 +1250,11 @@
   });
 
   document.querySelectorAll('input[name="cb_discount_type"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      updateDiscountUI();
-      updateGrandTotalFromDiscount();
-    });
+    radio.addEventListener('change', updateDiscountUI);
   });
 
   document.querySelectorAll('input[name="cb_payment_method"]').forEach((radio) => {
     radio.addEventListener('change', updatePaymentModeUI);
-  });
-
-  document.getElementById('cb_discount_nominal_display').addEventListener('input', (event) => {
-    const enteredAmount = extractNumber(event.target.value);
-    setDiscountNominalInput(enteredAmount);
-    updateGrandTotalFromDiscount();
-  });
-
-  document.getElementById('cb_discount_percentage').addEventListener('input', (event) => {
-    updateGrandTotalFromDiscount();
   });
 
   document.getElementById('cb_split_cash_display').addEventListener('input', (event) => onSplitInput('cash', event));

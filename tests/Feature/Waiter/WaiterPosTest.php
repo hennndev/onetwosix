@@ -835,7 +835,7 @@ test('waiter pos page uses inventory pos_name as product display name', function
         ->and($productPayload['name'])->toBe('POS Display Name');
 });
 
-test('waiter checkout keeps FOC billed and makes only Compliment free', function (string $categoryMain, float $expectedPrice) {
+test('waiter checkout prices FOC and Compliment items as free', function (string $categoryMain) {
     $waiter = posWaiter();
     $customer = User::factory()->create();
     $area = posArea();
@@ -854,7 +854,7 @@ test('waiter checkout keeps FOC billed and makes only Compliment free', function
         ->get(route('waiter.pos'))
         ->assertOk();
 
-    expect((float) collect($page->viewData('products'))->firstWhere('id', $productId)['price'])->toBe($expectedPrice);
+    expect((float) collect($page->viewData('products'))->firstWhere('id', $productId)['price'])->toBe(50000.0);
 
     actingAs($waiter)
         ->withSession([
@@ -876,13 +876,13 @@ test('waiter checkout keeps FOC billed and makes only Compliment free', function
     $order = Order::query()->where('table_session_id', $session->id)->latest('id')->firstOrFail();
     $orderItem = $order->items()->firstOrFail();
 
-    expect((float) $orderItem->price)->toBe($expectedPrice)
-        ->and((float) $orderItem->subtotal)->toBe($expectedPrice * 2)
-        ->and((float) $order->total)->toBe($expectedPrice * 2)
+    expect((float) $orderItem->price)->toBe(0.0)
+        ->and((float) $orderItem->subtotal)->toBe(0.0)
+        ->and((float) $order->total)->toBe(0.0)
         ->and($product->fresh()->stock_quantity)->toBe(8);
 })->with([
-    'FOC remains billed' => ['foc', 50000.0],
-    'Compliment is free' => ['compliment', 0.0],
+    'FOC is free' => ['foc'],
+    'Compliment is free' => ['compliment'],
 ]);
 
 test('waiter pos page hides inventory items marked invisible in pos', function () {

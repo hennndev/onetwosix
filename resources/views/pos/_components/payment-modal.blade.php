@@ -1,57 +1,3 @@
-<!-- Payment Type Chooser (walk-in) -->
-<div x-show="showPaymentTypeModal"
-     x-transition:enter="transition ease-out duration-200"
-     x-transition:enter-start="opacity-0"
-     x-transition:enter-end="opacity-100"
-     x-transition:leave="transition ease-in duration-150"
-     x-transition:leave-start="opacity-100"
-     x-transition:leave-end="opacity-0"
-     style="display: none;"
-     class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
-     @click.self="showPaymentTypeModal = false">
-  <div class="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-xl"
-       @click.stop>
-    <div class="flex items-start justify-between p-6 pb-4">
-      <div>
-        <h3 class="text-lg font-bold text-gray-900">Pilih Metode Pembayaran</h3>
-        <p class="text-sm text-gray-500 mt-0.5">Pilih jenis pembayaran untuk transaksi ini</p>
-      </div>
-      <button @click="showPaymentTypeModal = false"
-              class="text-gray-400 hover:text-gray-600 transition mt-0.5">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-    <div class="px-6 pb-6 space-y-3">
-      <button type="button"
-              @click="selectWalkInPaymentType('')"
-              class="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-green-400 hover:bg-green-50/50 transition text-left">
-        <h4 class="font-bold text-gray-900 text-sm">Pembayaran Biasa</h4>
-        <p class="text-xs text-gray-500 mt-0.5">Tunai, Debit, QRIS, Transfer, Split, Parsial / Hutang</p>
-      </button>
-      <button type="button"
-              @click="selectWalkInPaymentType('FOC')"
-              class="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-green-400 hover:bg-green-50/50 transition text-left">
-        <h4 class="font-bold text-gray-900 text-sm">FOC</h4>
-        <p class="text-xs text-gray-500 mt-0.5">Free of charge — seluruh transaksi dibebaskan</p>
-      </button>
-      <button type="button"
-              @click="selectWalkInPaymentType('Compliment')"
-              class="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-green-400 hover:bg-green-50/50 transition text-left">
-        <h4 class="font-bold text-gray-900 text-sm">Compliment</h4>
-        <p class="text-xs text-gray-500 mt-0.5">Diskon 100% — wajib auth code</p>
-      </button>
-    </div>
-  </div>
-</div>
-
 <div x-show="showCheckoutModal"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
@@ -67,7 +13,12 @@
     <!-- Header -->
     <div class="flex items-start justify-between p-6 pb-4">
       <div>
-        <h3 class="text-lg font-bold text-gray-900">Pembayaran</h3>
+        <div class="flex items-center gap-2 flex-wrap">
+          <h3 class="text-lg font-bold text-gray-900">Pembayaran</h3>
+          <span x-show="checkoutForm.foc_comp_payment_method"
+                class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full"
+                x-text="checkoutForm.foc_comp_payment_method === 'FOC' ? 'FOC (free of charge)' : checkoutForm.foc_comp_payment_method"></span>
+        </div>
         <p class="text-sm text-gray-500 mt-0.5">Lengkapi detail pembayaran untuk menyelesaikan transaksi</p>
       </div>
       <button @click="showCheckoutModal = false"
@@ -183,80 +134,15 @@
         </div>
       </div>{{-- end waiter section --}}
 
-      <div class="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-wide text-amber-800">Discount Item (Opsional)</p>
-          <p class="mt-0.5 text-xs text-amber-700" x-text="selectedDiscountItemIds.length + ' item dipilih'"></p>
-          <div class="mt-2 grid grid-cols-3 gap-2">
-            <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
-                   :class="selectedDiscount.type === 'none' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
-              <input type="radio" name="selected_discount_type" value="none" class="sr-only" x-model="selectedDiscount.type" @change="invalidateDiscountApproval()">
-              <span class="text-xs font-semibold text-gray-700">Tanpa</span>
-            </label>
-            <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
-                   :class="selectedDiscount.type === 'percentage' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
-              <input type="radio" name="selected_discount_type" value="percentage" class="sr-only" x-model="selectedDiscount.type" @change="invalidateDiscountApproval()">
-              <span class="text-xs font-semibold text-gray-700">%</span>
-            </label>
-            <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
-                   :class="selectedDiscount.type === 'nominal' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
-              <input type="radio" name="selected_discount_type" value="nominal" class="sr-only" x-model="selectedDiscount.type" @change="invalidateDiscountApproval()">
-              <span class="text-xs font-semibold text-gray-700">Nominal</span>
-            </label>
-          </div>
-        </div>
-
-        <div x-show="selectedDiscount.type === 'percentage'"
-             style="display: none;">
-          <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Persentase</label>
-          <input type="number" min="0" max="100" step="0.01" x-model.number="selectedDiscount.value" @input="invalidateDiscountApproval()" placeholder="Contoh: 10" class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
-        </div>
-
-        <div x-show="selectedDiscount.type === 'nominal'"
-             style="display: none;">
-          <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Nominal</label>
-          <input type="text" inputmode="numeric" :value="formatCurrency(selectedDiscount.value || 0)" @input="onSelectedDiscountNominalInput($event)" class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
-        </div>
-
-        <div x-show="selectedDiscount.type !== 'none'"
-             style="display: none;">
-          <p class="text-xs font-semibold text-gray-600">Pilih item yang mendapat diskon</p>
-          <div class="mt-1.5 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-amber-200 bg-white p-2">
-            <template x-for="line in cart"
-                      :key="line.id">
-              <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50">
-                <input type="checkbox" @change="toggleDiscountItem(line.id)" :checked="selectedDiscountItemIds.includes(inventoryId(line.id))" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
-                <span class="min-w-0 flex-1 truncate text-xs text-gray-700"><span x-text="line.quantity"></span>x <span x-text="line.name"></span></span>
-              </label>
-            </template>
-          </div>
-        </div>
-
-        <input x-show="selectedDiscount.type !== 'none'"
-               style="display: none;"
-               type="text" maxlength="500" x-model="selectedDiscount.reason" @input="invalidateDiscountApproval()" placeholder="Alasan diskon" class="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm bg-white">
-
-        <div x-show="selectedDiscount.type !== 'none'"
-             style="display: none;"
-             class="flex gap-2">
-          <button type="button" @click="requestSelectedDiscountAuthCode()" :disabled="selectedDiscount.requestingAuthCode || selectedDiscountItemIds.length === 0 || Number(selectedDiscount.value || 0) <= 0" class="rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-200 disabled:opacity-50" x-text="selectedDiscount.requestingAuthCode ? 'Mengirim...' : (selectedDiscount.authCodeRequested ? 'Kirim Ulang Auth Code' : 'Request Auth Code')"></button>
-          <input x-show="selectedDiscount.authCodeRequested" type="password" inputmode="numeric" maxlength="4" x-model="selectedDiscount.managerCode" placeholder="Masukkan auth code" class="min-w-0 flex-1 rounded-lg border border-amber-200 px-3 py-2 text-sm">
-          <button x-show="selectedDiscount.authCodeRequested" type="button" @click="approveSelectedDiscount()" :disabled="selectedDiscount.approving" class="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-500 disabled:opacity-50" x-text="selectedDiscount.approving ? 'Memproses...' : 'Setujui'"></button>
-        </div>
-
-        <div x-show="selectedDiscount.token && selectedDiscount.type !== 'none'" class="flex justify-between text-xs font-bold text-amber-800">
-          <span>Total diskon item</span><span x-text="'-' + formatCurrency(selectedDiscount.amount)"></span>
-        </div>
-        <div x-show="selectedDiscount.token && selectedDiscount.type !== 'none'" class="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-700">Disetujui</div>
-      </div>
-
       <div x-show="checkoutForm.customer_type === 'walk-in'"
            style="display: none;"
            class="space-y-4">
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+        {{-- Blok discount OPSIONAL hanya utk pembayaran biasa; FOC/Compliment diskonnya dari setting. --}}
+        <div x-show="!['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method)"
+             class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
           <div>
             <label class="block text-xs font-semibold text-gray-600 mb-2">Discount (Opsional)</label>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-2 gap-2">
               <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
                      :class="checkoutForm.discount_type === 'none' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
                 <input type="radio"
@@ -267,49 +153,75 @@
                 <span class="text-xs font-semibold text-gray-700">Tanpa</span>
               </label>
               <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
-                     :class="checkoutForm.discount_type === 'percentage' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                     :class="checkoutForm.discount_type === 'item' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
                 <input type="radio"
                        name="walk_in_discount_type"
-                       value="percentage"
+                       value="item"
                        class="sr-only"
                        x-model="checkoutForm.discount_type">
-                <span class="text-xs font-semibold text-gray-700">%</span>
-              </label>
-              <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
-                     :class="checkoutForm.discount_type === 'nominal' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
-                <input type="radio"
-                       name="walk_in_discount_type"
-                       value="nominal"
-                       class="sr-only"
-                       x-model="checkoutForm.discount_type">
-                <span class="text-xs font-semibold text-gray-700">Nominal</span>
+                <span class="text-xs font-semibold text-gray-700">Per Item</span>
               </label>
             </div>
           </div>
 
-          <div x-show="checkoutForm.discount_type === 'percentage'"
-               style="display: none;">
-            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Persentase</label>
-            <input type="number"
-                   min="0"
-                   max="100"
-                   step="0.01"
-                   placeholder="Contoh: 10"
-                   x-model.number="checkoutForm.discount_percentage"
-                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          {{-- Diskon per item: pilih item + isi nilai diskon berbeda per item. --}}
+          <div x-show="checkoutForm.discount_type === 'item'"
+               style="display: none;"
+               class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-2">Pilih Item yang Didiskon</label>
+              <div class="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                <template x-for="line in cart" :key="line.id">
+                  <label class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-amber-50 cursor-pointer">
+                    <input type="checkbox"
+                           :checked="checkoutForm.discount_item_ids.includes(inventoryId(line.id))"
+                           @change="toggleDiscountItem(line.id)"
+                           class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-xs text-gray-700"
+                            x-text="line.quantity + 'x ' + line.name"></span>
+                      <span class="block text-[11px] text-red-600"
+                            x-show="walkInItemDiscountAmount(line) > 0"
+                            x-text="'Diskon -' + formatCurrency(walkInItemDiscountAmount(line))"></span>
+                    </span>
+                    <span class="text-xs font-semibold text-gray-700"
+                          x-text="formatCurrency(Number(line.quantity) * Number(line.price || 0))"></span>
+                    <input type="number"
+                           min="0"
+                           step="0.01"
+                           :max="checkoutForm.discount_item_type === 'percentage' ? 100 : Math.round(Number(line.quantity) * Number(line.price || 0))"
+                           :placeholder="checkoutForm.discount_item_type === 'nominal' ? 'Rp' : '%'"
+                           :value="checkoutForm.discount_items[inventoryId(line.id)] || ''"
+                           @input="onWalkInDiscountItemValueInput(inventoryId(line.id), $event)"
+                           class="w-20 rounded-md border border-gray-300 px-2 py-1 text-xs text-right focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                  </label>
+                </template>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Jenis Diskon</label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="flex items-center justify-center gap-2 p-2 rounded-lg border cursor-pointer transition"
+                       :class="checkoutForm.discount_item_type === 'percentage' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                  <input type="radio"
+                         value="percentage"
+                         class="sr-only"
+                         x-model="checkoutForm.discount_item_type">
+                  <span class="text-xs font-semibold text-gray-700">%</span>
+                </label>
+                <label class="flex items-center justify-center gap-2 p-2 rounded-lg border cursor-pointer transition"
+                       :class="checkoutForm.discount_item_type === 'nominal' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                  <input type="radio"
+                         value="nominal"
+                         class="sr-only"
+                         x-model="checkoutForm.discount_item_type">
+                  <span class="text-xs font-semibold text-gray-700">Nominal</span>
+                </label>
+              </div>
+            </div>
           </div>
 
-          <div x-show="checkoutForm.discount_type === 'nominal'"
-               style="display: none;">
-            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Nominal</label>
-            <input type="text"
-                   inputmode="numeric"
-                   :value="formatCurrency(checkoutForm.discount_nominal || 0)"
-                   @input="onWalkInDiscountNominalInput($event)"
-                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-          </div>
-
-          <div x-show="checkoutForm.discount_type !== 'none' || ['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method)"
+          <div x-show="checkoutForm.discount_type !== 'none'"
                style="display: none;">
             <label class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code Diskon (4 digit)</label>
             <input type="password"
@@ -327,7 +239,25 @@
           </div>
         </div>
 
-        <div>
+        {{-- Auth code khusus FOC/Compliment (wajib jika setting requires_auth_code) --}}
+        <div x-show="['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method) && walkInFocRequiresAuth()"
+             style="display: none;">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code FOC / Compliment (4 digit)</label>
+          <input type="password"
+                 inputmode="numeric"
+                 maxlength="4"
+                 x-model="checkoutForm.foc_comp_auth_code"
+                 placeholder="Masukkan auth code"
+                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          <button type="button"
+                  @click="requestFocAuthCodeEmail()"
+                  :disabled="isRequestingFocAuthCodeEmail"
+                  class="mt-2 inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  x-text="isRequestingFocAuthCodeEmail ? 'Mengirim...' : 'Request Auth Code'">
+          </button>
+        </div>
+
+        <div x-show="!['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method)">
           <label class="block text-xs font-semibold text-gray-600 mb-2">Mode Pembayaran</label>
           <div class="grid grid-cols-2 gap-2">
             <label class="flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer transition"
@@ -351,7 +281,7 @@
           </div>
         </div>
 
-        <div x-show="checkoutForm.payment_mode === 'normal'"
+        <div x-show="checkoutForm.payment_mode === 'normal' && !['FOC', 'Compliment'].includes(checkoutForm.foc_comp_payment_method)"
              style="display: none;"
              class="space-y-3">
           <div>
@@ -557,11 +487,9 @@
         <div x-show="discountAmount() > 0"
              style="display: none;"
              class="flex justify-between text-sm text-orange-400">
-          <span x-text="selectedDiscount.token ? 'Diskon Item' : (checkoutForm.customer_type === 'walk-in'
-                ? (checkoutForm.discount_type === 'percentage'
-                  ? 'Diskon (' + getWalkInDiscountPercentage() + '%)'
-                  : 'Diskon Nominal')
-                : ('Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)'))"></span>
+          <span x-text="checkoutForm.customer_type === 'walk-in'
+                ? 'Diskon Per Item'
+                : ('Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)')"></span>
           <span x-text="'-' + formatCurrency(discountAmount())"></span>
         </div>
         <div class="border-t border-gray-700 pt-2.5 flex justify-between font-bold text-white">

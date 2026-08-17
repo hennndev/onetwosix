@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class PrinterRequest extends FormRequest
 {
@@ -19,6 +20,8 @@ class PrinterRequest extends FormRequest
         $areaCodesUpper = array_map('strtoupper', $areaCodes);
         $validLocations = array_unique(array_merge($serviceLocations, $areaCodes, $areaCodesLower, $areaCodesUpper));
 
+        $ownId = $this->route('printer')?->id;
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'in:'.implode(',', $validLocations)],
@@ -34,7 +37,10 @@ class PrinterRequest extends FormRequest
             'logo' => ['nullable', 'image', 'max:2048', 'dimensions:max_width=300,max_height=200'],
             'show_qr_code' => ['boolean'],
             'width' => ['nullable', 'integer', 'min:24', 'max:48'],
-            'copies' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'receiver_printer_id' => [
+                'nullable', 'integer', 'exists:printers,id',
+                Rule::notIn($ownId ? [$ownId] : []),
+            ],
             'is_default' => ['boolean'],
             'is_active' => ['boolean'],
         ];

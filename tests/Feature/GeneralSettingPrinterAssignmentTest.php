@@ -92,6 +92,8 @@ test('general settings can save receipt printer assignments', function () {
             'auth_code_target_email' => 'approval@company.test',
             'auth_code_delivery_channel' => 'both',
             'daily_auth_code_access_emails' => "manager@company.test\nops@company.test",
+            'foc_discount_percentage' => 0,
+            'compliment_discount_percentage' => 100,
         ])
         ->assertRedirect(route('admin.settings.general.index'));
 

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StorePosDiscountApprovalRequest;
 use App\Jobs\DispatchPrintTicketJob;
 use App\Models\Area;
 use App\Models\BarOrder;
@@ -26,7 +25,6 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
-use App\Services\PosDiscountService;
 use App\Services\PosStockConsumer;
 use App\Services\PrinterService;
 use App\Services\SessionBillingCalculator;
@@ -50,29 +48,7 @@ class PosController extends Controller
         protected DashboardSyncService $dashboardSyncService,
         protected PosStockConsumer $posStockConsumer,
         protected SessionBillingCalculator $sessionBillingCalculator,
-        protected PosDiscountService $posDiscountService,
     ) {}
-
-    public function approveDiscount(StorePosDiscountApprovalRequest $request): JsonResponse
-    {
-        $requestedAt = (int) $request->session()->get('pos_discount_auth_code_requested_at', 0);
-        if ($requestedAt === 0 || now()->timestamp - $requestedAt > 300) {
-            throw ValidationException::withMessages([
-                'manager_auth_code' => 'Request auth code terlebih dahulu sebelum mengajukan diskon.',
-            ]);
-        }
-
-        $result = $this->posDiscountService->issue($request->user(), session()->get('pos_cart', []), $request->validated());
-        $request->session()->forget('pos_discount_auth_code_requested_at');
-
-        return response()->json([
-            'success' => true,
-            'approval_token' => $result['token'],
-            'expires_at' => $result['approval']->expires_at->toIso8601String(),
-            'discount_amount' => collect($result['approval']->intent['discount']['lines'])->sum('discount_amount'),
-            'lines' => $result['approval']->intent['discount']['lines'],
-        ], 201);
-    }
 
     public function index(Request $request)
     {
@@ -531,6 +507,105 @@ class PosController extends Controller
         ]);
     }
 
+    /**
+     * Normalisasi diskon per item menjadi map id→nilai.
+     * Map baru (discount_items) menang; bila kosong, fallback legacy discount_item_ids + satu nilai.
+     */
+    protected function normalizeDiscountItems(array $raw = [], array $legacyIds = [], ?float $legacyValue = null): array
+    {
+        $map = [];
+        foreach ($raw as $id => $value) {
+            $map[(int) $id] = (float) $value;
+        }
+
+        if ($map === [] && $legacyIds !== []) {
+            $v = (float) $legacyValue;
+            foreach ($legacyIds as $id) {
+                $map[(int) $id] = $v;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Hitung diskon per-item dari cart — semua mode diskon menandai item.
+     * FOC/Compliment → semua item ikut pct setting (bulk).
+     * Per-item biasa → hanya item terpilih (map id→nilai, nilai beda per item).
+     * Global % → semua item pct sama. Global nominal → pro-rata proporsional, sisa cents di item terakhir.
+     *
+     * @return array{pct_by_id: array<int, float>, amount_by_id: array<int, float>, total: float}
+     */
+    protected function resolveItemDiscounts(array $cart, string $mode, float $value = 0.0, ?array $itemValues = null, ?string $itemType = null): array
+    {
+        $pctById = [];
+        $amountById = [];
+        $total = 0.0;
+
+        // Kumpulkan subtotal per id (2 pass dibutuhkan untuk pro-rata nominal global).
+        $subtotalById = [];
+        $grossTotal = 0.0;
+        foreach ($cart as $productId => $cartItem) {
+            $itemId = (int) str_replace('item_', '', (string) $productId);
+            $subtotal = round((float) $cartItem['price'] * (int) $cartItem['quantity'], 2);
+            $subtotalById[$itemId] = $subtotal;
+            $grossTotal += $subtotal;
+        }
+
+        $selectedAll = in_array($mode, ['foc', 'global-percentage', 'global-nominal'], true);
+        $remainingCents = $mode === 'global-nominal' ? (int) round($value * 100) : 0;
+        $lastSelectedId = null;
+
+        // Tentukan id yang didiskon + id terakhir (untuk menampung sisa cents).
+        foreach ($subtotalById as $itemId => $_) {
+            if ($selectedAll || ($itemValues !== null && array_key_exists($itemId, $itemValues))) {
+                $lastSelectedId = $itemId;
+            }
+        }
+
+        foreach ($subtotalById as $itemId => $subtotal) {
+            $selected = $selectedAll || ($itemValues !== null && array_key_exists($itemId, $itemValues));
+            if (! $selected) {
+                $pctById[$itemId] = 0.0;
+                $amountById[$itemId] = 0.0;
+
+                continue;
+            }
+
+            if ($mode === 'foc' || $mode === 'global-percentage') {
+                $pct = max((float) $value, 0.0);
+                $amount = $pct > 0 ? round($subtotal * $pct / 100, 2) : 0.0;
+            } elseif ($mode === 'global-nominal') {
+                if ($itemId === $lastSelectedId) {
+                    $amount = round(max($remainingCents, 0) / 100, 2);
+                } else {
+                    $shareCents = min((int) round($subtotal * 100), (int) floor($value * 100 * ($grossTotal > 0 ? $subtotal / $grossTotal : 0)));
+                    $shareCents = min($shareCents, max($remainingCents, 0));
+                    $amount = $shareCents / 100;
+                    $remainingCents -= $shareCents;
+                }
+                $amount = min($amount, $subtotal);
+                $pct = $subtotal > 0 ? round($amount / $subtotal * 100, 2) : 0.0;
+            } else {
+                // mode 'item': nilai per item dari map.
+                $itemValue = (float) ($itemValues[$itemId] ?? 0);
+                if ($itemType === 'nominal') {
+                    $amount = min($itemValue, $subtotal);
+                    $pct = $subtotal > 0 ? round($amount / $subtotal * 100, 2) : 0.0;
+                } else {
+                    $pct = max($itemValue, 0.0);
+                    $amount = $pct > 0 ? round($subtotal * $pct / 100, 2) : 0.0;
+                }
+            }
+
+            $pctById[$itemId] = $pct;
+            $amountById[$itemId] = $amount;
+            $total += $amount;
+        }
+
+        return ['pct_by_id' => $pctById, 'amount_by_id' => $amountById, 'total' => round($total, 2)];
+    }
+
     public function checkout(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -538,10 +613,17 @@ class PosController extends Controller
             'customer_user_id' => 'required_if:customer_type,booking|nullable|exists:users,id',
             'table_id' => 'nullable|exists:tables,id',
             'discount_percentage' => 'nullable|integer|min:0|max:100',
-            'discount_type' => 'nullable|in:none,percentage,nominal',
+            'discount_type' => 'nullable|in:none,percentage,nominal,item',
             'discount_nominal' => 'nullable|numeric|min:0',
             'discount_auth_code' => 'nullable|digits:4',
-            'payment_method' => 'nullable|in:cash,debit,kredit,qris,transfer',
+            'foc_comp_auth_code' => 'nullable|digits:4',
+            'discount_item_ids' => 'nullable|array',
+            'discount_item_ids.*' => 'integer',
+            'discount_items' => 'nullable|array',
+            'discount_items.*' => 'numeric|min:0',
+            'discount_item_type' => 'nullable|in:percentage,nominal',
+            'discount_item_value' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|in:cash,debit,kredit,qris,transfer,FOC,Compliment',
             'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
             'payment_mode' => 'nullable|in:normal,split,partial,debt',
             'partial_paid_amount' => 'nullable|numeric|min:0',
@@ -557,7 +639,6 @@ class PosController extends Controller
             'checker_printer_ids.*' => 'integer|exists:printers,id',
             'auto_print_receipt' => 'nullable|boolean',
             'idempotency_key' => 'nullable|uuid',
-            'discount_approval_token' => 'nullable|string|size:64',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
@@ -601,22 +682,6 @@ class PosController extends Controller
 
         DB::beginTransaction();
         try {
-            $selectedDiscount = $this->posDiscountService->consume(
-                $validated['discount_approval_token'] ?? null,
-                $request->user(),
-                $cart,
-                [
-                    'customer_type' => $validated['customer_type'],
-                    'customer_user_id' => $validated['customer_user_id'] ?? null,
-                    'walk_in_customer_id' => $request->input('walk_in_customer_id'),
-                    'table_id' => $validated['table_id'] ?? null,
-                ],
-            );
-
-            if ($selectedDiscount && ((int) ($validated['discount_percentage'] ?? 0) > 0 || ($validated['discount_type'] ?? 'none') !== 'none' || ($validated['foc_comp_payment_method'] ?? null) === 'Compliment')) {
-                throw ValidationException::withMessages(['discount_approval_token' => 'Diskon item tidak dapat digabung dengan diskon transaksi atau Compliment.']);
-            }
-
             // Only booking for now
             if ($validated['customer_type'] === 'booking') {
                 // Find active table session
@@ -665,28 +730,59 @@ class PosController extends Controller
 
                 $orderNumber = (string) $order->order_number;
                 $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
+                $discountType = $validated['discount_type'] ?? 'percentage';
                 $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
+                $discountNominal = (float) ($validated['discount_nominal'] ?? 0);
                 $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
+                $focCompAuthCode = (string) ($validated['foc_comp_auth_code'] ?? '');
+                $discountItemIds = collect($validated['discount_item_ids'] ?? [])->map(fn ($id): int => (int) $id)->unique()->values()->all();
+                $discountItemType = $validated['discount_item_type'] ?? null;
+                $discountItemValue = (float) ($validated['discount_item_value'] ?? 0);
+                // Map id→nilai (nilai berbeda per item); fallback legacy bila map kosong.
+                $discountItemValues = $this->normalizeDiscountItems($validated['discount_items'] ?? [], $discountItemIds, $discountItemValue);
+                $generalSettings = GeneralSetting::instance();
 
+                // Diskon FOC/Compliment dari setting (default: Compliment 100%, FOC 0%).
                 if ($focCompPaymentMethod === 'Compliment') {
-                    $discountPercentage = 100;
+                    $discountPercentage = $generalSettings->complimentDiscountPercentage();
+                } elseif ($focCompPaymentMethod === 'FOC') {
+                    $discountPercentage = $generalSettings->focDiscountPercentage();
                 }
 
-                $requiresAuthCode = $discountPercentage > 0 || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+                // Mutex: diskon per item tidak bisa digabung dengan FOC/Compliment atau diskon transaksi.
+                if (count($discountItemValues) > 0 && ($focCompPaymentMethod === 'FOC' || $focCompPaymentMethod === 'Compliment' || $discountPercentage > 0)) {
+                    throw ValidationException::withMessages([
+                        'discount_item_ids' => 'Diskon per item tidak dapat digabung dengan diskon transaksi atau FOC/Compliment.',
+                    ]);
+                }
+
+                // Auth code: regular discount selalu; FOC/Compliment sesuai setting (tidak otomatis).
+                $isFocComp = in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+                $focTypeRequiresAuth = ($focCompPaymentMethod === 'FOC' && $generalSettings->focRequiresAuthCode())
+                    || ($focCompPaymentMethod === 'Compliment' && $generalSettings->complimentRequiresAuthCode());
+
+                $requiresAuthCode = $focTypeRequiresAuth || (! $isFocComp && ($discountPercentage > 0 || count($discountItemValues) > 0));
 
                 if ($requiresAuthCode) {
-                    if ($discountAuthCode === '') {
+                    // FOC/Compliment pakai field auth sendiri; diskon biasa pakai discount_auth_code.
+                    $authCode = $isFocComp ? $focCompAuthCode : $discountAuthCode;
+
+                    if ($authCode === '') {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code wajib diisi untuk FOC, Compliment.'
+                                : 'Auth code wajib diisi untuk diskon.',
                         ]);
                     }
 
                     $today = now()->format('Y-m-d');
                     $authRecord = DailyAuthCode::forDate($today);
 
-                    if ($discountAuthCode !== $authRecord->active_code) {
+                    if ($authCode !== $authRecord->active_code) {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code diskon tidak valid.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code FOC / Compliment tidak valid.'
+                                : 'Auth code diskon tidak valid.',
                         ]);
                     }
                 }
@@ -699,6 +795,21 @@ class PosController extends Controller
                 $generalSettings = GeneralSetting::instance();
                 $taxPercentage = (float) $generalSettings->tax_percentage;
                 $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
+
+                // Semua mode menandai item: FOC → semua; per-item → terpilih; global %/nominal → semua (pro-rata).
+                $discountMode = $isFocComp
+                    ? 'foc'
+                    : (count($discountItemValues) > 0
+                        ? 'item'
+                        : ($discountType === 'nominal' ? 'global-nominal' : 'global-percentage'));
+                $discountValue = $isFocComp
+                    ? (float) $discountPercentage
+                    : (count($discountItemValues) > 0
+                        ? 0.0
+                        : ($discountType === 'nominal' ? (float) $discountNominal : (float) $discountPercentage));
+                $itemDiscounts = $this->resolveItemDiscounts($cart, $discountMode, $discountValue, $discountItemValues, $discountItemType);
+                $discountPctById = $itemDiscounts['pct_by_id'];
+                $discountAmountById = $itemDiscounts['amount_by_id'];
 
                 // Create Order Items from cart
                 foreach ($cart as $productId => $cartItem) {
@@ -720,7 +831,9 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
-                    $lineDiscount = (float) ($selectedDiscount['lines'][$inventoryItem->id]['discount'] ?? 0);
+                    // FOC → semua item; per-item → terpilih; global %/nominal → semua item (pro-rata).
+                    $linePct = (float) ($discountPctById[$inventoryItemId] ?? 0);
+                    $lineDiscount = (float) ($discountAmountById[$inventoryItemId] ?? 0);
                     $netSubtotal = max($subtotal - $lineDiscount, 0);
                     $selectedDiscountTotal += $lineDiscount;
                     $includeTax = (bool) $inventoryItem->include_tax;
@@ -755,8 +868,10 @@ class PosController extends Controller
                         'price' => $price,
                         'subtotal' => $subtotal,
                         'discount_amount' => $lineDiscount,
-                        'discount_reason' => $selectedDiscount['lines'][$inventoryItem->id]['reason'] ?? null,
-                        'discount_approval_id' => $selectedDiscount['approval']->id ?? null,
+                        'discount_reason' => $lineDiscount > 0 ? 'Diskon item' : null,
+                        'discount_approval_id' => null,
+                        'is_discount' => $lineDiscount > 0,
+                        'discount_pct' => $lineDiscount > 0 ? $linePct : 0,
                         'tax_amount' => $itemTaxAmount,
                         'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
@@ -766,13 +881,14 @@ class PosController extends Controller
 
                 }
 
-                $orderTotals = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, $discountPercentage, null, [
+                // Semua mode menandai item → diskon transaksi = jumlah rupiah per item (tanpa double count).
+                $orderTotals = $this->calculateWalkInTotals($itemsTotal, 0, $selectedDiscountTotal, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ], true);
-                $discountAmount = $selectedDiscountTotal + (float) $orderTotals['discount_amount'];
-                $finalTotal = (float) $orderTotals['subtotal_after_discount'];
+                $discountAmount = (float) $orderTotals['discount_amount'];
+                $finalTotal = max($itemsTotal - $discountAmount, 0);
 
                 // Update Order totals
                 $order->update([
@@ -780,10 +896,6 @@ class PosController extends Controller
                     'discount_amount' => $discountAmount,
                     'total' => $finalTotal,
                 ]);
-
-                if ($selectedDiscount) {
-                    $this->posDiscountService->markConsumed($selectedDiscount['approval'], $order);
-                }
 
                 // Route items to Kitchen/Bar and print tickets
                 $this->routeOrderToPreparation($order, $tableSession, $orderNumber, null, $selectedCheckerPrinterIds);
@@ -862,18 +974,44 @@ class PosController extends Controller
                 $discountPercentage = 0;
                 $discountNominal = 0;
                 $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
+                $focCompAuthCode = (string) ($validated['foc_comp_auth_code'] ?? '');
+                $discountItemIds = collect($validated['discount_item_ids'] ?? [])->map(fn ($id): int => (int) $id)->unique()->values()->all();
+                $discountItemType = $validated['discount_item_type'] ?? null;
+                $discountItemValue = (float) ($validated['discount_item_value'] ?? 0);
+                // Map id→nilai (nilai berbeda per item); fallback legacy bila map kosong.
+                $discountItemValues = $this->normalizeDiscountItems($validated['discount_items'] ?? [], $discountItemIds, $discountItemValue);
+                $generalSettings = GeneralSetting::instance();
+                $isFocComp = in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
 
+                // Mutex: diskon per item tidak bisa digabung dengan FOC/Compliment atau diskon transaksi global.
+                if (count($discountItemValues) > 0 && ($isFocComp || in_array($discountType, ['percentage', 'nominal'], true))) {
+                    throw ValidationException::withMessages([
+                        'discount_item_ids' => 'Diskon per item tidak dapat digabung dengan diskon transaksi atau FOC/Compliment.',
+                    ]);
+                }
+
+                // Diskon FOC/Compliment dari setting (default: Compliment 100%, FOC 0%).
                 if ($focCompPaymentMethod === 'Compliment') {
                     $discountType = 'percentage';
-                    $discountPercentage = 100;
+                    $discountPercentage = $generalSettings->complimentDiscountPercentage();
+                } elseif ($focCompPaymentMethod === 'FOC') {
+                    $discountType = $generalSettings->focDiscountPercentage() > 0 ? 'percentage' : 'none';
+                    $discountPercentage = $generalSettings->focDiscountPercentage();
                 }
 
                 if ($discountType === 'percentage') {
-                    if ($discountPercentage <= 0) {
+                    // FOC/Compliment boleh 0% (dari setting); diskon manual wajib > 0.
+                    if (! $isFocComp && $discountPercentage <= 0) {
                         $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
                     }
 
-                    if ($discountPercentage <= 0 || $discountPercentage > 100) {
+                    if ($discountPercentage < 0 || $discountPercentage > 100) {
+                        throw ValidationException::withMessages([
+                            'discount_percentage' => 'Diskon persentase harus antara 0 dan 100.',
+                        ]);
+                    }
+
+                    if (! $isFocComp && $discountPercentage <= 0) {
                         throw ValidationException::withMessages([
                             'discount_percentage' => 'Diskon persentase harus lebih dari 0 dan maksimal 100.',
                         ]);
@@ -890,21 +1028,32 @@ class PosController extends Controller
                     }
                 }
 
-                $requiresAuthCode = $discountType !== 'none' || in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true);
+                // Auth code: regular discount selalu; FOC/Compliment sesuai setting (tidak otomatis).
+                $focTypeRequiresAuth = ($focCompPaymentMethod === 'FOC' && $generalSettings->focRequiresAuthCode())
+                    || ($focCompPaymentMethod === 'Compliment' && $generalSettings->complimentRequiresAuthCode());
+
+                $requiresAuthCode = $focTypeRequiresAuth || (! $isFocComp && ($discountType !== 'none' || count($discountItemValues) > 0));
 
                 if ($requiresAuthCode) {
-                    if ($discountAuthCode === '') {
+                    // FOC/Compliment pakai field auth sendiri; diskon biasa pakai discount_auth_code.
+                    $authCode = $isFocComp ? $focCompAuthCode : $discountAuthCode;
+
+                    if ($authCode === '') {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code wajib diisi untuk FOC, Compliment, atau diskon.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code wajib diisi untuk FOC, Compliment.'
+                                : 'Auth code wajib diisi untuk diskon.',
                         ]);
                     }
 
                     $today = now()->format('Y-m-d');
                     $authRecord = DailyAuthCode::forDate($today);
 
-                    if ($discountAuthCode !== $authRecord->active_code) {
+                    if ($authCode !== $authRecord->active_code) {
                         throw ValidationException::withMessages([
-                            'discount_auth_code' => 'Auth code diskon tidak valid.',
+                            $isFocComp ? 'foc_comp_auth_code' : 'discount_auth_code' => $isFocComp
+                                ? 'Auth code FOC / Compliment tidak valid.'
+                                : 'Auth code diskon tidak valid.',
                         ]);
                     }
                 }
@@ -912,11 +1061,17 @@ class PosController extends Controller
                 $paymentMethod = $paymentMode === 'split'
                   ? null
                   : ($validated['payment_method'] ?? null);
+
+                // FOC/Compliment → payment_method otomatis, tanpa metode normal.
+                if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
+                    $paymentMethod = $focCompPaymentMethod;
+                }
+
                 $paymentReferenceNumber = $paymentMode === 'normal'
-                  ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
+                  ? (in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true) ? null : ($validated['payment_reference_number'] ?? null))
                   : null;
 
-                if ($paymentMode === 'normal' && ($paymentMethod ?? null) !== 'cash' && blank($paymentReferenceNumber)) {
+                if ($paymentMode === 'normal' && ! in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true) && blank($paymentReferenceNumber)) {
                     throw ValidationException::withMessages([
                         'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
                     ]);
@@ -1017,6 +1172,20 @@ class PosController extends Controller
                 $taxPercentage = (float) $generalSettings->tax_percentage;
                 $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
 
+                // Semua mode menandai item: FOC → semua; per-item → terpilih; global %/nominal → semua (pro-rata).
+                $discountMode = $isFocComp
+                    ? 'foc'
+                    : (count($discountItemValues) > 0
+                        ? 'item'
+                        : ($discountType === 'nominal' ? 'global-nominal' : 'global-percentage'));
+                $discountValue = $isFocComp
+                    ? (float) $discountPercentage
+                    : (count($discountItemValues) > 0
+                        ? 0.0
+                        : ($discountType === 'nominal' ? (float) $discountNominal : (float) $discountPercentage));
+                $itemDiscounts = $this->resolveItemDiscounts($cart, $discountMode, $discountValue, $discountItemValues, $discountItemType);
+                $discountPctById = $itemDiscounts['pct_by_id'];
+                $discountAmountById = $itemDiscounts['amount_by_id'];
                 foreach ($cart as $productId => $cartItem) {
                     $itemId = str_replace('item_', '', $productId);
                     $inventoryItem = InventoryItem::with('printers')->find($itemId);
@@ -1033,7 +1202,9 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
-                    $lineDiscount = (float) ($selectedDiscount['lines'][$inventoryItem->id]['discount'] ?? 0);
+                    // FOC → semua item; per-item → terpilih; global %/nominal → semua item (pro-rata).
+                    $linePct = (float) ($discountPctById[$inventoryItemId] ?? 0);
+                    $lineDiscount = (float) ($discountAmountById[$inventoryItemId] ?? 0);
                     $netSubtotal = max($subtotal - $lineDiscount, 0);
                     $selectedDiscountTotal += $lineDiscount;
                     $includeTax = (bool) $inventoryItem->include_tax;
@@ -1067,8 +1238,10 @@ class PosController extends Controller
                         'price' => $price,
                         'subtotal' => $subtotal,
                         'discount_amount' => $lineDiscount,
-                        'discount_reason' => $selectedDiscount['lines'][$inventoryItem->id]['reason'] ?? null,
-                        'discount_approval_id' => $selectedDiscount['approval']->id ?? null,
+                        'discount_reason' => $lineDiscount > 0 ? 'Diskon item' : null,
+                        'discount_approval_id' => null,
+                        'is_discount' => $lineDiscount > 0,
+                        'discount_pct' => $lineDiscount > 0 ? $linePct : 0,
                         'tax_amount' => $itemTaxAmount,
                         'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
@@ -1078,27 +1251,25 @@ class PosController extends Controller
 
                 }
 
-                $baseTotalsForDiscount = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, 0, 0, [
+                // Base diskon dari gross itemsTotal (bukan net) agar clamp tidak memotong diskon per-item.
+                $baseTotalsForDiscount = $this->calculateWalkInTotals($itemsTotal, 0, 0, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ], true);
 
                 $discountBaseTotal = (float) ($baseTotalsForDiscount['discount_base_total'] ?? $itemsTotal);
-                $requestedDiscountAmount = match ($discountType) {
-                    'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
-                    'nominal' => round($discountNominal, 2),
-                    default => 0,
-                };
+
+                // Semua mode menandai item → diskon transaksi = jumlah rupiah per item.
+                $requestedDiscountAmount = $selectedDiscountTotal;
 
                 $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
 
-                $totals = $this->calculateWalkInTotals($itemsTotal - $selectedDiscountTotal, 0, $requestedDiscountAmount, [
+                $totals = $this->calculateWalkInTotals($itemsTotal, 0, $requestedDiscountAmount, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ], true);
-                $totals['discount_amount'] += $selectedDiscountTotal;
 
                 if ($paymentMode === 'split') {
                     $grandTotal = round((float) $totals['grand_total'], 0);
@@ -1116,10 +1287,6 @@ class PosController extends Controller
                     'discount_amount' => $totals['discount_amount'],
                     'total' => $totals['grand_total'],
                 ]);
-
-                if ($selectedDiscount) {
-                    $this->posDiscountService->markConsumed($selectedDiscount['approval'], $order);
-                }
 
                 $isPartialPayment = in_array($paymentMode, ['partial', 'debt'], true);
                 $partialPaidAmount = (float) ($validated['partial_paid_amount'] ?? 0);
@@ -1148,7 +1315,7 @@ class PosController extends Controller
                     'is_booking' => false,
                     'minimum_charge' => 0,
                     'orders_total' => (float) $itemsTotal,
-                    'subtotal' => $selectedDiscount ? (float) $itemsTotal : (float) $totals['subtotal_after_discount'],
+                    'subtotal' => (float) $totals['subtotal_after_discount'],
                     'tax' => (float) $totals['tax'],
                     'tax_percentage' => (float) $totals['tax_percentage'],
                     'service_charge' => (float) $totals['service_charge'],
@@ -1199,7 +1366,10 @@ class PosController extends Controller
 
                 if ($customerUser) {
                     $customerUser->increment('total_visits');
-                    $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+                    // FOC/Compliment tidak masuk spending (bukan revenue).
+                    if (! in_array((string) ($focCompPaymentMethod ?? ''), ['FOC', 'Compliment'], true)) {
+                        $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+                    }
                 }
 
                 // Route to kitchen/bar checkers (no table session)

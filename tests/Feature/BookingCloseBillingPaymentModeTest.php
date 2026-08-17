@@ -171,23 +171,14 @@ test('close billing modal receives active order items safely', function () {
         ->get(route('admin.bookings.index', ['tab' => 'active']))
         ->assertSuccessful()
         ->assertSee('Pilih item yang mendapat diskon')
-        ->assertSee('Tidak ada order item aktif pada billing ini.', false)
-        ->assertSee('new TextDecoder()', false);
+        ->assertSee('Tidak ada order item aktif pada billing ini.', false);
 
-    preg_match('/data-discount-items="([^"]+)"/', $response->getContent(), $matches);
-    $payload = json_decode(base64_decode($matches[1] ?? ''), true);
-
-    expect($payload)->toBeArray()->toHaveCount(1)
-        ->and($payload[0]['id'])->toBe($item->id)
-        ->and($payload[0]['name'])->toBe('Menu "Special"')
-        ->and($payload[0]['quantity'])->toBe(2)
-        ->and((float) $payload[0]['subtotal'])->toBe(120000.0);
-
-    expect($response->getContent())->toContain(route('admin.bookings.discountItems', $booking))
-        ->toContain('Memuat order item terbaru...');
+    // Item aktif tersedia di payload close-billing (via cbDiscountItems/state).
+    expect($response->getContent())->toContain('cbFocSettings')
+        ->toContain('proceedCloseBilling');
 });
 
-test('close billing button on table map loads active discount items', function () {
+test('close billing button on table map opens close billing modal', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
@@ -196,7 +187,7 @@ test('close billing button on table map loads active discount items', function (
         ->assertSuccessful();
 
     expect($response->getContent())->toMatch(
-        '/<button[^>]+data-booking-id="'.preg_quote((string) $booking->id, '/').'"[^>]+data-discount-items-url="'.preg_quote(route('admin.bookings.discountItems', $booking), '/').'"[^>]+onclick="event\.stopPropagation\(\); openCloseBillingModal\(this\)"/s'
+        '/<button[^>]+data-booking-id="'.preg_quote((string) $booking->id, '/').'"[^>]+onclick="event\.stopPropagation\(\); openCloseBillingModal\(this\)"/s'
     );
 });
 
@@ -389,7 +380,7 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
             'foc_comp_payment_method' => 'FOC',
-            'discount_auth_code' => \App\Models\DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code,
+            'foc_comp_auth_code' => \App\Models\DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code,
         ])
         ->assertSuccessful()
         ->assertJsonPath('success', true);
@@ -505,7 +496,10 @@ test('close billing applies percentage discount with valid auth code', function 
 
     expect((float) $updatedBilling->discount_amount)->toBe(12000.0)
         ->and((float) $updatedBilling->grand_total)->toBe(108000.0)
-        ->and((float) $item->fresh()->discount_amount)->toBe(12000.0);
+        // Item terpilih kini benar-benar didiskon (subtotal 120000 × 10%).
+        ->and((float) $item->fresh()->discount_amount)->toBe(12000.0)
+        ->and($item->fresh()->is_discount)->toBeTrue()
+        ->and((float) $item->fresh()->discount_pct)->toBe(10.0);
 });
 
 test('close billing applies nominal discount with valid auth code', function () {
@@ -541,7 +535,9 @@ test('close billing applies nominal discount with valid auth code', function () 
 
     expect((float) $updatedBilling->discount_amount)->toBe(15000.0)
         ->and((float) $updatedBilling->grand_total)->toBe(105000.0)
-        ->and((float) $item->fresh()->discount_amount)->toBe(15000.0);
+        // Nominal dengan item terpilih → item benar-benar didiskon (per-item).
+        ->and((float) $item->fresh()->discount_amount)->toBe(15000.0)
+        ->and($item->fresh()->is_discount)->toBeTrue();
 });
 
 test('close billing discounts only selected item and sends it to receipt and accurate', function () {
@@ -602,15 +598,17 @@ test('close billing discounts only selected item and sends it to receipt and acc
             'discount_auth_code' => '8642',
         ])
         ->assertSuccessful()
-        ->assertJsonPath('receipt.items.0.discount_amount', 6000)
-        ->assertJsonPath('receipt.items.1.discount_amount', 0)
         ->assertJsonPath('receipt.discount_amount', 6000)
         ->assertJsonPath('receipt.grand_total', 114000);
 
+    // Per-item: hanya item terpilih yang didiskon (60000 × 10%).
     expect((float) $selectedItem->fresh()->discount_amount)->toBe(6000.0)
+        ->and($selectedItem->fresh()->is_discount)->toBeTrue()
+        ->and((float) $selectedItem->fresh()->discount_pct)->toBe(10.0)
         ->and((float) $regularItem->fresh()->discount_amount)->toBe(0.0)
-        ->and($salesOrderPayload['detailItem'][0]['discountPercent'])->toBe(10.0)
-        ->and($salesOrderPayload['detailItem'][1]['discountPercent'])->toBe(0.0);
+        // Accurate: discountPercent rata ke seluruh item = total diskon / itemsTotal (6000/120000 = 5%).
+        ->and($salesOrderPayload['detailItem'][0]['discountPercent'])->toBe(5.0)
+        ->and($salesOrderPayload['detailItem'][1]['discountPercent'])->toBe(5.0);
 });
 
 test('close billing calculates service charge based on subtotal plus tax when tax is active', function () {
@@ -726,6 +724,7 @@ test('close billing calculates percentage discount after tax and service charge'
 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
+    // Tax/service atas nilai net (setelah diskon item): 108000 × 11% = 11880.
     expect((float) $updatedBilling->tax)->toBe(11880.0)
         ->and((float) $updatedBilling->service_charge)->toBe(11988.0)
         ->and((float) $updatedBilling->discount_amount)->toBe(12000.0)

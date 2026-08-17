@@ -57,28 +57,10 @@ class PrinterService
      */
     protected function printBillingTemplatePayload(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->printBillingTemplatePayloadSingle($payload, $printer, $logTitle, $previewTitle));
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    protected function printBillingTemplatePayloadSingle(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
-    {
         $width = max((int) ($printer->width ?: 42), 42);
+        $lines = $this->buildClosedBillingSimulationLines($payload, $width, $printer);
 
-        if ($printer->connection_type === 'log') {
-            $lines = $this->buildClosedBillingSimulationLines($payload, $width, $printer);
-            $lines[] = 'Status : SUCCESS (LOG MODE)';
-            $this->logPrint($logTitle, $lines);
-
-            return true;
-        }
-
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
-
-        try {
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($payload, $width, $printer): void {
             $separator = str_repeat('-', $width);
 
             $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
@@ -188,9 +170,16 @@ class PrinterService
                 }
             }
 
+            // Anti-duplikat: kalau payment_method sudah = FOC/Compliment (auto-set),
+            // baris "Metode Pembayaran" sudah menampilkannya; skip baris kedua.
             $focCompPaymentMethod = (string) ($payload['foc_comp_payment_method'] ?? '');
-            if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
-                $escpos->text($this->formatClosedBillingPair('Jenis Transaksi', $focCompPaymentMethod, $width)."\n");
+            if (filled($focCompPaymentMethod)
+                && strtoupper($focCompPaymentMethod) !== strtoupper((string) ($payload['payment_method'] ?? ''))) {
+                $escpos->text($this->formatClosedBillingPair('FOC / Compliment', strtoupper($focCompPaymentMethod), $width)."\n");
+            }
+
+            if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
+                $escpos->text($this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width)."\n");
             }
 
             $escpos->text($separator."\n");
@@ -207,19 +196,10 @@ class PrinterService
             $escpos->text("FOLLOW US\n");
             $escpos->setEmphasis(false);
             $escpos->text("ig & tiktok : onetwosix.official\n");
-            // $escpos->text("Powered by 126 Club POS System\n");
 
             $escpos->feed(3);
             $escpos->cut();
-
-            $previewLines = $this->buildClosedBillingSimulationLines($payload, $width, $printer);
-            $previewLines[] = 'Status : SUCCESS (SENT TO PRINTER)';
-            $this->logPrint($previewTitle, $previewLines);
-
-            return true;
-        } finally {
-            $escpos->close();
-        }
+        }, $lines, $logTitle, $previewTitle);
     }
 
     protected function shouldUseGraphicsBranding(Printer $printer): bool
@@ -292,7 +272,9 @@ class PrinterService
         } catch (\Throwable $e) {
             $escpos->text($text."\n");
         } finally {
-            imagedestroy($image);
+            if (\PHP_VERSION_ID < 80000) {
+                imagedestroy($image);
+            }
 
             if (is_file($tmpPath)) {
                 @unlink($tmpPath);
@@ -364,15 +346,115 @@ class PrinterService
     }
 
     /**
-     * Run a single print job N times based on the printer's copies setting.
+     * Buka satu koneksi, render + feed + cut untuk sebuah job.
+     *
+     * feed/cut/close & log-mode tinggal di sini; body render jadi closure.
+     * Log mode = N kali logPrint terpisah (paritas fisik, mudah di-test).
+     *
+     * @param  callable(\Mike42\Escpos\Printer): void  $render
+     * @param  array<int, string>  $lines
      */
-    protected function printWithCopies(Printer $printer, \Closure $job): bool
-    {
-        $copies = $printer->copiesCount();
+    protected function withPrinter(
+        Printer $printer,
+        callable $render,
+        array $lines,
+        string $logTitle,
+        ?string $previewTitle = null
+    ): bool {
+        // Job tunggal, bukan fan-out tiket: exception harus propagate agar pemanggil
+        // (receipt/test print/end day/billing) bisa menampilkan error yang sebenarnya.
+        return $this->withPrinterJobs([
+            [
+                'printer' => $printer,
+                'render' => $render,
+                'lines' => $lines,
+                'title' => $logTitle,
+                'preview' => $previewTitle,
+            ],
+        ], false);
+    }
 
-        for ($i = 1; $i <= $copies; $i++) {
-            if (! $job()) {
-                return false;
+    /**
+     * Cetak satu/beberapa job ke satu atau lebih printer — satu koneksi per printer.
+     *
+     * Job dikelompokkan per printer (id, atau spl_object_id bila belum persist).
+     * Tiap job di-render lalu feed + cut. Dipakai tiket dapur/bar (tiket produksi
+     * + receiver) agar file/network connector tidak dibuka dua kali (file connector
+     * akan truncate), serta memungkinkan job campuran untuk receiver.
+     *
+     * Bila $isolate=true (fan-out tiket): kegagalan satu printer (mis. network down)
+     * tidak menggagalkan printer lain, dan gagal pada satu tiket tidak menghentikan
+     * tiket berikutnya — error di-log, checkout tetap jalan.
+     * Bila false (job tunggal via withPrinter): exception di-propagate agar controller
+     * bisa memberi feedback error yang benar.
+     *
+     * @param  array<int, array{printer: Printer, render: callable, lines: array<int, string>, title: string, preview: ?string}>  $jobs
+     */
+    protected function withPrinterJobs(array $jobs, bool $isolate = true): bool
+    {
+        $grouped = [];
+
+        foreach ($jobs as $job) {
+            $key = (string) ($job['printer']->id ?? spl_object_id($job['printer']));
+            $grouped[$key]['printer'] = $job['printer'];
+            $grouped[$key]['jobs'][] = $job;
+        }
+
+        foreach ($grouped as $group) {
+            $printer = $group['printer'];
+
+            try {
+                if ($printer->connection_type === 'log') {
+                    foreach ($group['jobs'] as $job) {
+                        $this->logPrint($job['title'], [...$job['lines'], 'Status : SUCCESS (LOG MODE)']);
+                    }
+
+                    continue;
+                }
+
+                $connector = $this->createConnector($printer);
+                $escpos = new EscposPrinter($connector);
+
+                try {
+                    foreach ($group['jobs'] as $job) {
+                        $run = function () use ($escpos, $job): void {
+                            $job['render']($escpos);
+                            $escpos->feed(3);
+                            $escpos->cut();
+
+                            $this->logPrint($job['preview'] ?? $job['title'], [...$job['lines'], 'Status : SUCCESS (SENT TO PRINTER)']);
+                        };
+
+                        if ($isolate) {
+                            try {
+                                $run();
+                            } catch (\Throwable $e) {
+                                Log::warning('Printer job failed, continuing with remaining jobs', [
+                                    'printer_id' => $printer->id ?? null,
+                                    'printer_name' => $printer->name ?? null,
+                                    'job_title' => $job['title'],
+                                    'message' => $e->getMessage(),
+                                ]);
+                            }
+                        } else {
+                            $run();
+                        }
+                    }
+                } finally {
+                    $escpos->close();
+                }
+            } catch (\Throwable $e) {
+                if ($isolate) {
+                    Log::warning('Printer group failed', [
+                        'printer_id' => $printer->id ?? null,
+                        'printer_name' => $printer->name ?? null,
+                        'message' => $e->getMessage(),
+                    ]);
+
+                    continue;
+                }
+
+                throw $e;
             }
         }
 
@@ -412,28 +494,14 @@ class PrinterService
      */
     public function printReceipt(Order $order, Printer $printer): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->printReceiptSingle($order, $printer));
-    }
-
-    public function printReceiptSingle(Order $order, Printer $printer): bool
-    {
         $receiptTotals = $this->calculateReceiptTotals($order);
         Log::info('data', ['data' => $receiptTotals]);
 
-        if ($printer->connection_type === 'log') {
-            $lines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
-            $lines[] = 'Status : SUCCESS (LOG MODE)';
-            $this->logPrint('RECEIPT', $lines);
+        $lines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
 
-            return true;
-        }
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($order, $printer, $receiptTotals): void {
+            Log::info('connector', ['connector' => get_class($escpos)]);
 
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
-
-        Log::info('connector', ['connector' => $connector]);
-
-        try {
             // Logo (if configured)
             $this->printLogo($escpos, $printer);
 
@@ -457,6 +525,9 @@ class PrinterService
 
             foreach ($order->items as $item) {
                 $escpos->text($this->formatItemLine($item, $printer->width));
+                if ((float) $item->discount_amount > 0) {
+                    $escpos->text($this->formatClosedBillingPair('Diskon Item', '- Rp '.number_format((float) $item->discount_amount, 0, ',', '.'), $printer->width)."\n");
+                }
             }
 
             $escpos->text(str_repeat('-', $printer->width)."\n");
@@ -492,19 +563,7 @@ class PrinterService
 
             // Footer
             $this->printFooter($escpos, $printer);
-
-            // Cut paper
-            $escpos->feed(3);
-            $escpos->cut();
-
-            $previewLines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
-            $previewLines[] = 'Status : SUCCESS (SENT TO PRINTER)';
-            $this->logPrint('RECEIPT PREVIEW', $previewLines);
-
-            return true;
-        } finally {
-            $escpos->close();
-        }
+        }, $lines, 'RECEIPT', 'RECEIPT PREVIEW');
     }
 
     /**
@@ -523,6 +582,9 @@ class PrinterService
 
         foreach ($order->items as $item) {
             $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($this->resolvePrintableItemSubtotal($item), 0, ',', '.');
+            if ((float) $item->discount_amount > 0) {
+                $lines[] = '    Diskon Item - Rp '.number_format((float) $item->discount_amount, 0, ',', '.');
+            }
         }
 
         $lines[] = '';
@@ -553,11 +615,6 @@ class PrinterService
      */
     public function testPrint(Printer $printer): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->testPrintSingle($printer));
-    }
-
-    public function testPrintSingle(Printer $printer): bool
-    {
         Log::info('Starting printer test print', [
             'printer_id' => $printer->id,
             'name' => $printer->name,
@@ -568,22 +625,15 @@ class PrinterService
             'port' => $printer->port,
         ]);
 
-        if ($printer->connection_type === 'log') {
-            $this->logPrint('TEST PRINT', [
-                "Printer    : {$printer->name}",
-                'Type       : '.($printer->printer_type ?: '-'),
-                "Location   : {$printer->location}",
-                'Connection : log (simulation)',
-                'Status     : OK — printer simulation working!',
-            ]);
+        $lines = [
+            "Printer    : {$printer->name}",
+            'Type       : '.($printer->printer_type ?: '-'),
+            "Location   : {$printer->location}",
+            'Connection : '.$printer->connection_type.' (simulation)',
+            'Status     : OK — printer simulation working!',
+        ];
 
-            return true;
-        }
-
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
-
-        try {
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($printer): void {
             // Logo (if configured)
             $this->printLogo($escpos, $printer);
 
@@ -595,13 +645,7 @@ class PrinterService
             $escpos->text(str_repeat('-', $printer->width)."\n");
             $escpos->text("Printer is working correctly!\n");
             $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
-            $escpos->feed(3);
-            $escpos->cut();
-
-            return true;
-        } finally {
-            $escpos->close();
-        }
+        }, $lines, 'TEST PRINT');
     }
 
     /**
@@ -835,6 +879,7 @@ class PrinterService
                     'qty' => (int) $group->sum('quantity'),
                     'price' => $this->resolvePrintableItemPrice($first),
                     'subtotal' => (float) $group->sum(fn ($item): float => $this->resolvePrintableItemSubtotal($item)),
+                    'discount_amount' => (float) $group->sum('discount_amount'),
                 ];
             })
             ->values()
@@ -912,6 +957,9 @@ class PrinterService
                 'Total: Rp '.number_format((float) $item['subtotal'], 0, ',', '.'),
                 $width
             );
+            if ((float) ($item['discount_amount'] ?? 0) > 0) {
+                $lines[] = $this->formatClosedBillingPair('Diskon Item', '- Rp '.number_format((float) $item['discount_amount'], 0, ',', '.'), $width);
+            }
             $lines[] = str_repeat('-', $width);
         }
 
@@ -990,8 +1038,13 @@ class PrinterService
         }
 
         $focCompPaymentMethod = (string) ($payload['foc_comp_payment_method'] ?? '');
-        if (in_array($focCompPaymentMethod, ['FOC', 'Compliment'], true)) {
-            $lines[] = $this->formatClosedBillingPair('Jenis Transaksi', $focCompPaymentMethod, $width);
+        if (filled($focCompPaymentMethod)
+            && strtoupper($focCompPaymentMethod) !== strtoupper((string) ($payload['payment_method'] ?? ''))) {
+            $lines[] = $this->formatClosedBillingPair('FOC / Compliment', strtoupper($focCompPaymentMethod), $width);
+        }
+
+        if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
+            $lines[] = $this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width);
         }
 
         $lines[] = $separator;
@@ -1015,7 +1068,7 @@ class PrinterService
      */
     public function printKitchenTicket(KitchenOrder|BarOrder $kitchenOrder, Printer $printer): bool
     {
-        return $this->printCheckerTicket($kitchenOrder, $printer);
+        return $this->printPreparationTicket($kitchenOrder, $printer, 'KITCHEN');
     }
 
     /**
@@ -1023,7 +1076,7 @@ class PrinterService
      */
     public function printBarTicket(KitchenOrder|BarOrder $barOrder, Printer $printer): bool
     {
-        return $this->printCheckerTicket($barOrder, $printer);
+        return $this->printPreparationTicket($barOrder, $printer, 'BAR');
     }
 
     /**
@@ -1031,94 +1084,206 @@ class PrinterService
      */
     public function printCheckerTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->printCheckerTicketSingle($order, $printer));
+        return $this->printPreparationTicket($order, $printer, 'CHECKER');
     }
 
-    public function printCheckerTicketSingle(KitchenOrder|BarOrder $order, Printer $printer): bool
+    /**
+     * Print a cashier notification ticket (order summary for cashier awareness).
+     */
+    public function printCashierTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
+    {
+        return $this->printPreparationTicket($order, $printer, 'CASHIER');
+    }
+
+    /**
+     * Cetak tiket persiapan (kitchen/bar/checker/cashier) + tiket Receiver per item.
+     *
+     * Tanpa sub-printer receiver: 1 tiket produksi.
+     * Dengan sub-printer receiver (aktif): 1 tiket produksi + 1 tiket RECEIVER per item
+     * order (tiap tiket hanya berisi item itu, untuk waiter).
+     * Receiver hanya untuk section produksi (kitchen/bar); checker/cashier tidak.
+     *
+     * @param  'KITCHEN'|'BAR'|'CHECKER'|'CASHIER'  $section
+     */
+    protected function printPreparationTicket(KitchenOrder|BarOrder $order, Printer $printer, string $section): bool
     {
         $order->loadMissing(['order.tableSession.waiter.profile']);
         $waiterName = $this->resolveBookingWaiterName($order);
 
-        if ($printer->connection_type === 'log') {
-            $lines = [
-                "Order : #{$order->order_number}",
-                'Table : '.($order->table?->table_number ?? 'N/A'),
-                ...(filled($waiterName) ? ["Waiter: {$waiterName}"] : []),
-                'Time  : '.now()->format('H:i'),
-                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
-                '',
+        $lines = $this->buildPreparationTicketLines($order, $waiterName, $printer);
+
+        // Receiver hanya berlaku untuk produksi (kitchen/bar). Checker/cashier murni 1 tiket.
+        // Guard: raw id dulu (tanpa query, hindari N+1); relation dimuat bila perlu.
+        $receiverPrinter = null;
+        if (in_array($section, ['KITCHEN', 'BAR'], true) && (int) ($printer->receiver_printer_id ?? 0) > 0) {
+            $receiverPrinter = $printer->relationLoaded('receiverPrinter')
+                ? $printer->receiverPrinter
+                : $printer->receiverPrinter()->first();
+        }
+
+        // Tanpa receiver: cukup 1 tiket produksi.
+        if (! $receiverPrinter) {
+            return $this->withPrinter(
+                $printer,
+                fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
+                $lines,
+                $section,
+                $section.' PREVIEW'
+            );
+        }
+
+        // Receiver non-aktif → fallback ke printer produksi (bukan silent drop).
+        if (! $receiverPrinter->is_active) {
+            return $this->withPrinter(
+                $printer,
+                fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
+                $lines,
+                $section,
+                $section.' PREVIEW'
+            );
+        }
+
+        // Dengan receiver: 1 tiket produksi + 1 tiket RECEIVER per item order,
+        // tiap tiket hanya berisi item itu. Satu koneksi per printer.
+        $jobs = [[
+            'printer' => $printer,
+            'render' => fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
+            'lines' => $lines,
+            'title' => $section,
+            'preview' => $section.' PREVIEW',
+        ]];
+
+        foreach ($order->items as $item) {
+            if ((int) $item->quantity <= 0) {
+                continue;
+            }
+
+            $singleOrder = clone $order;
+            $singleOrder->setRelation('items', collect([$item]));
+
+            $jobs[] = [
+                'printer' => $receiverPrinter,
+                'render' => fn (EscposPrinter $escpos) => $this->renderReceiverTicket($escpos, $singleOrder, $receiverPrinter, $waiterName),
+                'lines' => $this->buildReceiverTicketLines($singleOrder, $waiterName, $receiverPrinter),
+                'title' => 'RECEIVER',
+                'preview' => 'RECEIVER PREVIEW',
             ];
-            foreach ($order->items as $item) {
-                $name = filled($item->inventoryItem?->pos_name)
-                    ? (string) $item->inventoryItem->pos_name
-                    : (($item->inventoryItem?->name ?? 'Unknown'));
-                $lines[] = "  {$item->quantity}x {$name}";
-
-                $notes = trim((string) ($item->notes ?? ''));
-                if ($notes !== '') {
-                    $lines[] = "    NOTE: {$notes}";
-                }
-            }
-            $this->logPrint('CHECKER', $lines);
-
-            return true;
         }
 
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
+        return $this->withPrinterJobs($jobs);
+    }
 
-        try {
-            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+    protected function renderPreparationTicket(
+        EscposPrinter $escpos,
+        KitchenOrder|BarOrder $order,
+        Printer $printer,
+        ?string $waiterName,
+        string $section
+    ): void {
+        $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+        $escpos->setEmphasis(true);
+        $escpos->setTextSize(2, 2);
+        $escpos->text("$section\n");
+        $escpos->setTextSize(1, 1);
+        $escpos->text("Order #{$order->order_number}\n");
+        $escpos->setEmphasis(false);
+        $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+        $escpos->feed(1);
+
+        $tableName = $order->table?->table_number ?? 'N/A';
+        $escpos->text("Table: {$tableName}\n");
+        if (filled($waiterName)) {
+            $escpos->text("Waiter: {$waiterName}\n");
+        }
+        $escpos->text('Time: '.now()->format('H:i')."\n");
+        $escpos->text(str_repeat('-', $printer->width)."\n");
+
+        $escpos->setEmphasis(true);
+        $escpos->text("SAJIKAN\n");
+        $escpos->setEmphasis(false);
+
+        foreach ($order->items as $item) {
+            if ((int) $item->quantity <= 0) {
+                continue;
+            }
+
+            $name = filled($item->inventoryItem?->pos_name)
+                ? (string) $item->inventoryItem->pos_name
+                : (($item->inventoryItem?->name ?? 'Unknown'));
+            $notes = trim((string) ($item->notes ?? ''));
+
             $escpos->setEmphasis(true);
-            $escpos->setTextSize(2, 2);
-            $escpos->text("CHECKER\n");
+            $escpos->setTextSize(1, 2);
+            $escpos->text("  {$item->quantity}x {$name}\n");
+
+            if ($notes !== '') {
+                $escpos->text("    NOTE: {$notes}\n");
+            }
+
             $escpos->setTextSize(1, 1);
-            $escpos->text("Order #{$order->order_number}\n");
             $escpos->setEmphasis(false);
-            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
-            $escpos->feed(1);
-
-            $tableName = $order->table?->table_number ?? 'N/A';
-            $escpos->text("Table: {$tableName}\n");
-            if (filled($waiterName)) {
-                $escpos->text("Waiter: {$waiterName}\n");
-            }
-            $escpos->text('Time: '.now()->format('H:i')."\n");
-            $escpos->text(str_repeat('-', $printer->width)."\n");
-
-            $escpos->setEmphasis(true);
-            $escpos->text("SAJIKAN\n");
-            $escpos->setEmphasis(false);
-
-            foreach ($order->items as $item) {
-                $name = filled($item->inventoryItem?->pos_name)
-                    ? (string) $item->inventoryItem->pos_name
-                    : (($item->inventoryItem?->name ?? 'Unknown'));
-                $notes = trim((string) ($item->notes ?? ''));
-
-                $escpos->setEmphasis(true);
-                $escpos->setTextSize(1, 2);
-                $escpos->text("  {$item->quantity}x {$name}\n");
-
-                if ($notes !== '') {
-                    $escpos->text("    NOTE: {$notes}\n");
-                }
-
-                $escpos->setTextSize(1, 1);
-                $escpos->setEmphasis(false);
-            }
-
-            $escpos->text(str_repeat('-', $printer->width)."\n");
-            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
-            $escpos->text("*** SIAP DISAJIKAN ***\n");
-
-            $escpos->feed(3);
-            $escpos->cut();
-
-            return true;
-        } finally {
-            $escpos->close();
         }
+
+        $escpos->text(str_repeat('-', $printer->width)."\n");
+        $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+        $escpos->text("*** SIAP DISAJIKAN ***\n");
+    }
+
+    protected function renderReceiverTicket(
+        EscposPrinter $escpos,
+        KitchenOrder|BarOrder $order,
+        Printer $printer,
+        ?string $waiterName
+    ): void {
+        $width = $printer->width;
+        $bar = str_repeat('=', $width);
+        $line = str_repeat('-', $width);
+
+        // Header besar yang kontras dengan tiket produksi.
+        $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+        $escpos->setEmphasis(true);
+        $escpos->setTextSize(2, 2);
+        $escpos->text("RECEIVER\n");
+        $escpos->setTextSize(1, 1);
+        $escpos->setEmphasis(false);
+        $escpos->text($bar."\n");
+        $escpos->setTextSize(2, 2);
+        $escpos->setEmphasis(true);
+        $escpos->text("TERIMA\n");
+        $escpos->text("PESANAN\n");
+        $escpos->setEmphasis(false);
+        $escpos->setTextSize(1, 1);
+        $escpos->text($bar."\n");
+
+        $tableName = $order->table?->table_number ?? 'N/A';
+        $escpos->text("Order : #{$order->order_number}\n");
+        $escpos->text("Table : {$tableName}\n");
+        $escpos->text('Time  : '.now()->format('H:i')."\n");
+        $escpos->text($line."\n");
+
+        // Inti tiket: 1 item (qty besar, nama besar).
+        foreach ($order->items as $item) {
+            if ((int) $item->quantity <= 0) {
+                continue;
+            }
+
+            $name = filled($item->inventoryItem?->pos_name)
+                ? (string) $item->inventoryItem->pos_name
+                : (($item->inventoryItem?->name ?? 'Unknown'));
+
+            $escpos->setTextSize(1, 2);
+            $escpos->text("  {$item->quantity}x\n");
+            $escpos->setTextSize(2, 2);
+            $escpos->setEmphasis(true);
+            $escpos->text("  {$name}\n");
+            $escpos->setEmphasis(false);
+            $escpos->setTextSize(1, 1);
+        }
+
+        $escpos->text($line."\n");
+        $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+        $escpos->text("SILAKAN AMBIL & ANTAR\n");
+        $escpos->text("KE MEJA\n");
     }
 
     protected function resolveBookingWaiterName(KitchenOrder|BarOrder $order): ?string
@@ -1135,11 +1300,71 @@ class PrinterService
     }
 
     /**
-     * Print a cashier notification ticket (order summary for cashier awareness).
+     * Baris simulasi tiket persiapan (untuk log).
+     *
+     * @return array<int, string>
      */
-    public function printCashierTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
+    protected function buildPreparationTicketLines(KitchenOrder|BarOrder $order, ?string $waiterName, Printer $printer): array
     {
-        return $this->printCheckerTicket($order, $printer);
+        $lines = [
+            "Order : #{$order->order_number}",
+            'Table : '.($order->table?->table_number ?? 'N/A'),
+            ...(filled($waiterName) ? ["Waiter: {$waiterName}"] : []),
+            'Time  : '.now()->format('H:i'),
+            "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+            '',
+        ];
+
+        foreach ($order->items as $item) {
+            if ((int) $item->quantity <= 0) {
+                continue;
+            }
+
+            $name = filled($item->inventoryItem?->pos_name)
+                ? (string) $item->inventoryItem->pos_name
+                : (($item->inventoryItem?->name ?? 'Unknown'));
+            $lines[] = "  {$item->quantity}x {$name}";
+
+            $notes = trim((string) ($item->notes ?? ''));
+            if ($notes !== '') {
+                $lines[] = "    NOTE: {$notes}";
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Baris simulasi tiket Receiver (untuk waiter).
+     *
+     * @return array<int, string>
+     */
+    protected function buildReceiverTicketLines(KitchenOrder|BarOrder $order, ?string $waiterName, Printer $printer): array
+    {
+        $lines = [
+            'RECEIVER',
+            'TERIMA PESANAN',
+            'Order : #'.$order->order_number,
+            'Table : '.($order->table?->table_number ?? 'N/A'),
+            'Time  : '.now()->format('H:i'),
+            "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+            '',
+        ];
+
+        foreach ($order->items as $item) {
+            if ((int) $item->quantity <= 0) {
+                continue;
+            }
+
+            $name = filled($item->inventoryItem?->pos_name)
+                ? (string) $item->inventoryItem->pos_name
+                : (($item->inventoryItem?->name ?? 'Unknown'));
+            $lines[] = "  {$item->quantity}x {$name}";
+        }
+
+        $lines[] = 'SILAKAN AMBIL & ANTAR KE MEJA';
+
+        return $lines;
     }
 
     /**
@@ -1147,28 +1372,13 @@ class PrinterService
      */
     public function printEndDayRecap(array $recapData, Printer $printer, bool $includeTransactionHistory = true): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->printEndDayRecapSingle($recapData, $printer, $includeTransactionHistory));
-    }
-
-    public function printEndDayRecapSingle(array $recapData, Printer $printer, bool $includeTransactionHistory = true): bool
-    {
         $width = max((int) ($printer->width ?: 42), 32);
         $lines = $this->buildEndDayRecapLines($recapData, $printer, $width, $includeTransactionHistory);
         $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
         $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
         $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
 
-        if ($printer->connection_type === 'log') {
-            $logLines = [...$lines, 'Status : SUCCESS (LOG MODE)'];
-            $this->logPrint('END DAY RECAP', $logLines);
-
-            return true;
-        }
-
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
-
-        try {
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($recapData, $width, $includeTransactionHistory, $kitchenItemsOut, $barItemsOut): void {
             $separator = str_repeat('-', $width);
 
             $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
@@ -1225,6 +1435,21 @@ class PrinterService
                 }
             }
 
+            $escpos->text($separator."\n");
+            $escpos->setEmphasis(true);
+            $escpos->text("ITEM FOC/COMPLIMENT KELUAR\n");
+            $escpos->setEmphasis(false);
+
+            $focItems = collect($recapData['focItems'] ?? []);
+            if ($focItems->isEmpty()) {
+                $escpos->text("Tidak ada item FOC/Compliment.\n");
+            } else {
+                foreach ($focItems as $focItem) {
+                    $escpos->text(((string) ($focItem['name'] ?? '-'))."\n");
+                    $escpos->text('  Qty: '.number_format((int) ($focItem['quantity'] ?? 0), 0, ',', '.')."x\n");
+                }
+            }
+
             if ($includeTransactionHistory) {
                 $escpos->text($separator."\n");
                 $escpos->setEmphasis(true);
@@ -1277,14 +1502,7 @@ class PrinterService
 
             $escpos->feed(3);
             $escpos->cut();
-
-            $previewLines = [...$lines, 'Status : SUCCESS (SENT TO PRINTER)'];
-            $this->logPrint('END DAY RECAP PREVIEW', $previewLines);
-
-            return true;
-        } finally {
-            $escpos->close();
-        }
+        }, $lines, 'END DAY RECAP', 'END DAY RECAP PREVIEW');
     }
 
     /**
@@ -1349,6 +1567,20 @@ class PrinterService
                 $rokokItemData = is_array($rokokItem) ? $rokokItem : (array) $rokokItem;
                 $lines[] = (string) ($rokokItemData['name'] ?? '-');
                 $lines[] = '  Qty: '.number_format((int) ($rokokItemData['quantity'] ?? 0), 0, ',', '.').'x';
+            }
+        }
+
+        $lines[] = $separator;
+        $lines[] = 'ITEM FOC/COMPLIMENT KELUAR';
+
+        $focItems = collect($recapData['focItems'] ?? []);
+        if ($focItems->isEmpty()) {
+            $lines[] = 'Tidak ada item FOC/Compliment.';
+        } else {
+            foreach ($focItems as $focItem) {
+                $focItemData = is_array($focItem) ? $focItem : (array) $focItem;
+                $lines[] = (string) ($focItemData['name'] ?? '-');
+                $lines[] = '  Qty: '.number_format((int) ($focItemData['quantity'] ?? 0), 0, ',', '.').'x';
             }
         }
 
@@ -1425,11 +1657,6 @@ class PrinterService
      */
     protected function printEndDayItemSummary(string $section, array $items, string $endDay, Printer $printer): bool
     {
-        return $this->printWithCopies($printer, fn (): bool => $this->printEndDayItemSummarySingle($section, $items, $endDay, $printer));
-    }
-
-    protected function printEndDayItemSummarySingle(string $section, array $items, string $endDay, Printer $printer): bool
-    {
         $width = max((int) ($printer->width ?: 42), 32);
         $separator = str_repeat('-', $width);
         $totalQty = collect($items)->sum('quantity');
@@ -1450,16 +1677,7 @@ class PrinterService
 
         $lines[] = $this->formatClosedBillingPair('TOTAL ITEM', number_format((int) $totalQty, 0, ',', '.'), $width);
 
-        if ($printer->connection_type === 'log') {
-            $this->logPrint("END DAY {$section}", [...$lines, 'Status : SUCCESS (LOG MODE)']);
-
-            return true;
-        }
-
-        $connector = $this->createConnector($printer);
-        $escpos = new EscposPrinter($connector);
-
-        try {
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($section, $items, $endDay, $width, $separator, $totalQty): void {
             $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
             $escpos->setEmphasis(true);
             $escpos->text("END DAY {$section}\n");
@@ -1480,14 +1698,6 @@ class PrinterService
             $escpos->setEmphasis(true);
             $escpos->text($this->formatClosedBillingPair('TOTAL ITEM', number_format((int) $totalQty, 0, ',', '.'), $width)."\n");
             $escpos->setEmphasis(false);
-            $escpos->feed(3);
-            $escpos->cut();
-
-            $this->logPrint("END DAY {$section} PREVIEW", [...$lines, 'Status : SUCCESS (SENT TO PRINTER)']);
-
-            return true;
-        } finally {
-            $escpos->close();
-        }
+        }, $lines, "END DAY {$section}", "END DAY {$section} PREVIEW");
     }
 }

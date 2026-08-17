@@ -19,6 +19,8 @@ test('admin can update accurate service charge account no in general settings', 
             'accurate_stock_warehouse_name' => 'GD. OUTLET',
             'mail_provider' => 'smtp',
             'auth_code_delivery_channel' => 'both',
+            'foc_discount_percentage' => 0,
+            'compliment_discount_percentage' => 100,
         ])
         ->assertRedirect(route('admin.settings.general.index'))
         ->assertSessionHas('success');

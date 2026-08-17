@@ -22,7 +22,7 @@ class Printer extends Model
         'logo_path',
         'show_qr_code',
         'width',
-        'copies',
+        'receiver_printer_id',
         'is_default',
         'is_active',
     ];
@@ -51,7 +51,6 @@ class Printer extends Model
         'port' => 'integer',
         'timeout' => 'integer',
         'width' => 'integer',
-        'copies' => 'integer',
     ];
 
     public function scopeActive($query)
@@ -125,19 +124,14 @@ class Printer extends Model
         return $this->belongsToMany(InventoryItem::class)->withTimestamps();
     }
 
+    public function receiverPrinter(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(self::class, 'receiver_printer_id');
+    }
+
     public function isNetwork(): bool
     {
         return $this->connection_type === 'network';
-    }
-
-    /**
-     * Number of print copies for this printer (clamped to 1..10).
-     */
-    public function copiesCount(): int
-    {
-        $copies = (int) ($this->copies ?? 1);
-
-        return max(1, min(10, $copies));
     }
 
     public function isFile(): bool

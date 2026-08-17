@@ -382,6 +382,35 @@
 
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div class="px-4 py-3 border-b border-gray-200">
+              <h3 class="font-semibold text-gray-900">Item FOC/Compliment Keluar</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Item</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                  @forelse ($focItems as $item)
+                    <tr>
+                      <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $item['name'] }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ $item['quantity'] }}</td>
+                    </tr>
+                  @empty
+                    <tr>
+                      <td colspan="2"
+                          class="px-4 py-6 text-sm text-center text-gray-500">Tidak ada item FOC/Compliment pada tanggal ini.</td>
+                    </tr>
+                  @endforelse
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200">
               <h3 class="font-semibold text-gray-900">Item Keluar Bar</h3>
             </div>
             <div class="overflow-x-auto">

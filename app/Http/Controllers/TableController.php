@@ -113,7 +113,12 @@ class TableController extends Controller
             'totalRevenue' => Billing::whereHas('tableSession', function ($q) use ($activeAreaId) {
                 $q->where('status', 'active')
                     ->when($activeAreaId, fn ($t) => $t->whereHas('table', fn ($tb) => $tb->where('area_id', $activeAreaId)));
-            })->sum('grand_total'),
+            })
+                ->where(function ($q) {
+                    $q->whereNull('foc_comp_payment_method')
+                        ->orWhereNotIn('foc_comp_payment_method', ['FOC', 'Compliment']);
+                })
+                ->sum('grand_total'),
             'topSpenders' => app(RealtimeTopSpenderBanner::class)->topSpenders(3, $activeAreaId),
             'activeSessionChargePreviews' => $activeSessionChargePreviews,
             'activeSessionEventAdjustments' => $activeSessionEventAdjustments,

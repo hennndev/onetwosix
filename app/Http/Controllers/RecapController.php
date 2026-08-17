@@ -399,6 +399,33 @@ class RecapController extends Controller
             })
             ->values();
 
+        // Item FOC/Compliment keluar (category_main = foc/compliment), dikelompokkan sendiri.
+        $focItems = $orders
+            ->flatMap(function (Order $order) {
+                return $order->items
+                    ->where('status', '!=', 'cancelled')
+                    ->filter(function ($item): bool {
+                        $categoryMain = strtolower(trim((string) ($item->inventoryItem?->category_main ?? '')));
+
+                        return in_array($categoryMain, ['foc', 'compliment'], true);
+                    })
+                    ->map(function ($item): array {
+                        return [
+                            'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? $item->item_name ?? '-'),
+                            'quantity' => (int) ($item->quantity ?? 0),
+                        ];
+                    });
+            })
+            ->groupBy('name')
+            ->map(function ($group, $name): array {
+                return [
+                    'name' => (string) $name,
+                    'quantity' => (int) collect($group)->sum('quantity'),
+                ];
+            })
+            ->sortBy('name')
+            ->values();
+
         $rokokItems = $orders
             ->flatMap(function (Order $order) {
                 return $order->items
@@ -435,6 +462,8 @@ class RecapController extends Controller
         $dashboardTotalLdQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalComplimentQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);
         $dashboardTotalFocQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_foc_quantity ?? 0);
+        $dashboardTotalFocAmount = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_foc_amount ?? 0);
+        $dashboardTotalComplimentAmount = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_compliment_amount ?? 0);
         $resolvedTotalDp = $isSelectedEndDayClosed
             ? 0.0
             : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
@@ -543,6 +572,8 @@ class RecapController extends Controller
             'totalStaffMeal' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_staff_meal ?? 0),
             'totalComplimentQuantity' => $dashboardTotalComplimentQuantity,
             'totalFocQuantity' => $dashboardTotalFocQuantity,
+            'totalComplimentAmount' => $dashboardTotalComplimentAmount,
+            'totalFocAmount' => $dashboardTotalFocAmount,
             'totalLd' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
             'totalLdQuantity' => $dashboardTotalLdQuantity,
             'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
@@ -556,6 +587,7 @@ class RecapController extends Controller
             'barItems' => $barItems,
             'barQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) $barItems->sum('qty'),
             'rokokItems' => $rokokItems,
+            'focItems' => $focItems,
             'todayBillingTransactions' => $todayBillingTransactions,
             'todayWalkInTransactions' => $todayWalkInTransactions,
             'dashboardPreview' => [
@@ -568,6 +600,8 @@ class RecapController extends Controller
                 'total_staff_meal' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_staff_meal ?? 0),
                 'total_compliment_quantity' => $dashboardTotalComplimentQuantity,
                 'total_foc_quantity' => $dashboardTotalFocQuantity,
+                'total_compliment_amount' => $dashboardTotalComplimentAmount,
+                'total_foc_amount' => $dashboardTotalFocAmount,
                 'total_ld' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
                 'total_ld_quantity' => $dashboardTotalLdQuantity,
                 'total_penjualan_rokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
@@ -623,6 +657,11 @@ class RecapController extends Controller
 
         foreach ($paidBillings as $billing) {
             $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);
+
+            // FOC/Compliment tidak masuk bucket metode pembayaran (bukan revenue).
+            if (in_array((string) ($billing->foc_comp_payment_method ?? ''), ['FOC', 'Compliment'], true)) {
+                continue;
+            }
 
             if (strtolower((string) ($billing->payment_mode ?? 'normal')) === 'split') {
                 $paymentMethodTotals['cash'] += (float) ($billing->split_cash_amount ?? 0);
@@ -1066,6 +1105,7 @@ class RecapController extends Controller
                     'qris' => 0.0,
                 ],
                 'rokokItems' => [],
+                'focItems' => $liveRecapData['focItems'] ?? [],
                 'kitchenQtyTotal' => 0,
                 'barQtyTotal' => 0,
                 'dashboardPreview' => [
@@ -1114,6 +1154,8 @@ class RecapController extends Controller
             'totalStaffMeal' => (float) ($recapHistory->total_staff_meal ?? 0),
             'totalComplimentQuantity' => (int) ($recapHistory->total_compliment_quantity ?? 0),
             'totalFocQuantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
+            'totalComplimentAmount' => (float) ($recapHistory->total_compliment_amount ?? 0),
+            'totalFocAmount' => (float) ($recapHistory->total_foc_amount ?? 0),
             'totalLd' => (float) ($recapHistory->total_ld ?? 0),
             'totalTax' => (float) $recapHistory->total_tax,
             'totalServiceCharge' => (float) $recapHistory->total_service_charge,
@@ -1127,6 +1169,7 @@ class RecapController extends Controller
                 'qris' => (float) $recapHistory->total_qris,
             ],
             'rokokItems' => $liveRecapData['rokokItems'] ?? [],
+            'focItems' => $liveRecapData['focItems'] ?? [],
             'kitchenQtyTotal' => (int) $recapHistory->total_kitchen_items,
             'barQtyTotal' => (int) $recapHistory->total_bar_items,
             'todayBillingTransactions' => $historyBillingTransactions,
@@ -1141,6 +1184,8 @@ class RecapController extends Controller
                 'total_staff_meal' => (float) ($recapHistory->total_staff_meal ?? 0),
                 'total_compliment_quantity' => (int) ($recapHistory->total_compliment_quantity ?? 0),
                 'total_foc_quantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
+                'total_compliment_amount' => (float) ($recapHistory->total_compliment_amount ?? 0),
+                'total_foc_amount' => (float) ($recapHistory->total_foc_amount ?? 0),
                 'total_ld' => (float) ($recapHistory->total_ld ?? 0),
                 'total_penjualan_rokok' => (float) $recapHistory->total_penjualan_rokok,
                 'gross_sales' => $historyGrossSales,

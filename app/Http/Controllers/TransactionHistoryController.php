@@ -112,7 +112,11 @@ class TransactionHistoryController extends Controller
         $orderPrintPayloads = $this->buildPrintPayloads($orders->getCollection());
         $orderDetailPayloads = $this->buildDetailPayloads($orders->getCollection());
 
-        $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter);
+        $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter)
+            // FOC/Compliment bukan revenue — exclude order dengan billing FOC.
+            ->whereDoesntHave('billing', function ($query): void {
+                $query->whereIn('foc_comp_payment_method', ['FOC', 'Compliment']);
+            });
 
         if ($transactionMode === 'walk_in') {
             $statsQuery->whereNull('table_session_id');
@@ -272,7 +276,11 @@ class TransactionHistoryController extends Controller
             return $order;
         });
 
-        $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter);
+        $statsQuery = Order::query()->whereNotIn('status', ['cancelled'])->tap($areaFilter)
+            // FOC/Compliment bukan revenue — exclude order dengan billing FOC.
+            ->whereDoesntHave('billing', function ($query): void {
+                $query->whereIn('foc_comp_payment_method', ['FOC', 'Compliment']);
+            });
 
         if ($transactionMode === 'walk_in') {
             $statsQuery->whereNull('table_session_id');
@@ -541,7 +549,7 @@ class TransactionHistoryController extends Controller
     {
         $validated = $request->validate([
             'payment_mode' => 'required|in:normal,split',
-            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
+            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer,FOC,Compliment',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_amount' => 'nullable|numeric|min:0',
@@ -580,12 +588,15 @@ class TransactionHistoryController extends Controller
         $splitSecondNonCashReferenceNumber = null;
 
         if ($paymentMode === 'normal') {
-            $paymentMethod = (string) $validated['payment_method'];
-            $paymentReferenceNumber = $paymentMethod === 'cash'
+            // FOC/Compliment billing → payment_method dipertahankan (auto-set).
+            $paymentMethod = (string) ($billing->foc_comp_payment_method
+                ?? $validated['payment_method']
+                ?? '');
+            $paymentReferenceNumber = in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true)
                 ? null
                 : ((string) ($validated['payment_reference_number'] ?? ''));
 
-            if ($paymentMethod !== 'cash' && blank($paymentReferenceNumber)) {
+            if (! in_array($paymentMethod, ['cash', 'FOC', 'Compliment'], true) && blank($paymentReferenceNumber)) {
                 throw ValidationException::withMessages([
                     'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
                 ]);

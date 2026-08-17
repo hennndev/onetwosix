@@ -12,19 +12,24 @@ Sebelum membaca banyak file untuk memahami struktur, alur, atau keterkaitan anta
 /graphify query "<pertanyaan>"
 ```
 
-Perintah ini membaca `graphify-out/graph.json` yang sudah ada (tidak membangun ulang),
-sehingga jauh lebih hemat token dibanding membuka banyak file sumber.
+Perintah ini membaca graph yang sudah ada (tidak membangun ulang), sehingga jauh lebih
+hemat token dibanding membuka banyak file sumber.
+
+> **CATATAN**: `graphify-out/` di-gitignore → tidak terlihat oleh tool listing file
+> Claude Code (Glob/readdir), hanya terlihat lewat Bash `ls`/`find`. Struktur aktualnya
+> **ber-tanggal**, bukan `graphify-out/graph.json`:
+> `graphify-out/YYYY-MM-DD/graph.json`. Selalu pakai build terbaru.
 
 Contoh pertanyaan yang cocok dijawab lewat graph:
 - "Modul apa saja yang bergantung pada AccurateService?"
 - "Alur dari PosController sampai ke Billing lewat apa saja?"
 - "Controller mana yang menyentuh model Reward?"
 
-### Artifact graph yang tersedia (`graphify-out/`)
+### Artifact graph yang tersedia (di dalam `graphify-out/YYYY-MM-DD/`, pakai tanggal terbaru)
 - **`graph.json`** — knowledge graph mentah (± 1760 node, 3422 edge, 349 community). Referensi utama.
 - **`GRAPH_REPORT.md`** — ringkasan audit: god nodes, koneksi lintas-modul, pertanyaan yang disarankan.
-- **`graph.html`** — visualisasi interaktif (buka di browser bila perlu melihat peta besar).
 - **`.graphify_labels.json`** — label community (nama modul).
+- **`manifest.json`** — hash per-file untuk deteksi perubahan (`--update`).
 
 Untuk pertanyaan arsitektural tingkat tinggi, **baca `GRAPH_REPORT.md` dulu** sebelum menyelam ke file.
 

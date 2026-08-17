@@ -124,11 +124,11 @@ class Order extends Model
     public function updateTotals()
     {
         $this->items_total = $this->items()->sum('subtotal');
-        $lineDiscount = (float) $this->items()->sum('discount_amount');
-        if ($lineDiscount > 0) {
-            $this->discount_amount = $lineDiscount;
-        }
-        $this->total = max((float) $this->items_total - (float) $this->discount_amount, 0);
+        $itemDiscountSum = (float) $this->items()->sum('discount_amount');
+        // ponytail: max() menjaga legacy order yang diskonnya global (item flag 0) tak terhapus;
+        // upgrade path: backfill item flags dulu, baru ganti ke assignment langsung.
+        $this->discount_amount = max((float) $this->discount_amount, $itemDiscountSum);
+        $this->total = max($this->items_total - $this->discount_amount, 0);
         $this->save();
     }
 

@@ -55,11 +55,11 @@ test('walk-in checkout with FOC requires valid daily auth code, keeps normal tot
         'walk_in_customer_id' => $customer->id,
         'foc_comp_payment_method' => 'FOC',
         'payment_method' => 'cash',
-        'discount_auth_code' => '',
+        'foc_comp_auth_code' => '',
     ]);
 
     $resFail->assertStatus(422)
-        ->assertJsonValidationErrors(['discount_auth_code']);
+        ->assertJsonValidationErrors(['foc_comp_auth_code']);
 
     // 2. With invalid auth code -> fails
     $resFailInvalid = postJson(route('admin.pos.checkout'), [
@@ -67,11 +67,11 @@ test('walk-in checkout with FOC requires valid daily auth code, keeps normal tot
         'walk_in_customer_id' => $customer->id,
         'foc_comp_payment_method' => 'FOC',
         'payment_method' => 'cash',
-        'discount_auth_code' => '9999',
+        'foc_comp_auth_code' => '9999',
     ]);
 
     $resFailInvalid->assertStatus(422)
-        ->assertJsonValidationErrors(['discount_auth_code']);
+        ->assertJsonValidationErrors(['foc_comp_auth_code']);
 
     // 3. With valid auth code -> succeeds, normal total, stock decremented
     $resSuccess = postJson(route('admin.pos.checkout'), [
@@ -79,7 +79,7 @@ test('walk-in checkout with FOC requires valid daily auth code, keeps normal tot
         'walk_in_customer_id' => $customer->id,
         'foc_comp_payment_method' => 'FOC',
         'payment_method' => 'cash',
-        'discount_auth_code' => $authCode,
+        'foc_comp_auth_code' => $authCode,
     ]);
 
     $resSuccess->assertStatus(200)
@@ -134,7 +134,7 @@ test('walk-in checkout with Compliment requires valid daily auth code, sets tota
         'walk_in_customer_id' => $customer->id,
         'foc_comp_payment_method' => 'Compliment',
         'payment_method' => 'cash',
-        'discount_auth_code' => $authCode,
+        'foc_comp_auth_code' => $authCode,
     ]);
 
     $res->assertStatus(200)
@@ -207,11 +207,11 @@ test('close billing for booking with FOC or Compliment requires valid auth code'
         'payment_mode' => 'normal',
         'payment_method' => 'cash',
         'foc_comp_payment_method' => 'FOC',
-        'discount_auth_code' => '',
+        'foc_comp_auth_code' => '',
     ]);
 
     $resFocFail->assertStatus(422)
-        ->assertJsonValidationErrors(['discount_auth_code']);
+        ->assertJsonValidationErrors(['foc_comp_auth_code']);
 
     // 2. Compliment with valid auth code -> succeeds with 0 grand total
     $resCompSuccess = $this
@@ -220,7 +220,7 @@ test('close billing for booking with FOC or Compliment requires valid auth code'
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
             'foc_comp_payment_method' => 'Compliment',
-            'discount_auth_code' => $authCode,
+            'foc_comp_auth_code' => $authCode,
         ]);
 
     $resCompSuccess->assertStatus(200)

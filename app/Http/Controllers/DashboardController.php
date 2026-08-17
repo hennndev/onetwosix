@@ -68,7 +68,12 @@ class DashboardController extends Controller
                 });
             });
 
-        $revenueToday = (clone $todayBillings)->sum('grand_total');
+        $revenueToday = (clone $todayBillings)
+            ->where(function ($query) {
+                $query->whereNull('foc_comp_payment_method')
+                    ->orWhereNotIn('foc_comp_payment_method', ['FOC', 'Compliment']);
+            })
+            ->sum('grand_total');
         $transactionsToday = (clone $todayBillings)->count();
 
         // Items sold today (bar + kitchen orders)
@@ -126,6 +131,8 @@ class DashboardController extends Controller
         $dashboardTotalStaffMeal = (float) ($dashboardAggregate?->total_staff_meal ?? 0);
         $dashboardTotalComplimentQuantity = (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);
         $dashboardTotalFocQuantity = (int) ($dashboardAggregate?->total_foc_quantity ?? 0);
+        $dashboardTotalFocAmount = (float) ($dashboardAggregate?->total_foc_amount ?? 0);
+        $dashboardTotalComplimentAmount = (float) ($dashboardAggregate?->total_compliment_amount ?? 0);
         $dashboardTotalLd = (float) ($dashboardAggregate?->total_ld ?? 0);
         $dashboardTotalLdQuantity = (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalPenjualanRokok = (int) ($dashboardAggregate?->total_penjualan_rokok ?? 0);
@@ -165,6 +172,8 @@ class DashboardController extends Controller
             'dashboardTotalStaffMeal',
             'dashboardTotalComplimentQuantity',
             'dashboardTotalFocQuantity',
+            'dashboardTotalFocAmount',
+            'dashboardTotalComplimentAmount',
             'dashboardTotalLd',
             'dashboardTotalLdQuantity',
             'dashboardTotalPenjualanRokok',

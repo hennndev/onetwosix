@@ -29,7 +29,7 @@
 </script>
 
 <!-- Stats Row -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-3 gap-4 mb-5">
   <!-- Available -->
   <div class="bg-white border border-slate-200 rounded-xl px-5 py-4 flex items-center gap-4 shadow-sm">
     <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
@@ -101,14 +101,12 @@
 @endphp
 
 <div class="flex flex-wrap gap-2 mb-6">
-  @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
-    <button @click="selectedCategory = null"
-            :class="selectedCategory === null ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all">
-      Semua
-      <span class="text-xs font-bold opacity-70">{{ $tables->count() }}</span>
-    </button>
-  @endif
+  <button @click="selectedCategory = null"
+          :class="selectedCategory === null ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all">
+    Semua
+    <span class="text-xs font-bold opacity-70">{{ $tables->count() }}</span>
+  </button>
 
   @foreach ($areas as $area)
     @php
@@ -202,7 +200,7 @@
                     data-grand-total="{{ (float) ($sessionChargePreview['grand_total'] ?? max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }}"
                     data-checker-checked="{{ $checkerCheckedItems }}"
                     data-checker-total="{{ $checkerTotalItems }}"
-                    data-discount-items-url="{{ route('admin.bookings.discountItems', $tableBooking) }}"
+                    data-items-json="{{ json_encode($tableBooking->tableSession?->orders?->where('status', '!=', 'cancelled')?->flatMap(fn ($o) => $o->items?->where('status', '!=', 'cancelled')?->map(fn ($i) => ['id' => $i->id, 'name' => $i->item_name, 'quantity' => $i->quantity, 'subtotal' => (float) $i->subtotal]))?->values() ?? collect()) }}"
                     onclick="event.stopPropagation(); openCloseBillingModal(this)"
                     class="mt-2 w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
               Tutup Billing

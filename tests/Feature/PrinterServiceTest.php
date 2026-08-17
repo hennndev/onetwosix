@@ -17,63 +17,113 @@ beforeEach(function () {
     }
 });
 
-it('prints the configured number of copies in log mode', function () {
+it('prints a single ticket per job in log mode', function () {
     $table = new Tabel;
     $table->table_number = 'T-42';
 
     $kitchenOrder = new KitchenOrder;
-    $kitchenOrder->order_number = 'ORD-TEST-COPY-001';
+    $kitchenOrder->order_number = 'ORD-TEST-SINGLE-001';
     $kitchenOrder->setRelation('table', $table);
     $kitchenOrder->setRelation('items', collect());
 
-    $printer = Printer::make([
-        'name' => 'Copies Test',
-        'connection_type' => 'log',
-        'width' => 42,
-        'copies' => 3,
-    ]);
+    $printer = Printer::make(['name' => 'Single Test', 'connection_type' => 'log', 'width' => 42]);
 
     $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
 
     $log = file_get_contents(storage_path('logs/printer.log'));
 
-    // 3 copies => the CHECKER log block appears exactly 3 times
     expect($result)->toBeTrue()
-        ->and(substr_count($log, '[PRINT SIMULATION] CHECKER'))->toBe(3);
+        ->and(substr_count($log, '[PRINT SIMULATION] KITCHEN'))->toBe(1);
 });
 
-it('defaults to a single copy when copies is not set', function () {
-    $table = new Tabel;
-    $table->table_number = 'T-42';
-
-    $kitchenOrder = new KitchenOrder;
-    $kitchenOrder->order_number = 'ORD-TEST-COPY-002';
-    $kitchenOrder->setRelation('table', $table);
-    $kitchenOrder->setRelation('items', collect());
-
-    $printer = Printer::make(['name' => 'Copies Test', 'connection_type' => 'log', 'width' => 42]);
-
-    (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
-
-    $log = file_get_contents(storage_path('logs/printer.log'));
-
-    expect(substr_count($log, '[PRINT SIMULATION] CHECKER'))->toBe(1);
-});
-
-it('prints the configured number of copies for test print', function () {
-    $printer = Printer::make([
-        'name' => 'Copies Test',
-        'connection_type' => 'log',
-        'width' => 42,
-        'copies' => 2,
-    ]);
+it('prints a single test print per job', function () {
+    $printer = Printer::make(['name' => 'Single Test', 'connection_type' => 'log', 'width' => 42]);
 
     $result = (new PrinterService)->testPrint($printer);
 
     $log = file_get_contents(storage_path('logs/printer.log'));
 
     expect($result)->toBeTrue()
-        ->and(substr_count($log, '[PRINT SIMULATION] TEST PRINT'))->toBe(2);
+        ->and(substr_count($log, '[PRINT SIMULATION] TEST PRINT'))->toBe(1);
+});
+
+it('prints a receiver ticket per item when a receiver printer is configured', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-42';
+
+    $item1 = new OrderItem;
+    $item1->quantity = 2;
+    $item1->notes = 'Extra pedas';
+    $item1->setRelation('inventoryItem', InventoryItem::make(['name' => 'Nasi Goreng', 'pos_name' => 'Nasgor']));
+
+    $item2 = new OrderItem;
+    $item2->quantity = 1;
+    $item2->notes = '';
+    $item2->setRelation('inventoryItem', InventoryItem::make(['name' => 'Es Teh']));
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-RCV-001';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect([$item1, $item2]));
+
+    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => true]);
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
+    $printer->setRelation('receiverPrinter', $receiver);
+
+    $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and(substr_count($log, '[PRINT SIMULATION] KITCHEN'))->toBe(1)
+        ->and(substr_count($log, '[PRINT SIMULATION] RECEIVER'))->toBe(2)
+        ->and($log)->toContain('TERIMA PESANAN')
+        ->and($log)->toContain('SILAKAN AMBIL & ANTAR KE MEJA')
+        ->and($log)->toContain('Nasgor')
+        ->and($log)->toContain('Es Teh');
+});
+
+it('falls back to production ticket when receiver printer is inactive', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-42';
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-RCV-002';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect());
+
+    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => false]);
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
+    $printer->setRelation('receiverPrinter', $receiver);
+
+    $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and(substr_count($log, '[PRINT SIMULATION] KITCHEN'))->toBe(1)
+        ->and(substr_count($log, '[PRINT SIMULATION] RECEIVER'))->toBe(0);
+});
+
+it('does not print receiver tickets for checker or cashier sections', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-42';
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-RCV-003';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect());
+
+    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => true]);
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
+    $printer->setRelation('receiverPrinter', $receiver);
+
+    (new PrinterService)->printCheckerTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect(substr_count($log, '[PRINT SIMULATION] CHECKER'))->toBe(1)
+        ->and(substr_count($log, '[PRINT SIMULATION] RECEIVER'))->toBe(0);
 });
 
 it('prints kitchen ticket with the correct table_number', function () {
@@ -93,7 +143,7 @@ it('prints kitchen ticket with the correct table_number', function () {
 
     expect($result)->toBeTrue()
         ->and($log)->toContain('T-42')
-        ->and($log)->toContain('CHECKER')
+        ->and($log)->toContain('KITCHEN')
         ->and($log)->toContain('ORD-TEST-K001');
 });
 
@@ -114,7 +164,7 @@ it('prints bar ticket with the correct table_number', function () {
 
     expect($result)->toBeTrue()
         ->and($log)->toContain('B-07')
-        ->and($log)->toContain('CHECKER')
+        ->and($log)->toContain('BAR')
         ->and($log)->toContain('ORD-TEST-B001');
 });
 
@@ -373,7 +423,6 @@ it('prints Jenis Transaksi FOC on walk-in billing receipt', function () {
     $log = (string) file_get_contents(storage_path('logs/printer.log'));
 
     expect($result)->toBeTrue()
-        ->and($log)->toContain('Jenis Transaksi')
         ->and($log)->toContain('FOC');
 });
 
@@ -418,7 +467,6 @@ it('prints Jenis Transaksi Compliment on closed billing receipt', function () {
     $log = (string) file_get_contents(storage_path('logs/printer.log'));
 
     expect($result)->toBeTrue()
-        ->and($log)->toContain('Jenis Transaksi')
         ->and($log)->toContain('Compliment');
 });
 

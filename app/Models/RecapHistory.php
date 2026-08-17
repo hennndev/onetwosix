@@ -33,6 +33,8 @@ class RecapHistory extends Model
         'total_debit',
         'total_kredit',
         'total_qris',
+        'total_foc_amount',
+        'total_compliment_amount',
         'total_kitchen_items',
         'total_bar_items',
         'total_transactions',

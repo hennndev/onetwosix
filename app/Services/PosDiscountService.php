@@ -81,6 +81,7 @@ class PosDiscountService
         $lines = collect($stored['discount']['lines'])->mapWithKeys(fn (array $line): array => [
             (int) $line['inventory_item_id'] => [
                 'discount' => (float) $line['discount_amount'],
+                'discount_pct' => (float) ($line['discount_percentage'] ?? 0),
                 'reason' => (string) $stored['discount']['reason'],
             ],
         ])->all();
@@ -151,6 +152,7 @@ class PosDiscountService
                 ...$line,
                 'gross_amount' => $gross,
                 'discount_amount' => $discount,
+                'discount_percentage' => $type === 'percentage' ? $value : 0,
             ];
         })->all();
 
