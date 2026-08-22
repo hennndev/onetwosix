@@ -155,7 +155,7 @@ test('dashboard sync excludes FOC and Compliment amounts from total_amount', fun
         ->and((float) $dashboard->total_amount)->toBe(100000.0)          // hanya cash
         ->and((float) $dashboard->total_cash)->toBe(100000.0)            // cash bucket tak tercemar
         ->and((float) $dashboard->total_foc_amount)->toBe(61050.0 * 2)   // FOC grouping sendiri
-        ->and((float) $dashboard->total_compliment_amount)->toBe(0.0)    // Compliment paid 0
+        ->and((float) $dashboard->total_compliment_amount)->toBe(50000.0 * 3) // nilai barang (subtotal), bukan paid 0
         ->and((int) $dashboard->total_foc_quantity)->toBe(2)             // qty FOC dari order items
         ->and((int) $dashboard->total_compliment_quantity)->toBe(3)      // qty Compliment dari order items
         ->and((int) $dashboard->total_transactions)->toBe(3);            // tetap hitung transaksi

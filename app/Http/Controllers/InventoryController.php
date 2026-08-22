@@ -12,27 +12,40 @@ class InventoryController extends Controller
 
     public function index(Request $request)
     {
-        $query = InventoryItem::with('category');
+        $query = InventoryItem::with('category')
+            ->whereNotIn('category_type', ['food', 'bar']);
 
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
                     ->orWhere('category_type', 'like', "%{$search}%");
             });
         }
 
-        if ($request->has('category') && $request->category != '') {
-            $query->where('category_id', $request->category);
+        if ($request->filled('category')) {
+            $query->where('category_type', $request->category);
         }
 
-        if ($request->has('stock_filter') && $request->stock_filter == 'low') {
+        if ($request->filled('status')) {
+            $query->where('is_active', $request->boolean('status'));
+        }
+
+        if ($request->filled('item_group')) {
+            $query->where('is_item_group', $request->boolean('item_group'));
+        }
+
+        if ($request->stock_filter == 'low') {
             $query->whereColumn('stock_quantity', '<=', 'threshold');
         }
 
-        $items = $query
-            ->whereNotIn('category_type', ['food', 'bar'])
-            ->orderBy('name')->get();
+        $items = $query->orderBy('name')
+            ->paginate((int) $request->integer('per_page', 20))
+            ->withQueryString();
+
+        // Modal edit threshold butuh semua item sekaligus — koleksi terpisah dari paginator.
+        $allItems = InventoryItem::orderBy('name')->get(['id', 'name', 'threshold', 'unit', 'stock_quantity']);
 
         $totalItems = InventoryItem::count();
         $totalStockValue = InventoryItem::selectRaw('SUM(price * stock_quantity) as total')->value('total') ?? 0;
@@ -41,6 +54,7 @@ class InventoryController extends Controller
 
         return view('inventory.index', compact(
             'items',
+            'allItems',
             'totalItems',
             'totalStockValue',
             'lowStockCount',

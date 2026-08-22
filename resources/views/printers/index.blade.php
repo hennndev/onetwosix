@@ -249,7 +249,9 @@
           document.getElementById('is_active').checked = true;
           document.getElementById('connection_type').value = 'network';
           document.getElementById('area_id').value = '';
-          document.getElementById('receiver_printer_id').value = '';
+          document.querySelectorAll('input[name="enable_receiver"]').forEach((radio) => {
+            radio.checked = radio.value === '0';
+          });
           toggleConnectionFields();
           resetLogoPreview();
         }
@@ -274,7 +276,9 @@
         document.getElementById('header').value = printer.header || '126 Club';
         document.getElementById('footer').value = printer.footer || 'Thank you!';
         document.getElementById('width').value = printer.width || 42;
-        document.getElementById('receiver_printer_id').value = printer.receiver_printer_id || '';
+        document.querySelectorAll('input[name="enable_receiver"]').forEach((radio) => {
+          radio.checked = Number(radio.value) === (printer.enable_receiver ? 1 : 0);
+        });
         document.getElementById('show_qr_code').checked = printer.show_qr_code;
         document.getElementById('is_default').checked = printer.is_default;
         document.getElementById('is_active').checked = printer.is_active;

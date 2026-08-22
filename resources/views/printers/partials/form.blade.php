@@ -225,21 +225,27 @@
                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
         </div>
 
-        <div>
-          <label for="receiver_printer_id"
-                 class="block text-sm font-medium text-gray-700 mb-1">Printer Receiver</label>
-          <select id="receiver_printer_id"
-                  name="receiver_printer_id"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-            <option value="">-- Pakai Printer Ini (Utama) --</option>
-            @foreach ($printers ?? [] as $subPrinter)
-              @if (($editingPrinter ?? null) && $subPrinter->id === $editingPrinter->id)
-                @continue
-              @endif
-              <option value="{{ $subPrinter->id }}">{{ $subPrinter->name }} ({{ $subPrinter->printer_type ?: 'tanpa tipe' }})</option>
-            @endforeach
-          </select>
-          <p class="mt-1 text-xs text-gray-400">Opsional. Tiket Receiver (1 per item order, untuk waiter) dicetak ke printer ini dengan format berbeda.</p>
+        <div class="col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tiket Receiver</label>
+          <div class="flex items-center space-x-6">
+            <label class="inline-flex items-center">
+              <input type="radio"
+                     name="enable_receiver"
+                     value="1"
+                     class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                     {{ old('enable_receiver', isset($editingPrinter) ? (int) $editingPrinter->enable_receiver : 0) ? 'checked' : '' }}>
+              <span class="ml-2 text-sm text-gray-700">Ya</span>
+            </label>
+            <label class="inline-flex items-center">
+              <input type="radio"
+                     name="enable_receiver"
+                     value="0"
+                     class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                     {{ ! old('enable_receiver', isset($editingPrinter) ? (int) $editingPrinter->enable_receiver : 0) ? 'checked' : '' }}>
+              <span class="ml-2 text-sm text-gray-700">Tidak</span>
+            </label>
+          </div>
+          <p class="mt-1 text-xs text-gray-400">Ya = tiket produksi + 1 tiket RECEIVER per item dicetak di printer ini (untuk waiter). Tidak = hanya tiket produksi.</p>
         </div>
 
         <div class="flex items-center space-x-6">

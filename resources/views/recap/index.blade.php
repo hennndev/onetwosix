@@ -134,13 +134,15 @@
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-sky-50">
-              <p class="text-sm font-medium text-sky-700">Total Compliment (Qty)</p>
-              <p class="text-2xl font-bold text-sky-800 mt-1">{{ number_format($dashboardPreview['total_compliment_quantity'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-sky-700">Total Compliment</p>
+              <p class="text-2xl font-bold text-sky-800 mt-1">Rp {{ number_format($dashboardPreview['total_compliment_amount'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-xs font-medium text-sky-600 mt-2">Qty {{ number_format($dashboardPreview['total_compliment_quantity'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-indigo-50">
-              <p class="text-sm font-medium text-indigo-700">Total FOC (Qty)</p>
-              <p class="text-2xl font-bold text-indigo-800 mt-1">{{ number_format($dashboardPreview['total_foc_quantity'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-indigo-700">Total FOC</p>
+              <p class="text-2xl font-bold text-indigo-800 mt-1">Rp {{ number_format($dashboardPreview['total_foc_amount'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-xs font-medium text-indigo-600 mt-2">Qty {{ number_format($dashboardPreview['total_foc_quantity'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-purple-50">
@@ -624,6 +626,8 @@
                     'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
                     'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
                     'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
+                    'total_compliment_amount' => 'Rp ' . number_format($history->total_compliment_amount ?? 0, 0, ',', '.'),
+                    'total_foc_amount' => 'Rp ' . number_format($history->total_foc_amount ?? 0, 0, ',', '.'),
                     'gross_sales' => 'Rp ' . number_format(($history->total_amount ?? 0) + ($history->total_dp ?? 0), 0, ',', '.'),
                     'net_sales' => 'Rp ' . number_format(max(0, ($history->total_amount ?? 0) + ($history->total_dp ?? 0) - ($history->total_tax ?? 0) - ($history->total_service_charge ?? 0)), 0, ',', '.'),
                     'total_compliment_quantity' => number_format($history->total_compliment_quantity ?? 0, 0, ',', '.'),
@@ -805,15 +809,19 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Compliment (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Compliment</p>
                   <p class="text-2xl font-bold text-sky-700 mt-1"
-                     x-text="selectedHistory?.total_compliment_quantity ?? '0'"></p>
+                     x-text="selectedHistory?.total_compliment_amount ?? 'Rp 0'"></p>
+                  <p class="text-xs font-medium text-sky-600 mt-2"
+                     x-text="'Qty ' + (selectedHistory?.total_compliment_quantity ?? '0')"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total FOC (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total FOC</p>
                   <p class="text-2xl font-bold text-indigo-700 mt-1"
-                     x-text="selectedHistory?.total_foc_quantity ?? '0'"></p>
+                     x-text="selectedHistory?.total_foc_amount ?? 'Rp 0'"></p>
+                  <p class="text-xs font-medium text-indigo-600 mt-2"
+                     x-text="'Qty ' + (selectedHistory?.total_foc_quantity ?? '0')"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -855,15 +863,19 @@
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-sky-50">
-                    <p class="text-sm font-medium text-sky-700">Total Compliment (Qty)</p>
+                    <p class="text-sm font-medium text-sky-700">Total Compliment</p>
                     <p class="text-2xl font-bold text-sky-800 mt-1"
-                       x-text="selectedHistory?.total_compliment_quantity ?? '0'"></p>
+                       x-text="selectedHistory?.total_compliment_amount ?? 'Rp 0'"></p>
+                    <p class="text-xs font-medium text-sky-600 mt-2"
+                       x-text="'Qty ' + (selectedHistory?.total_compliment_quantity ?? '0')"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-indigo-50">
-                    <p class="text-sm font-medium text-indigo-700">Total FOC (Qty)</p>
+                    <p class="text-sm font-medium text-indigo-700">Total FOC</p>
                     <p class="text-2xl font-bold text-indigo-800 mt-1"
-                       x-text="selectedHistory?.total_foc_quantity ?? '0'"></p>
+                       x-text="selectedHistory?.total_foc_amount ?? 'Rp 0'"></p>
+                    <p class="text-xs font-medium text-indigo-600 mt-2"
+                       x-text="'Qty ' + (selectedHistory?.total_foc_quantity ?? '0')"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-amber-50">

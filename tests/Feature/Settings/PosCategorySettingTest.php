@@ -37,3 +37,24 @@ test('admin can save menu flag for pos category settings', function () {
         ->show_in_pos->toBeTrue()
         ->is_menu->toBeTrue();
 });
+
+test('pos category settings page renders bulk toggles', function () {
+    $admin = adminUser();
+
+    InventoryItem::create([
+        'code' => 'MENU-002',
+        'accurate_id' => 100002,
+        'name' => 'Iced Latte',
+        'category_type' => 'beverage',
+        'price' => 30000,
+        'stock_quantity' => 10,
+        'threshold' => 2,
+        'unit' => 'cup',
+        'is_active' => true,
+    ]);
+
+    actingAs($admin)->get(route('admin.settings.pos-categories.index'))
+        ->assertOk()
+        ->assertSee('data-bulk="show_in_pos"', false)
+        ->assertSee('data-bulk="is_menu"', false);
+});

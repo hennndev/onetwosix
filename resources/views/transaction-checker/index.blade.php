@@ -107,8 +107,69 @@
         <p class="text-gray-500 text-sm">Belum ada order untuk dicek</p>
       </div>
     @else
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        @foreach ($orders as $order)
+      <div x-data="{
+               selected: [],
+               bulkLoading: false,
+               selectableIds: @js($orders->where('status', '!=', 'completed')->pluck('id')->values()),
+               get allSelected() { return this.selectableIds.length > 0 && this.selected.length === this.selectableIds.length },
+               toggleAll() { this.selected = this.allSelected ? [] : [...this.selectableIds] },
+               async bulkCheck() {
+                   if (this.bulkLoading || !this.selected.length) return;
+                   if (!confirm(`Tandai ${this.selected.length} order sebagai selesai?`)) return;
+                   this.bulkLoading = true;
+                   try {
+                       const res = await fetch('{{ route('admin.transaction-checker.bulk-check') }}', {
+                           method: 'PATCH',
+                           headers: {
+                               'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                               'Accept': 'application/json',
+                               'Content-Type': 'application/json',
+                           },
+                           body: JSON.stringify({ order_ids: this.selected }),
+                       });
+                       const data = await res.json();
+                       if (data.success) {
+                           window.dispatchEvent(new CustomEvent('bulk-checked', { detail: { ids: data.order_ids } }));
+                           this.selectableIds = this.selectableIds.filter(id => !data.order_ids.includes(id));
+                           this.selected = [];
+                       }
+                   } finally {
+                       this.bulkLoading = false;
+                   }
+               }
+           }">
+        <!-- Bulk toolbar -->
+        <div x-show="selectableIds.length"
+             class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+            <input type="checkbox"
+                   :checked="allSelected"
+                   @change="toggleAll()"
+                   class="w-4 h-4 rounded border-gray-300 text-slate-800 focus:ring-slate-500">
+            Pilih Semua (<span x-text="selectableIds.length"></span>)
+          </label>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-500"
+                  x-text="`${selected.length} dipilih`"></span>
+            <button @click="bulkCheck()"
+                    :disabled="!selected.length || bulkLoading"
+                    class="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-sm font-medium transition">
+              <svg class="w-4 h-4"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span x-text="bulkLoading ? 'Processing...' : 'Done Terpilih'"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          @foreach ($orders as $order)
           @php
             $totalItems = $order->items->where('status', '!=', 'cancelled')->count();
             $servedItems = $order->items->where('status', 'served')->count();
@@ -117,6 +178,7 @@
           @endphp
 
           <div x-show="!hidden"
+               @bulk-checked.window="if ($event.detail.ids.includes({{ $order->id }})) hidden = true"
                x-data="{
                    loading: false,
                    hidden: false,
@@ -189,6 +251,12 @@
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <div class="flex items-center gap-2 flex-wrap">
+                    @if ($order->status !== 'completed')
+                      <input type="checkbox"
+                             value="{{ $order->id }}"
+                             x-model.number="selected"
+                             class="w-4 h-4 rounded border-gray-300 text-slate-800 focus:ring-slate-500 cursor-pointer">
+                    @endif
                     <span class="font-bold text-gray-900 text-sm">{{ $displayId }}</span>
                     <span class="text-xs font-bold px-2 py-0.5 rounded-full"
                           :class="statusClass(orderStatus)"
@@ -348,7 +416,8 @@
               </button>
             </div>
           </div>
-        @endforeach
+          @endforeach
+        </div>
       </div>
     @endif
   </div>

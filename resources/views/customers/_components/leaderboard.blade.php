@@ -60,9 +60,12 @@
             <div class="text-right">
               <div class="font-bold text-green-600">Rp {{ number_format((float) ($customer->transaction_lifetime_spending ?? 0), 0, ',', '.') }}</div>
             </div>
-            <span class="px-3 py-1 text-xs font-medium rounded-full {{ $customer->membership_tier === 'Untouchable' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700' }}">
-              {{ $customer->membership_tier }}
-            </span>
+            @php $lifetimeTier = $tiers->first(fn($t) => $t->minimum_spent <= (float) ($customer->transaction_lifetime_spending ?? 0)); @endphp
+            @if ($lifetimeTier)
+              <span class="px-3 py-1 text-xs font-medium rounded-full {{ $lifetimeTier->colorClasses('badge') }}">
+                {{ $lifetimeTier->name }}
+              </span>
+            @endif
           </div>
         @empty
           <div class="text-center py-8 text-gray-500">
@@ -116,9 +119,12 @@
             <div class="text-right">
               <div class="font-bold text-blue-600">Rp {{ number_format((float) ($customer->transaction_daily_spending ?? 0), 0, ',', '.') }}</div>
             </div>
-            <span class="px-3 py-1 text-xs font-medium rounded-full {{ $customer->membership_tier === 'Untouchable' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700' }}">
-              {{ $customer->membership_tier }}
-            </span>
+            @php $dailyTier = $tiers->first(fn($t) => $t->minimum_spent <= (float) ($customer->transaction_daily_spending ?? 0)); @endphp
+            @if ($dailyTier)
+              <span class="px-3 py-1 text-xs font-medium rounded-full {{ $dailyTier->colorClasses('badge') }}">
+                {{ $dailyTier->name }}
+              </span>
+            @endif
           </div>
         @empty
           <div class="text-center py-8 text-gray-500">

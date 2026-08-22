@@ -105,6 +105,124 @@ test('menus page can search menu list by keyword', function () {
         });
 });
 
+test('menus page always shows fixed category main filter options even when DB empty', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'food-menu',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.menus.index'))
+        ->assertOk()
+        ->assertViewHas('categoryMainOptions', function ($options): bool {
+            return $options->contains('food')
+                && $options->contains('alcohol')
+                && $options->contains('foc')
+                && $options->contains('LD');
+        });
+});
+
+test('menus page can filter menu list by category main', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'food-menu',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-CM-001',
+        'accurate_id' => 3001,
+        'name' => 'Ayam Bakar',
+        'category_type' => 'food-menu',
+        'category_main' => 'food',
+        'price' => 40000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-CM-002',
+        'accurate_id' => 3002,
+        'name' => 'Es Teh Manis',
+        'category_type' => 'food-menu',
+        'category_main' => 'beverage',
+        'price' => 8000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'gelas',
+        'is_active' => true,
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.menus.index', ['category_main' => 'food']))
+        ->assertOk()
+        ->assertViewHas('menusByCategory', function ($menusByCategory): bool {
+            $foodMenus = $menusByCategory->get('food-menu', collect());
+
+            return $foodMenus->pluck('name')->values()->all() === ['Ayam Bakar'];
+        });
+});
+
+test('menus page can filter menu list by category type', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'food-menu',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    PosCategorySetting::create([
+        'category_type' => 'drink-menu',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'bar',
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-CT-001',
+        'accurate_id' => 4001,
+        'name' => 'Ayam Goreng',
+        'category_type' => 'food-menu',
+        'price' => 30000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-CT-002',
+        'accurate_id' => 4002,
+        'name' => 'Jus Alpukat',
+        'category_type' => 'drink-menu',
+        'price' => 15000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'gelas',
+        'is_active' => true,
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.menus.index', ['category_type' => 'drink-menu']))
+        ->assertOk()
+        ->assertViewHas('menuCategoryTypes', fn ($types) => $types->values()->all() === ['drink-menu'])
+        ->assertViewHas('categoryTypeOptions', fn ($options) => $options->contains('food-menu') && $options->contains('drink-menu'))
+        ->assertViewHas('menusByCategory', function ($menusByCategory): bool {
+            return $menusByCategory->get('drink-menu', collect())->pluck('name')->all() === ['Jus Alpukat'];
+        });
+});
+
 test('menu store can save printer targets for a menu item', function () {
     $admin = adminUser();
 

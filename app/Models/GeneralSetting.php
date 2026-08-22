@@ -71,7 +71,7 @@ class GeneralSetting extends Model
             'accurate_service_charge_account_no' => '210202',
             'accurate_bank_account_no' => '110102',
             'accurate_cash_account_no' => '110101',
-            'accurate_stock_warehouse_name' => 'GD. OUTLET',
+            'accurate_stock_warehouse_name' => 'GD. WH SALATIGA',
             'can_choose_checker' => false,
             'closed_billing_receipt_printer_id' => null,
             'walk_in_receipt_printer_id' => null,
@@ -102,7 +102,7 @@ class GeneralSetting extends Model
             return trim((string) $this->accurate_stock_warehouse_name);
         }
 
-        return (string) (config('accurate.stock_warehouse_name') ?: 'GD. OUTLET');
+        return (string) (config('accurate.stock_warehouse_name') ?: 'GD. WH SALATIGA');
     }
 
     /**

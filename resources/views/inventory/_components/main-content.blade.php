@@ -99,7 +99,10 @@
   </div>
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-    <div class="p-4">
+    <form method="GET"
+          action="{{ route('admin.inventory.index') }}"
+          id="filterForm"
+          class="p-4 space-y-3">
       <div class="relative">
         <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
              fill="none"
@@ -112,10 +115,67 @@
         </svg>
         <input type="text"
                id="searchInput"
-               placeholder="Cari produk berdasarkan nama atau kategori..."
+               name="search"
+               value="{{ request('search') }}"
+               placeholder="Cari produk berdasarkan nama, kode, atau kategori..."
                class="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent">
       </div>
-    </div>
+
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <select id="filterCategory"
+                name="category"
+                onchange="this.form.submit()"
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+          <option value="">Semua Kategori</option>
+          @foreach ($categoryTypes as $type)
+            <option value="{{ $type }}"
+                    @selected(request('category') === $type)>{{ ucfirst($type) }}</option>
+          @endforeach
+        </select>
+
+        <select id="filterStatus"
+                name="status"
+                onchange="this.form.submit()"
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+          <option value="">Semua Status</option>
+          <option value="1"
+                  @selected(request('status') === '1')>Active</option>
+          <option value="0"
+                  @selected(request('status') === '0')>Inactive</option>
+        </select>
+
+        <select id="filterItemType"
+                name="item_group"
+                onchange="this.form.submit()"
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+          <option value="">Semua Tipe</option>
+          <option value="1"
+                  @selected(request('item_group') === '1')>Item Group</option>
+          <option value="0"
+                  @selected(request('item_group') === '0')>Single Item</option>
+        </select>
+
+        <select name="per_page"
+                onchange="this.form.submit()"
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+          @foreach ([10, 20, 50, 100] as $opt)
+            <option value="{{ $opt }}"
+                    @selected((int) request('per_page', 20) === $opt)>{{ $opt }} / halaman</option>
+          @endforeach
+        </select>
+
+        <button type="button"
+                id="lowStockBtn"
+                onclick="toggleStockFilter()"
+                class="px-3 py-2 text-sm font-medium rounded-lg border border-yellow-300 transition {{ request('stock_filter') === 'low' ? 'bg-yellow-500 text-white border-yellow-500 hover:bg-yellow-600' : 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100' }}">
+          Stok Menipis
+        </button>
+        <input type="hidden"
+               name="stock_filter"
+               id="stockFilterInput"
+               value="{{ request('stock_filter') }}">
+      </div>
+    </form>
   </div>
 
   <!-- Actions Bar -->
@@ -156,8 +216,8 @@
                id="itemTableBody">
           @foreach ($items as $item)
             <tr class="hover:bg-gray-50 transition item-row"
-                data-category="{{ $item->category_type }}"
-                data-low-stock="{{ $item->isLowStock() ? '1' : '0' }}">
+                data-item-id="{{ $item->id }}"
+                data-item="{{ json_encode($item->only(['id', 'name', 'code', 'category_type', 'price', 'stock_quantity', 'threshold', 'unit', 'is_active'])) }}">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm font-medium text-gray-900">{{ $item->name }}</div>
               </td>
@@ -270,6 +330,22 @@
           @endforeach
         </tbody>
       </table>
+    </div>
+
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-gray-200">
+      <p class="text-sm text-gray-500">
+        Menampilkan
+        <span class="font-semibold text-gray-800">{{ $items->firstItem() ?? 0 }}</span>
+        –
+        <span class="font-semibold text-gray-800">{{ $items->lastItem() ?? 0 }}</span>
+        dari
+        <span class="font-semibold text-gray-800">{{ number_format($items->total(), 0, ',', '.') }}</span>
+        produk
+      </p>
+
+      <div class="light-pagination">
+        {{ $items->onEachSide(1)->links() }}
+      </div>
     </div>
   </div>
 </div>

@@ -22,7 +22,7 @@ class Printer extends Model
         'logo_path',
         'show_qr_code',
         'width',
-        'receiver_printer_id',
+        'enable_receiver',
         'is_default',
         'is_active',
     ];
@@ -48,6 +48,7 @@ class Printer extends Model
         'show_qr_code' => 'boolean',
         'is_default' => 'boolean',
         'is_active' => 'boolean',
+        'enable_receiver' => 'boolean',
         'port' => 'integer',
         'timeout' => 'integer',
         'width' => 'integer',
@@ -122,11 +123,6 @@ class Printer extends Model
     public function inventoryItems(): BelongsToMany
     {
         return $this->belongsToMany(InventoryItem::class)->withTimestamps();
-    }
-
-    public function receiverPrinter(): \Illuminate\Database\Eloquent\Relations\BelongsTo
-    {
-        return $this->belongsTo(self::class, 'receiver_printer_id');
     }
 
     public function isNetwork(): bool

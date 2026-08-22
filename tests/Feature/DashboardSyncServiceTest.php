@@ -481,6 +481,16 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
         'billing_id' => null,
     ]);
 
+    // Billing unik per table_session → sesi terpisah utk FOC vs Compliment.
+    $focSession = TableSession::create([
+        'table_reservation_id' => null,
+        'table_id' => $table->id,
+        'customer_id' => $admin->id,
+        'session_code' => 'DSH-QTY-SES-FOC-'.uniqid(),
+        'status' => 'active',
+        'billing_id' => null,
+    ]);
+
     $order = Order::create([
         'table_session_id' => $session->id,
         'customer_user_id' => null,
@@ -535,8 +545,23 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
         'status' => 'served',
     ]);
 
+    // FOC/Compliment qty kini dihitung dari billing yang bertanda foc_comp_payment_method.
+    // Pisahkan ke billing sendiri-sendiri agar qty-nya masuk bucket masing-masing.
+    $focOrder = Order::create([
+        'table_session_id' => $focSession->id,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-QTY-FOC-ORD-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 0,
+        'discount_amount' => 0,
+        'total' => 0,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+    ]);
+
     OrderItem::create([
-        'order_id' => $order->id,
+        'order_id' => $focOrder->id,
         'inventory_item_id' => $focItem->id,
         'item_name' => $focItem->name,
         'item_code' => $focItem->code,
@@ -551,6 +576,7 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
 
     Billing::create([
         'table_session_id' => $session->id,
+        'order_id' => $order->id,
         'minimum_charge' => 0,
         'orders_total' => 0,
         'subtotal' => 0,
@@ -562,10 +588,32 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
         'grand_total' => 0,
         'paid_amount' => 0,
         'billing_status' => 'paid',
-        'payment_method' => 'cash',
+        'payment_method' => 'Compliment',
         'payment_mode' => 'normal',
         'is_booking' => true,
         'is_walk_in' => false,
+        'foc_comp_payment_method' => 'Compliment',
+    ]);
+
+    Billing::create([
+        'table_session_id' => $focSession->id,
+        'order_id' => $focOrder->id,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'paid',
+        'payment_method' => 'FOC',
+        'payment_mode' => 'normal',
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'foc_comp_payment_method' => 'FOC',
     ]);
 
     (new DashboardSyncService)->sync();
@@ -1034,17 +1082,31 @@ test('dashboard sync computes total penjualan rokok from order items category ro
 test('dashboard sync aggregates compliment and foc quantities for walk in transactions', function () {
     $admin = adminUser();
 
-    $order = Order::create([
+    $complimentOrder = Order::create([
         'table_session_id' => null,
         'customer_user_id' => null,
         'created_by' => $admin->id,
-        'order_number' => 'DSH-WALKIN-QTY-'.uniqid(),
+        'order_number' => 'DSH-WALKIN-COMP-'.uniqid(),
         'status' => 'completed',
         'items_total' => 0,
         'discount_amount' => 0,
         'total' => 0,
         'ordered_at' => now(),
-        'payment_method' => 'cash',
+        'payment_method' => 'Compliment',
+        'payment_mode' => 'normal',
+    ]);
+
+    $focOrder = Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-WALKIN-FOC-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 0,
+        'discount_amount' => 0,
+        'total' => 0,
+        'ordered_at' => now(),
+        'payment_method' => 'FOC',
         'payment_mode' => 'normal',
     ]);
 
@@ -1075,7 +1137,7 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
     ]);
 
     OrderItem::create([
-        'order_id' => $order->id,
+        'order_id' => $complimentOrder->id,
         'inventory_item_id' => $complimentItem->id,
         'item_name' => $complimentItem->name,
         'item_code' => $complimentItem->code,
@@ -1089,7 +1151,7 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
     ]);
 
     OrderItem::create([
-        'order_id' => $order->id,
+        'order_id' => $focOrder->id,
         'inventory_item_id' => $focItem->id,
         'item_name' => $focItem->name,
         'item_code' => $focItem->code,
@@ -1104,7 +1166,7 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
 
     Billing::create([
         'table_session_id' => null,
-        'order_id' => $order->id,
+        'order_id' => $complimentOrder->id,
         'is_walk_in' => true,
         'is_booking' => false,
         'minimum_charge' => 0,
@@ -1118,8 +1180,30 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
         'grand_total' => 0,
         'paid_amount' => 0,
         'billing_status' => 'paid',
-        'payment_method' => 'cash',
+        'payment_method' => 'Compliment',
         'payment_mode' => 'normal',
+        'foc_comp_payment_method' => 'Compliment',
+    ]);
+
+    Billing::create([
+        'table_session_id' => null,
+        'order_id' => $focOrder->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'paid',
+        'payment_method' => 'FOC',
+        'payment_mode' => 'normal',
+        'foc_comp_payment_method' => 'FOC',
     ]);
 
     (new DashboardSyncService)->sync();

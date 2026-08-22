@@ -62,6 +62,14 @@
       outline: 2px solid rgb(165 180 252);
       outline-offset: 2px;
     }
+
+    .settings-toggle__input:indeterminate+.settings-toggle__track {
+      background-color: rgb(148 163 184);
+    }
+
+    .settings-toggle__input:indeterminate+.settings-toggle__track::after {
+      transform: translateX(0.5rem);
+    }
   </style>
 
   <div class="p-4 sm:p-6">
@@ -118,7 +126,8 @@
       </div>
     @else
       <form method="POST"
-            action="{{ route('admin.settings.pos-categories.save') }}">
+            action="{{ route('admin.settings.pos-categories.save') }}"
+            id="pos-categories-form">
         @csrf
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div class="overflow-x-auto">
@@ -126,8 +135,32 @@
             <thead class="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Kategori</th>
-                <th class="px-5 py-3 text-center font-medium text-slate-600">Tampil di POS</th>
-                <th class="px-5 py-3 text-center font-medium text-slate-600">Menu</th>
+                <th class="px-5 py-3 text-center font-medium text-slate-600">
+                  <div class="flex flex-col items-center gap-1.5">
+                    <span>Tampil di POS</span>
+                    <label class="settings-toggle"
+                           title="Aktifkan/matikan semua">
+                      <input type="checkbox"
+                             data-bulk="show_in_pos"
+                             aria-label="Aktifkan atau matikan Tampil di POS untuk semua kategori"
+                             class="settings-toggle__input">
+                      <span class="settings-toggle__track"></span>
+                    </label>
+                  </div>
+                </th>
+                <th class="px-5 py-3 text-center font-medium text-slate-600">
+                  <div class="flex flex-col items-center gap-1.5">
+                    <span>Menu</span>
+                    <label class="settings-toggle settings-toggle--menu"
+                           title="Aktifkan/matikan semua">
+                      <input type="checkbox"
+                             data-bulk="is_menu"
+                             aria-label="Aktifkan atau matikan Menu untuk semua kategori"
+                             class="settings-toggle__input">
+                      <span class="settings-toggle__track"></span>
+                    </label>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -181,6 +214,34 @@
           </button>
         </div>
       </form>
+
+      <script>
+        (() => {
+          const form = document.getElementById('pos-categories-form');
+          const masters = form.querySelectorAll('[data-bulk]');
+          const rowsOf = (field) =>
+            form.querySelectorAll(`tbody input[type=checkbox][name$="[${field}]"]`);
+
+          const syncMaster = (master) => {
+            const rows = [...rowsOf(master.dataset.bulk)];
+            const checked = rows.filter((r) => r.checked).length;
+            master.checked = checked === rows.length && rows.length > 0;
+            master.indeterminate = checked > 0 && checked < rows.length;
+          };
+
+          masters.forEach((master) => {
+            syncMaster(master);
+            master.addEventListener('change', () => {
+              master.indeterminate = false;
+              rowsOf(master.dataset.bulk).forEach((r) => (r.checked = master.checked));
+            });
+          });
+
+          form.addEventListener('change', (e) => {
+            if (e.target.matches('tbody input[type=checkbox]')) masters.forEach(syncMaster);
+          });
+        })();
+      </script>
     @endif
   </div>
 </x-app-layout>

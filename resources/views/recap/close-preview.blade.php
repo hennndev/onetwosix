@@ -194,12 +194,20 @@
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_staff_meal'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Compliment (Qty)</span>
-          <span class="value">{{ number_format((int) ($dashboardPreview['total_compliment_quantity'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Compliment</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_compliment_amount'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total FOC (Qty)</span>
-          <span class="value">{{ number_format((int) ($dashboardPreview['total_foc_quantity'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Compliment Qty</span>
+          <span class="value">Qty {{ number_format((int) ($dashboardPreview['total_compliment_quantity'] ?? 0), 0, ',', '.') }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="label">Total FOC</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_foc_amount'] ?? 0), 0, ',', '.') }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="label">Total FOC Qty</span>
+          <span class="value">Qty {{ number_format((int) ($dashboardPreview['total_foc_quantity'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
           <span class="label">Total LD</span>

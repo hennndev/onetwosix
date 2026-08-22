@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerUser;
+use App\Models\Tier;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
@@ -85,6 +86,8 @@ class CustomerController extends Controller
             ->take($leaderboardLimit)
             ->get();
 
+        $tiers = Tier::orderBy('level', 'desc')->get();
+
         return view('customers.index', compact(
             'customers',
             'totalCustomers',
@@ -96,7 +99,8 @@ class CustomerController extends Controller
             'leaderboardLimit',
             'leaderboardLimitOptions',
             'perPage',
-            'perPageOptions'
+            'perPageOptions',
+            'tiers'
         ));
     }
 

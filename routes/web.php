@@ -163,6 +163,7 @@ Route::middleware('auth')->group(function () {
         Route::get('transaction-checker', [TransactionCheckerController::class, 'index'])->name('transaction-checker.index');
         Route::patch('transaction-checker/items/{item}/check', [TransactionCheckerController::class, 'checkItem'])->name('transaction-checker.check-item');
         Route::patch('transaction-checker/orders/{order}/check-all', [TransactionCheckerController::class, 'checkAll'])->name('transaction-checker.check-all');
+        Route::patch('transaction-checker/bulk-check', [TransactionCheckerController::class, 'checkBulk'])->name('transaction-checker.bulk-check');
 
         // Transaction History
         Route::get('transaction-history', [TransactionHistoryController::class, 'index'])->name('transaction-history.index');
@@ -202,11 +203,10 @@ Route::middleware('auth')->group(function () {
         });
 
         // Tier Settings
-        Route::prefix('settings/tier-settings')->name('settings.tier-settings.')->group(function () {
-            Route::get('/', [TierSettingsController::class, 'index'])->name('index');
-            Route::put('/', [TierSettingsController::class, 'update'])->name('update');
-            Route::delete('/reset', [TierSettingsController::class, 'resetToDefault'])->name('reset');
-        });
+        Route::resource('settings/tier-settings', TierSettingsController::class)
+            ->except(['show', 'create', 'edit'])
+            ->parameters(['tier-settings' => 'tier'])
+            ->names('settings.tier-settings');
 
         // POS Category Settings
         Route::prefix('settings/pos-categories')->name('settings.pos-categories.')->group(function () {

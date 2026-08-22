@@ -171,45 +171,47 @@ class DashboardSyncService
         $totals['total_breakage'] = (float) ($categoryMainAmountMap['breakage'] ?? 0);
         $totals['total_room'] = (float) ($categoryMainAmountMap['room'] ?? 0);
         $totals['total_staff_meal'] = (float) ($categoryMainAmountMap['staff_meal'] ?? 0);
-        $totals['total_compliment_quantity'] = (int) ($categoryMainQuantityMap['compliment'] ?? 0);
-        $totals['total_foc_quantity'] = (int) ($categoryMainQuantityMap['foc'] ?? 0);
+        // total_foc_quantity / total_compliment_quantity dihitung per billing di loop bawah.
         $totals['total_ld'] = (float) ($categoryMainAmountMap['ld'] ?? 0);
         $totals['total_ld_quantity'] = (int) ($categoryMainQuantityMap['ld'] ?? 0);
 
         foreach ($paidBillings as $billing) {
-            $paidAmount = (float) ($billing->paid_amount ?: $billing->grand_total ?: 0);
+            $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);
 
             $totals['total_transactions']++;
 
             // FOC/Compliment dipisah dari gross/net — grouping sendiri, bukan revenue.
             $focCompMethod = (string) ($billing->foc_comp_payment_method ?? '');
             if (in_array($focCompMethod, ['FOC', 'Compliment'], true)) {
-                if ($focCompMethod === 'FOC') {
-                    $totals['total_foc_amount'] += $paidAmount;
-                } else {
-                    $totals['total_compliment_amount'] += $paidAmount;
-                }
-
-                // Qty FOC/Compliment: jumlah item pada order billing FOC/Compliment.
+                // Qty & nilai FOC/Compliment dari order items billing FOC/Compliment.
+                // Nilai = SUM(subtotal) — paid_amount/grand_total billing FOC selalu 0
+                // karena diskon diterapkan ke semua item.
                 // Walk-in pakai order_id; booking pakai table_session_id.
+                // Tak andalkan is_booking (default DB bisa '1' walau walk-in).
                 $focCompOrderId = filled($billing->order_id)
                     ? collect([$billing->order_id])
                     : (filled($billing->table_session_id)
                         ? Order::query()->where('table_session_id', $billing->table_session_id)->where('status', '!=', 'cancelled')->pluck('id')
                         : collect());
 
-                $focCompQty = (int) OrderItem::query()
+                $focCompSums = OrderItem::query()
                     ->whereIn('order_id', $focCompOrderId)
                     ->where('status', '!=', 'cancelled')
-                    ->sum('quantity');
+                    ->selectRaw('COALESCE(SUM(quantity), 0) as total_qty, COALESCE(SUM(subtotal), 0) as total_subtotal')
+                    ->first();
+
+                $focCompQty = (int) ($focCompSums->total_qty ?? 0);
+                $focCompAmount = (float) ($focCompSums->total_subtotal ?? 0);
 
                 if ($focCompMethod === 'FOC') {
+                    $totals['total_foc_amount'] += $focCompAmount;
                     $totals['total_foc_quantity'] += $focCompQty;
                 } else {
+                    $totals['total_compliment_amount'] += $focCompAmount;
                     $totals['total_compliment_quantity'] += $focCompQty;
                 }
 
-                continue;
+                continue; // skip total_amount, tax, service, dan bucket metode.
             }
 
             $totals['total_amount'] += $paidAmount;

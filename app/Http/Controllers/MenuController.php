@@ -17,6 +17,11 @@ class MenuController extends Controller
     public function index(Request $request): View
     {
         $search = trim((string) $request->string('search', ''));
+        $filterCategoryMain = trim((string) $request->string('category_main', ''));
+        $filterCategoryType = trim((string) $request->string('category_type', ''));
+        $filterVisibility = trim((string) $request->string('visibility', ''));
+        $filterTax = trim((string) $request->string('tax', ''));
+        $filterPrinter = trim((string) $request->string('printer', ''));
 
         $inventoryItems = InventoryItem::where('is_active', true)
             ->orderBy('name')
@@ -35,6 +40,9 @@ class MenuController extends Controller
             ->orderBy('category_type')
             ->pluck('category_type');
 
+        // Opsi select Kategori Item — tidak ikut terfilter.
+        $categoryTypeOptions = $menuCategoryTypes;
+
         $menusByCategory = $menuCategoryTypes
             ->mapWithKeys(function (string $categoryType) {
                 $menus = InventoryItem::query()
@@ -47,13 +55,52 @@ class MenuController extends Controller
                 return [$categoryType => $menus];
             });
 
-        if ($search !== '') {
+        $hasFilters = $search !== ''
+            || $filterCategoryMain !== ''
+            || $filterCategoryType !== ''
+            || $filterVisibility !== ''
+            || $filterTax !== ''
+            || $filterPrinter !== '';
+
+        if ($hasFilters) {
             $menusByCategory = $menusByCategory
-                ->map(function ($menus) use ($search) {
-                    return $menus->filter(function (InventoryItem $menu) use ($search): bool {
-                        return str_contains(strtolower((string) $menu->name), strtolower($search))
-                            || str_contains(strtolower((string) $menu->pos_name), strtolower($search))
-                            || str_contains(strtolower((string) $menu->code), strtolower($search));
+                ->map(function ($menus) use ($search, $filterCategoryMain, $filterCategoryType, $filterVisibility, $filterTax, $filterPrinter) {
+                    return $menus->filter(function (InventoryItem $menu) use ($search, $filterCategoryMain, $filterCategoryType, $filterVisibility, $filterTax, $filterPrinter): bool {
+                        if ($search !== '') {
+                            $matchesSearch = str_contains(strtolower((string) $menu->name), strtolower($search))
+                                || str_contains(strtolower((string) $menu->pos_name), strtolower($search))
+                                || str_contains(strtolower((string) $menu->code), strtolower($search));
+
+                            if (! $matchesSearch) {
+                                return false;
+                            }
+                        }
+
+                        if ($filterCategoryMain !== '' && (string) $menu->category_main !== $filterCategoryMain) {
+                            return false;
+                        }
+
+                        if ($filterCategoryType !== '' && (string) $menu->category_type !== $filterCategoryType) {
+                            return false;
+                        }
+
+                        if ($filterVisibility !== '' && (int) $menu->is_visible_in_pos !== (int) $filterVisibility) {
+                            return false;
+                        }
+
+                        if ($filterTax === 'tax' && ! $menu->include_tax) {
+                            return false;
+                        }
+
+                        if ($filterTax === 'service' && ! $menu->include_service_charge) {
+                            return false;
+                        }
+
+                        if ($filterPrinter !== '' && ! $menu->printers->contains('id', (int) $filterPrinter)) {
+                            return false;
+                        }
+
+                        return true;
                     })->values();
                 });
 
@@ -68,7 +115,32 @@ class MenuController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'location', 'printer_type']);
 
-        return view('menus.index', compact('inventoryItems', 'inventoryCategoryTypes', 'menuCategoryTypes', 'menusByCategory', 'printers', 'search'));
+        // Opsi tetap (selaras form Buat Menu) + nilai lain yang kebetulan ada di DB.
+        $categoryMainOptions = InventoryItem::query()
+            ->whereNotNull('category_main')
+            ->where('category_main', '!=', '')
+            ->distinct()
+            ->pluck('category_main')
+            ->merge(['food', 'alcohol', 'beverage', 'cigarette', 'breakage', 'room', 'staff_meal', 'compliment', 'foc', 'LD'])
+            ->unique()
+            ->sort()
+            ->values();
+
+        return view('menus.index', compact(
+            'inventoryItems',
+            'inventoryCategoryTypes',
+            'menuCategoryTypes',
+            'menusByCategory',
+            'printers',
+            'search',
+            'categoryMainOptions',
+            'categoryTypeOptions',
+            'filterCategoryMain',
+            'filterCategoryType',
+            'filterVisibility',
+            'filterTax',
+            'filterPrinter',
+        ));
     }
 
     public function store(Request $request): JsonResponse

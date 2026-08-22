@@ -179,3 +179,57 @@ test('transaction checker area filter and tab filter work together', function ()
         ->assertOk()
         ->assertViewHas('orders', fn ($orders) => $orders->contains('id', $completedOrder->id) && ! $orders->contains('id', $pendingOrder->id));
 });
+
+test('transaction checker bulk check marks selected orders as served', function () {
+    $admin = adminUser();
+
+    $area = Area::create(['code' => 'TRX-BULK', 'name' => 'Bulk Area', 'is_active' => true, 'sort_order' => 1]);
+    $customer = User::factory()->create();
+    $table = Tabel::create(['area_id' => $area->id, 'table_number' => 'TRX-BLK-T1', 'qr_code' => 'TRX-BLK-QR1', 'capacity' => 4, 'status' => 'available', 'is_active' => true]);
+    $session = TableSession::create(['table_id' => $table->id, 'customer_id' => $customer->id, 'session_code' => 'TRX-SES-BLK', 'status' => 'active']);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'BEV-BLK', 'accurate_id' => 2001, 'name' => 'Kopi', 'category_type' => 'beverage',
+        'price' => 10000, 'stock_quantity' => 20, 'threshold' => 5, 'unit' => 'glass',
+        'is_active' => true, 'item_produced' => false, 'material_produced' => false,
+    ]);
+
+    $makeOrder = function (string $number) use ($session, $area, $admin, $inventoryItem) {
+        $order = Order::create([
+            'table_session_id' => $session->id, 'area_id' => $area->id, 'created_by' => $admin->id,
+            'order_number' => $number, 'status' => 'pending', 'items_total' => 10000,
+            'discount_amount' => 0, 'total' => 10000, 'ordered_at' => now(),
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id, 'inventory_item_id' => $inventoryItem->id, 'item_name' => 'Kopi',
+            'item_code' => 'BEV-BLK', 'quantity' => 1, 'price' => 10000, 'subtotal' => 10000,
+            'discount_amount' => 0, 'preparation_location' => 'bar', 'status' => 'pending',
+        ]);
+
+        return $order;
+    };
+
+    $orderA = $makeOrder('ORD-BLK-A');
+    $orderB = $makeOrder('ORD-BLK-B');
+    $untouched = $makeOrder('ORD-BLK-C');
+
+    actingAs($admin)
+        ->withSession(['accurate_database' => 'test'])
+        ->patchJson(route('admin.transaction-checker.bulk-check'), ['order_ids' => [$orderA->id, $orderB->id]])
+        ->assertOk()
+        ->assertJson(['success' => true]);
+
+    expect($orderA->fresh()->status)->toBe('completed');
+    expect($orderB->fresh()->status)->toBe('completed');
+    expect($orderA->items()->pluck('status')->all())->each->toBe('served');
+    expect($untouched->fresh()->status)->toBe('pending');
+    expect($untouched->items()->first()->status)->toBe('pending');
+});
+
+test('transaction checker bulk check rejects empty payload', function () {
+    actingAs(adminUser())
+        ->withSession(['accurate_database' => 'test'])
+        ->patchJson(route('admin.transaction-checker.bulk-check'), ['order_ids' => []])
+        ->assertStatus(422);
+});

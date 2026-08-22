@@ -1112,28 +1112,13 @@ class PrinterService
 
         $lines = $this->buildPreparationTicketLines($order, $waiterName, $printer);
 
-        // Receiver hanya berlaku untuk produksi (kitchen/bar). Checker/cashier murni 1 tiket.
-        // Guard: raw id dulu (tanpa query, hindari N+1); relation dimuat bila perlu.
-        $receiverPrinter = null;
-        if (in_array($section, ['KITCHEN', 'BAR'], true) && (int) ($printer->receiver_printer_id ?? 0) > 0) {
-            $receiverPrinter = $printer->relationLoaded('receiverPrinter')
-                ? $printer->receiverPrinter
-                : $printer->receiverPrinter()->first();
-        }
+        // Receiver hanya untuk produksi (kitchen/bar) & saat enable_receiver true.
+        $useReceiver = in_array($section, ['KITCHEN', 'BAR'], true)
+            && $printer->enable_receiver
+            && $printer->is_active;
 
         // Tanpa receiver: cukup 1 tiket produksi.
-        if (! $receiverPrinter) {
-            return $this->withPrinter(
-                $printer,
-                fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
-                $lines,
-                $section,
-                $section.' PREVIEW'
-            );
-        }
-
-        // Receiver non-aktif → fallback ke printer produksi (bukan silent drop).
-        if (! $receiverPrinter->is_active) {
+        if (! $useReceiver) {
             return $this->withPrinter(
                 $printer,
                 fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
@@ -1144,7 +1129,7 @@ class PrinterService
         }
 
         // Dengan receiver: 1 tiket produksi + 1 tiket RECEIVER per item order,
-        // tiap tiket hanya berisi item itu. Satu koneksi per printer.
+        // tiap tiket hanya berisi item itu, semua di printer produksi (1 koneksi).
         $jobs = [[
             'printer' => $printer,
             'render' => fn (EscposPrinter $escpos) => $this->renderPreparationTicket($escpos, $order, $printer, $waiterName, $section),
@@ -1162,15 +1147,17 @@ class PrinterService
             $singleOrder->setRelation('items', collect([$item]));
 
             $jobs[] = [
-                'printer' => $receiverPrinter,
-                'render' => fn (EscposPrinter $escpos) => $this->renderReceiverTicket($escpos, $singleOrder, $receiverPrinter, $waiterName),
-                'lines' => $this->buildReceiverTicketLines($singleOrder, $waiterName, $receiverPrinter),
+                'printer' => $printer,
+                'render' => fn (EscposPrinter $escpos) => $this->renderReceiverTicket($escpos, $singleOrder, $printer, $waiterName),
+                'lines' => $this->buildReceiverTicketLines($singleOrder, $waiterName, $printer),
                 'title' => 'RECEIVER',
                 'preview' => 'RECEIVER PREVIEW',
             ];
         }
 
-        return $this->withPrinterJobs($jobs);
+        // Propagate error (printer down) agar pemanggil (manual reprint / checkout)
+        // bisa memberi feedback. Checkout sudah punya per-group try/catch sendiri.
+        return $this->withPrinterJobs($jobs, false);
     }
 
     protected function renderPreparationTicket(
@@ -1377,8 +1364,13 @@ class PrinterService
         $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
         $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
         $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
+        $staffMealAmount = (float) ($dashboardPreview['total_staff_meal'] ?? $recapData['totalStaffMeal'] ?? 0);
+        $complimentQuantity = (int) ($dashboardPreview['total_compliment_quantity'] ?? $recapData['totalComplimentQuantity'] ?? 0);
+        $focQuantity = (int) ($dashboardPreview['total_foc_quantity'] ?? $recapData['totalFocQuantity'] ?? 0);
+        $complimentAmount = (float) ($dashboardPreview['total_compliment_amount'] ?? $recapData['totalComplimentAmount'] ?? 0);
+        $focAmount = (float) ($dashboardPreview['total_foc_amount'] ?? $recapData['totalFocAmount'] ?? 0);
 
-        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($recapData, $width, $includeTransactionHistory, $kitchenItemsOut, $barItemsOut): void {
+        return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($recapData, $width, $includeTransactionHistory, $kitchenItemsOut, $barItemsOut, $staffMealAmount, $complimentQuantity, $focQuantity, $complimentAmount, $focAmount): void {
             $separator = str_repeat('-', $width);
 
             $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
@@ -1397,6 +1389,12 @@ class PrinterService
             $escpos->text($this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width)."\n");
+
+            $escpos->text($this->formatClosedBillingPair('Total Staff Meal', 'Rp '.number_format($staffMealAmount, 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Compliment', 'Rp '.number_format($complimentAmount, 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Compliment Qty', number_format($complimentQuantity, 0, ',', '.').'x', $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('FOC', 'Rp '.number_format($focAmount, 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('FOC Qty', number_format($focQuantity, 0, ',', '.').'x', $width)."\n");
 
             $escpos->text($separator."\n");
             $escpos->setEmphasis(true);
@@ -1519,6 +1517,8 @@ class PrinterService
         $ldQuantity = (int) ($dashboardPreview['total_ld_quantity'] ?? $recapData['totalLdQuantity'] ?? 0);
         $complimentQuantity = (int) ($dashboardPreview['total_compliment_quantity'] ?? $recapData['totalComplimentQuantity'] ?? 0);
         $focQuantity = (int) ($dashboardPreview['total_foc_quantity'] ?? $recapData['totalFocQuantity'] ?? 0);
+        $complimentAmount = (float) ($dashboardPreview['total_compliment_amount'] ?? $recapData['totalComplimentAmount'] ?? 0);
+        $focAmount = (float) ($dashboardPreview['total_foc_amount'] ?? $recapData['totalFocAmount'] ?? 0);
 
         $lines = [
             'REKAP END DAY',
@@ -1534,8 +1534,10 @@ class PrinterService
             $this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total Staff Meal', 'Rp '.number_format((float) ($dashboardPreview['total_staff_meal'] ?? $recapData['totalStaffMeal'] ?? 0), 0, ',', '.'), $width),
-            $this->formatClosedBillingPair('Total Compliment (Qty)', number_format($complimentQuantity, 0, ',', '.'), $width),
-            $this->formatClosedBillingPair('Total FOC (Qty)', number_format($focQuantity, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Compliment', 'Rp '.number_format($complimentAmount, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Compliment Qty', number_format($complimentQuantity, 0, ',', '.').'x', $width),
+            $this->formatClosedBillingPair('FOC', 'Rp '.number_format($focAmount, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('FOC Qty', number_format($focQuantity, 0, ',', '.').'x', $width),
             $this->formatClosedBillingPair('Total LD Qty', number_format($ldQuantity, 0, ',', '.'), $width),
             $separator,
             'RINGKASAN PEMBAYARAN',

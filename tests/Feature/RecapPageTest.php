@@ -146,6 +146,8 @@ test('admin can open recap page', function () {
         'total_staff_meal' => 55000,
         'total_compliment_quantity' => 9,
         'total_foc_quantity' => 7,
+        'total_compliment_amount' => 45000,
+        'total_foc_amount' => 35000,
         'total_ld' => 117000,
         'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 42,
@@ -187,8 +189,10 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
         ->assertSeeText('Total Staff Meal')
-        ->assertSeeText('Total Compliment (Qty)')
-        ->assertSeeText('Total FOC (Qty)')
+        ->assertSeeText('Total Compliment')
+        ->assertSeeText('Rp 45.000')
+        ->assertSeeText('Total FOC')
+        ->assertSeeText('Rp 35.000')
         ->assertSeeText('Total LD')
         ->assertSeeText('Qty 12')
         ->assertSeeText('Rp 51.000')
@@ -291,6 +295,8 @@ test('recap close preview page shows printable a4 summary', function () {
             'total_penjualan_rokok' => 42,
             'total_compliment_quantity' => 6,
             'total_foc_quantity' => 4,
+            'total_compliment_amount' => 33000,
+            'total_foc_amount' => 22000,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
             'total_cash' => 100000,
@@ -322,8 +328,14 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Item Keluar Bar')
         ->assertSeeText('Gross Sales (Included DP)')
         ->assertSeeText('Net Sales (Included DP)')
-        ->assertSeeText('Total Compliment (Qty)')
-        ->assertSeeText('Total FOC (Qty)')
+        ->assertSeeText('Total Compliment')
+        ->assertSeeText('Rp 33.000')
+        ->assertSeeText('Total Compliment Qty')
+        ->assertSeeText('Qty 6')
+        ->assertSeeText('Total FOC')
+        ->assertSeeText('Rp 22.000')
+        ->assertSeeText('Total FOC Qty')
+        ->assertSeeText('Qty 4')
         ->assertSeeText('Qty 8')
         ->assertSeeText('Tutup End Day')
         ->assertSeeText('INFO ROKOK')

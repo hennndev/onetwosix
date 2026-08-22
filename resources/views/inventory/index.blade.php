@@ -18,9 +18,6 @@
 
   @push('scripts')
     <script>
-      const items = @json($items);
-      let lowStockFilterActive = false;
-
       const SYNC_ICON_HTML = document.querySelector('[data-sync-icon]').innerHTML;
 
       function syncFromAccurate() {
@@ -96,7 +93,8 @@
           form.reset();
           document.getElementById('is_active').checked = true;
         } else if (mode === 'edit' && itemId) {
-          const item = items.find(i => i.id === itemId);
+          const row = document.querySelector(`.item-row[data-item-id="${itemId}"]`);
+          const item = row ? JSON.parse(row.dataset.item) : null;
           if (item) {
             modalTitle.textContent = 'Edit Produk';
             form.action = `/admin/inventory/${itemId}`;
@@ -152,38 +150,17 @@
       }
 
       function toggleStockFilter() {
-        lowStockFilterActive = !lowStockFilterActive;
-        const btn = document.getElementById('lowStockBtn');
-
-        if (lowStockFilterActive) {
-          btn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
-          btn.classList.add('bg-yellow-600', 'hover:bg-yellow-700', 'ring-2', 'ring-yellow-300');
-        } else {
-          btn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-          btn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700', 'ring-2', 'ring-yellow-300');
-        }
-
-        filterItems();
+        const input = document.getElementById('stockFilterInput');
+        input.value = input.value === 'low' ? '' : 'low';
+        document.getElementById('filterForm').submit();
       }
 
-      // Search functionality
-      document.getElementById('searchInput').addEventListener('input', function(e) {
-        filterItems();
+      // Search: submit form dengan debounce agar server-side filter jalan
+      let searchDebounce;
+      document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => document.getElementById('filterForm').submit(), 400);
       });
-
-      function filterItems() {
-        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-        const rows = document.querySelectorAll('.item-row');
-
-        rows.forEach(row => {
-          const text = row.textContent.toLowerCase();
-          const matchesSearch = text.includes(searchTerm);
-          const isLowStock = row.dataset.lowStock === '1';
-          const matchesFilter = !lowStockFilterActive || isLowStock;
-
-          row.style.display = matchesSearch && matchesFilter ? '' : 'none';
-        });
-      }
 
       // Close modals on Escape key
       document.addEventListener('keydown', function(e) {

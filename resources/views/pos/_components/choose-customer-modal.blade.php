@@ -144,6 +144,7 @@
                 'downPaymentAmount' => (float) ($session->reservation?->down_payment_amount ?? 0),
                 'tierName' => $tierName,
                 'discountPercentage' => $tierDiscount,
+                'tierBadge' => $customerTier?->colorClasses('badge'),
                 'waiterName' => $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null),
                 'reservationId' => $session->table_reservation_id,
             ];
@@ -161,7 +162,7 @@
                   {{ $areaNameRaw }}
                 </span>
                 @if ($tierName)
-                  <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">{{ $tierName }}</span>
+                  <span class="px-2 py-0.5 text-xs font-semibold rounded-full {{ $customerTier->colorClasses('badge') }}">{{ $tierName }}</span>
                 @endif
               </div>
               <p class="text-xs text-gray-500 mt-0.5">{{ $phone }}</p>

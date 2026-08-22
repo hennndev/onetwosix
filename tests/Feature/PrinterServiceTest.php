@@ -66,9 +66,7 @@ it('prints a receiver ticket per item when a receiver printer is configured', fu
     $kitchenOrder->setRelation('table', $table);
     $kitchenOrder->setRelation('items', collect([$item1, $item2]));
 
-    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => true]);
-    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
-    $printer->setRelation('receiverPrinter', $receiver);
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'enable_receiver' => true, 'is_active' => true]);
 
     $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
 
@@ -92,9 +90,8 @@ it('falls back to production ticket when receiver printer is inactive', function
     $kitchenOrder->setRelation('table', $table);
     $kitchenOrder->setRelation('items', collect());
 
-    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => false]);
-    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
-    $printer->setRelation('receiverPrinter', $receiver);
+    // enable_receiver true tapi printer non-aktif → receiver tidak jalan.
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'enable_receiver' => true, 'is_active' => false]);
 
     $result = (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
 
@@ -114,9 +111,7 @@ it('does not print receiver tickets for checker or cashier sections', function (
     $kitchenOrder->setRelation('table', $table);
     $kitchenOrder->setRelation('items', collect());
 
-    $receiver = Printer::make(['id' => 99, 'name' => 'Receiver', 'connection_type' => 'log', 'width' => 42, 'is_active' => true]);
-    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'receiver_printer_id' => 99]);
-    $printer->setRelation('receiverPrinter', $receiver);
+    $printer = Printer::make(['name' => 'Kitchen', 'connection_type' => 'log', 'width' => 42, 'enable_receiver' => true, 'is_active' => true]);
 
     (new PrinterService)->printCheckerTicket($kitchenOrder, $printer);
 

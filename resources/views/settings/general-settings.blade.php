@@ -116,12 +116,12 @@
             <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_stock_warehouse_name">
               Nama Gudang Stok / Warehouse Name (Accurate)
             </label>
-            <p class="text-xs text-slate-400 mb-2">Nama gudang di Accurate Online untuk pengurangan stok item transaksi (Default: GD. OUTLET).</p>
+            <p class="text-xs text-slate-400 mb-2">Nama gudang di Accurate Online untuk pengurangan stok item transaksi (Default: GD. WH SALATIGA).</p>
             <input type="text"
                    id="accurate_stock_warehouse_name"
                    name="accurate_stock_warehouse_name"
-                   value="{{ old('accurate_stock_warehouse_name', $settings->accurate_stock_warehouse_name ?? 'GD. OUTLET') }}"
-                   placeholder="GD. OUTLET"
+                   value="{{ old('accurate_stock_warehouse_name', $settings->accurate_stock_warehouse_name ?? 'GD. WH SALATIGA') }}"
+                   placeholder="GD. WH SALATIGA"
                    class="w-full border @error('accurate_stock_warehouse_name') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
             @error('accurate_stock_warehouse_name')
               <p class="text-xs text-red-500 mt-1">{{ $message }}</p>

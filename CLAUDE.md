@@ -5,6 +5,12 @@ Proyek ini adalah sistem POS / manajemen club berbasis Laravel. Untuk menghemat 
 
 ## Aturan Utama: Graph Dulu, Baca File Kemudian
 
+**Trigger wajib (selalu aktif, tanpa diminta)**: setiap pertanyaan tentang struktur, alur,
+atau keterkaitan antar modul/kelas — atau sebelum eksplorasi banyak file — **invoke skill
+`graphify` (mode query) sebagai tool pertama**. JANGAN mulai dengan Grep/Read murni.
+Grep/Read baru dipakai setelah graph menunjukkan lokasi yang relevan, atau untuk melihat
+implementasi detail satu fungsi/method spesifik.
+
 Sebelum membaca banyak file untuk memahami struktur, alur, atau keterkaitan antar modul,
 **query knowledge graph terlebih dahulu**:
 

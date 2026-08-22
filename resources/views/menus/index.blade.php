@@ -320,19 +320,61 @@
             <p class="text-sm text-gray-500">Menu ditampilkan berdasarkan kategori yang ditandai sebagai menu.</p>
           </div>
 
+          @php
+            $menuFilterActive = filled($search ?? null) || filled($filterCategoryMain ?? null) || filled($filterCategoryType ?? null) || filled($filterVisibility ?? null) || filled($filterTax ?? null) || filled($filterPrinter ?? null);
+          @endphp
           <form method="GET"
                 action="{{ route('admin.menus.index') }}"
-                class="flex w-full gap-2">
+                class="flex w-full flex-wrap items-center gap-2">
             <input type="text"
                    name="search"
                    value="{{ $search ?? '' }}"
                    placeholder="Cari nama menu / nama POS / kode..."
-                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500 lg:w-[36rem]">
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500 lg:w-[22rem]">
+
+            <select name="category_main"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500">
+              <option value="">Semua Kategori Utama</option>
+              @foreach ($categoryMainOptions as $main)
+                <option value="{{ $main }}" @selected(($filterCategoryMain ?? '') === $main)>{{ strtoupper(str_replace('_', ' ', $main)) }}</option>
+              @endforeach
+            </select>
+
+            <select name="category_type"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500">
+              <option value="">Semua Kategori Item</option>
+              @foreach ($categoryTypeOptions as $type)
+                <option value="{{ $type }}" @selected(($filterCategoryType ?? '') === $type)>{{ $type }}</option>
+              @endforeach
+            </select>
+
+            <select name="visibility"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500">
+              <option value="">Semua Visibilitas</option>
+              <option value="1" @selected(($filterVisibility ?? '') === '1')>Visible di POS</option>
+              <option value="0" @selected(($filterVisibility ?? '') === '0')>Hidden di POS</option>
+            </select>
+
+            <select name="tax"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500">
+              <option value="">Pajak & Service</option>
+              <option value="tax" @selected(($filterTax ?? '') === 'tax')>Termasuk PB1</option>
+              <option value="service" @selected(($filterTax ?? '') === 'service')>Termasuk Service</option>
+            </select>
+
+            <select name="printer"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500">
+              <option value="">Semua Printer</option>
+              @foreach ($printers as $printer)
+                <option value="{{ $printer->id }}" @selected(($filterPrinter ?? '') === (string) $printer->id)>{{ $printer->name }}{{ $printer->location ? ' · '.$printer->location : '' }}</option>
+              @endforeach
+            </select>
+
             <button type="submit"
                     class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900">
               Cari
             </button>
-            @if (filled($search ?? null))
+            @if ($menuFilterActive)
               <a href="{{ route('admin.menus.index') }}"
                  class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
                 Reset
@@ -347,8 +389,8 @@
 
         @if ($menuCategoryTypes->isEmpty())
           <div class="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-sm text-gray-500">
-            @if (filled($search ?? null))
-              Tidak ada menu yang cocok dengan pencarian.
+            @if ($menuFilterActive)
+              Tidak ada menu yang cocok dengan filter.
             @else
               Belum ada kategori menu aktif, jadi daftar menu belum dapat ditampilkan.
             @endif

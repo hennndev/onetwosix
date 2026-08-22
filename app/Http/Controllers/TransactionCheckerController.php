@@ -89,7 +89,40 @@ class TransactionCheckerController extends Controller
         ]);
     }
 
+    public function checkBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1'],
+            'order_ids.*' => ['integer', 'exists:orders,id'],
+        ]);
+
+        $orders = Order::whereIn('id', $validated['order_ids'])
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->get();
+
+        foreach ($orders as $order) {
+            $this->markOrderServed($order);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $orders->count().' order ditandai sebagai selesai.',
+            'order_ids' => $orders->pluck('id'),
+        ]);
+    }
+
     public function checkAll(Order $order): JsonResponse
+    {
+        $this->markOrderServed($order);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Semua item ditandai sebagai selesai.',
+            'order_status' => $order->fresh()->status,
+        ]);
+    }
+
+    private function markOrderServed(Order $order): void
     {
         $order->items()
             ->whereNotIn('status', ['cancelled', 'served'])
@@ -99,11 +132,5 @@ class TransactionCheckerController extends Controller
             ]);
 
         $order->updateStatus();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Semua item ditandai sebagai selesai.',
-            'order_status' => $order->fresh()->status,
-        ]);
     }
 }

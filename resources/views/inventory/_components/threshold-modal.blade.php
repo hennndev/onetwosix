@@ -33,7 +33,7 @@
       @csrf
       <div class="overflow-y-auto flex-1 divide-y divide-gray-100"
            id="thresholdList">
-        @foreach ($items as $index => $item)
+        @foreach ($allItems as $index => $item)
           <div class="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 threshold-item"
                data-name="{{ strtolower($item->name) }}">
             <input type="hidden"
