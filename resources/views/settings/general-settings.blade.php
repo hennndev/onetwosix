@@ -196,6 +196,40 @@
             @enderror
           </div>
 
+          <!-- Accurate FOC Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_foc_account_no">
+              Nomor Akun FOC (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun beban/diskon FOC (Free of Charge) di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_foc_account_no"
+                   name="accurate_foc_account_no"
+                   value="{{ old('accurate_foc_account_no', $settings->accurate_foc_account_no) }}"
+                   placeholder="mis. 210203"
+                   class="w-full border @error('accurate_foc_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_foc_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Compliment Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_compliment_account_no">
+              Nomor Akun Compliment (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun beban/diskon Compliment di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_compliment_account_no"
+                   name="accurate_compliment_account_no"
+                   value="{{ old('accurate_compliment_account_no', $settings->accurate_compliment_account_no) }}"
+                   placeholder="mis. 210204"
+                   class="w-full border @error('accurate_compliment_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_compliment_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
           <!-- Can Choose Checker -->
           <div class="pt-2" x-data="{ canChooseChecker: @js((bool) old('can_choose_checker', $settings->can_choose_checker)) }">
             <p class="text-sm font-semibold text-slate-700 mb-1">Can Choose Checker</p>

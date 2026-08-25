@@ -32,6 +32,8 @@ class GeneralSettingController extends Controller
             'accurate_service_charge_account_no' => ['nullable', 'string', 'max:50'],
             'accurate_bank_account_no' => ['nullable', 'string', 'max:50'],
             'accurate_cash_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_foc_account_no' => ['nullable', 'string', 'max:50'],
+            'accurate_compliment_account_no' => ['nullable', 'string', 'max:50'],
             'accurate_stock_warehouse_name' => ['nullable', 'string', 'max:255'],
             'can_choose_checker' => ['nullable', 'boolean'],
             'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],

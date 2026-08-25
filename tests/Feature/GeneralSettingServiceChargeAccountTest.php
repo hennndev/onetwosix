@@ -16,6 +16,8 @@ test('admin can update accurate service charge account no in general settings', 
             'accurate_service_charge_account_no' => '210202_SC',
             'accurate_bank_account_no' => '110101_BANK',
             'accurate_cash_account_no' => '110102_CASH',
+            'accurate_foc_account_no' => '210203_FOC',
+            'accurate_compliment_account_no' => '210204_COMP',
             'accurate_stock_warehouse_name' => 'GD. OUTLET',
             'mail_provider' => 'smtp',
             'auth_code_delivery_channel' => 'both',
@@ -28,5 +30,7 @@ test('admin can update accurate service charge account no in general settings', 
     $settings = GeneralSetting::instance();
     expect($settings->accurate_service_charge_account_no)->toBe('210202_SC')
         ->and($settings->accurate_bank_account_no)->toBe('110101_BANK')
-        ->and($settings->accurate_cash_account_no)->toBe('110102_CASH');
+        ->and($settings->accurate_cash_account_no)->toBe('110102_CASH')
+        ->and($settings->accurate_foc_account_no)->toBe('210203_FOC')
+        ->and($settings->accurate_compliment_account_no)->toBe('210204_COMP');
 });

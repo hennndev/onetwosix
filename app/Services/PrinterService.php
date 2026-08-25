@@ -1242,6 +1242,10 @@ class PrinterService
         $escpos->setTextSize(1, 1);
         $escpos->text($bar."\n");
 
+        // Reset ke LEFT setelah banner center — tanpa ini info order & item
+        // tercetak center (dengan leading spasi manual) sehingga miring.
+        $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+
         $tableName = $order->table?->table_number ?? 'N/A';
         $escpos->text("Order : #{$order->order_number}\n");
         $escpos->text("Table : {$tableName}\n");
