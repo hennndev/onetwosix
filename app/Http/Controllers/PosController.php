@@ -53,7 +53,7 @@ class PosController extends Controller
     public function index(Request $request)
     {
         $generalSettings = GeneralSetting::instance();
-        $posSettings = PosCategorySetting::allKeyed()->filter(fn ($s) => $s->show_in_pos);
+        $posSettings = PosCategorySetting::visibleInArea(Auth::user()?->resolveActiveAreaId());
 
         $allTypes = $posSettings->keys()->values()->all();
 
@@ -328,7 +328,7 @@ class PosController extends Controller
         $inventoryItem = InventoryItem::with('printers')->find($itemId);
         $setting = $posSettings->get($inventoryItem?->category_type);
 
-        if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+        if (! $inventoryItem || ! $setting || ! $setting->isVisibleInArea(Auth::user()?->resolveActiveAreaId())) {
             return response()->json([
                 'success' => false,
                 'message' => 'Product not found',
@@ -418,7 +418,7 @@ class PosController extends Controller
                 $setting = PosCategorySetting::allKeyed()->get($inventoryItem?->category_type);
                 $nextQuantity = (int) $cart[$productId]['quantity'] + 1;
 
-                if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+                if (! $inventoryItem || ! $setting || ! $setting->isVisibleInArea(Auth::user()?->resolveActiveAreaId())) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Product not found',

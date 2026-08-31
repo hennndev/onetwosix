@@ -117,6 +117,7 @@
       <ul class="space-y-1 list-disc list-inside">
         <li><strong>Tampil di POS</strong> — aktifkan agar kategori ini muncul di halaman POS.</li>
         <li><strong>Menu</strong> — penanda kategori menu untuk kebutuhan listing/organisasi menu.</li>
+        <li><strong>Area</strong> — batasi kategori hanya tampil di area tertentu. Kosong semua area = tampil di semua area.</li>
       </ul>
     </div>
 
@@ -161,6 +162,21 @@
                     </label>
                   </div>
                 </th>
+                @foreach ($areas as $area)
+                  <th class="px-5 py-3 text-center font-medium text-slate-600">
+                    <div class="flex flex-col items-center gap-1.5">
+                      <span>{{ $area->name }}</span>
+                      <label class="settings-toggle settings-toggle--group"
+                             title="Aktifkan/matikan semua">
+                        <input type="checkbox"
+                               data-bulk-area="{{ $area->id }}"
+                               aria-label="Aktifkan atau matikan tampil di area {{ $area->name }} untuk semua kategori"
+                               class="settings-toggle__input">
+                        <span class="settings-toggle__track"></span>
+                      </label>
+                    </div>
+                  </th>
+                @endforeach
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -200,6 +216,21 @@
                       <span class="settings-toggle__track"></span>
                     </label>
                   </td>
+
+                  {{-- Per-area visibility toggles (empty = all areas) --}}
+                  @foreach ($areas as $area)
+                    <td class="px-5 py-3 text-center">
+                      <label class="settings-toggle settings-toggle--group"
+                             title="Kosong semua area = tampil di semua area">
+                        <input type="checkbox"
+                               name="categories[{{ $type }}][areas][]"
+                               value="{{ $area->id }}"
+                               class="settings-toggle__input"
+                               {{ $s && in_array($area->id, $s->area_ids ?? []) ? 'checked' : '' }}>
+                        <span class="settings-toggle__track"></span>
+                      </label>
+                    </td>
+                  @endforeach
                 </tr>
               @endforeach
             </tbody>
@@ -221,9 +252,19 @@
           const masters = form.querySelectorAll('[data-bulk]');
           const rowsOf = (field) =>
             form.querySelectorAll(`tbody input[type=checkbox][name$="[${field}]"]`);
+          const areaMasters = form.querySelectorAll('[data-bulk-area]');
+          const rowsOfArea = (areaId) =>
+            form.querySelectorAll(`tbody input[type=checkbox][value="${areaId}"][name$="[areas][]"]`);
 
           const syncMaster = (master) => {
             const rows = [...rowsOf(master.dataset.bulk)];
+            const checked = rows.filter((r) => r.checked).length;
+            master.checked = checked === rows.length && rows.length > 0;
+            master.indeterminate = checked > 0 && checked < rows.length;
+          };
+
+          const syncAreaMaster = (master) => {
+            const rows = [...rowsOfArea(master.dataset.bulkArea)];
             const checked = rows.filter((r) => r.checked).length;
             master.checked = checked === rows.length && rows.length > 0;
             master.indeterminate = checked > 0 && checked < rows.length;
@@ -237,8 +278,19 @@
             });
           });
 
+          areaMasters.forEach((master) => {
+            syncAreaMaster(master);
+            master.addEventListener('change', () => {
+              master.indeterminate = false;
+              rowsOfArea(master.dataset.bulkArea).forEach((r) => (r.checked = master.checked));
+            });
+          });
+
           form.addEventListener('change', (e) => {
-            if (e.target.matches('tbody input[type=checkbox]')) masters.forEach(syncMaster);
+            if (e.target.matches('tbody input[type=checkbox]')) {
+              masters.forEach(syncMaster);
+              areaMasters.forEach(syncAreaMaster);
+            }
           });
         })();
       </script>

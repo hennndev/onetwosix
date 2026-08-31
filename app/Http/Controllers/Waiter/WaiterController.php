@@ -172,7 +172,7 @@ class WaiterController extends Controller
         $waiterId = (int) Auth::id();
         $settings = GeneralSetting::instance();
 
-        $posSettings = PosCategorySetting::allKeyed()->filter(fn ($setting) => $setting->show_in_pos);
+        $posSettings = PosCategorySetting::visibleInArea(Auth::user()?->resolveActiveAreaId());
         $allowedTypes = $posSettings->keys()->values()->all();
 
         $products = InventoryItem::with('printers')
@@ -274,7 +274,7 @@ class WaiterController extends Controller
     public function posLive(): JsonResponse
     {
         $waiterId = (int) Auth::id();
-        $posSettings = PosCategorySetting::allKeyed()->filter(fn ($setting) => $setting->show_in_pos);
+        $posSettings = PosCategorySetting::visibleInArea(Auth::user()?->resolveActiveAreaId());
 
         $products = InventoryItem::with('printers')
             ->whereIn('category_type', $posSettings->keys()->values()->all() ?: ['__none__'])
