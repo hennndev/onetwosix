@@ -196,9 +196,6 @@ class PrinterService
             $escpos->text("FOLLOW US\n");
             $escpos->setEmphasis(false);
             $escpos->text("ig & tiktok : onetwosix.official\n");
-
-            $escpos->feed(3);
-            $escpos->cut();
         }, $lines, $logTitle, $previewTitle);
     }
 
@@ -1501,9 +1498,6 @@ class PrinterService
                     $escpos->text($separator."\n");
                 }
             }
-
-            $escpos->feed(3);
-            $escpos->cut();
         }, $lines, 'END DAY RECAP', 'END DAY RECAP PREVIEW');
     }
 

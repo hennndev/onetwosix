@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Waiter;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\DispatchPrintTicketJob;
 use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\CustomerUser;
@@ -737,20 +736,21 @@ class WaiterPosController extends Controller
 
     }
 
+    /**
+     * Cetak tiket persiapan langsung (sinkron, tanpa queue).
+     *
+     * Sengaja TIDAK lewat queue: deploy ini tidak menjalankan worker, jadi job yang
+     * di-dispatch hanya menumpuk di tabel `jobs` dan tiket tak pernah keluar.
+     * Nilai balik = hasil cetak sebenarnya, supaya pemanggil bisa tahu bila gagal.
+     */
     protected function queuePreparationTicket(object $order, Printer $printer, string $ticketType): bool
     {
-        $sourceType = $order->exists ? ($order instanceof BarOrder ? 'bar' : 'kitchen') : 'virtual';
-
-        DispatchPrintTicketJob::dispatch(
-            $ticketType,
-            (int) ($order->order_id ?? $order->order?->id),
-            (int) $printer->id,
-            $sourceType,
-            $order->exists ? (int) $order->id : null,
-            $order->items->pluck('id')->map(fn ($id): int => (int) $id)->all(),
-        )->afterCommit();
-
-        return true;
+        return match ($ticketType) {
+            'bar' => $this->printerService->printBarTicket($order, $printer),
+            'checker' => $this->printerService->printCheckerTicket($order, $printer),
+            'cashier' => $this->printerService->printCashierTicket($order, $printer),
+            default => $this->printerService->printKitchenTicket($order, $printer),
+        };
     }
 
     protected function resolveCheckerPrintersFromCart(array $cart): Collection
