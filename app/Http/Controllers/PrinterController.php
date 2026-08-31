@@ -189,7 +189,9 @@ class PrinterController extends Controller
         try {
             $order->load(['items', 'tableSession.table']);
 
-            $printer = $printer ?? Printer::getDefault();
+            $printer = $printer ?? Printer::getDefault(
+                $order->tableSession?->table?->area_id ?? $order->area_id
+            );
 
             if (! $printer) {
                 return response()->json([

@@ -41,7 +41,9 @@ class Printer extends Model
         return $query->where(function ($q) use ($areaId) {
             $q->where('area_id', $areaId)
                 ->orWhereNull('area_id');
-        });
+        })
+            // Printer milik area persis menang atas printer tanpa area (fallback global).
+            ->orderByRaw('area_id IS NULL');
     }
 
     protected $casts = [
@@ -74,26 +76,30 @@ class Printer extends Model
         return $query->whereRaw('TRIM(LOWER(printer_type)) = ?', [strtolower(trim($type))]);
     }
 
-    public static function getDefault(): ?self
+    public static function getDefault(?int $areaId = null): ?self
     {
-        return static::active()->default()->first()
-            ?? static::active()->first();
+        return static::active()->forArea($areaId)->default()->first()
+            ?? static::active()->forArea($areaId)->first();
     }
 
-    public static function getByLocation(string $location): ?self
+    public static function getByLocation(string $location, ?int $areaId = null): ?self
     {
-        return static::active()->byLocation($location)->first();
+        return static::active()->forArea($areaId)->byLocation($location)->first();
     }
 
-    public static function getByType(string $type): ?self
+    public static function getByType(string $type, ?int $areaId = null): ?self
     {
-        return static::active()->byType($type)->first();
+        return static::active()->forArea($areaId)->byType($type)->first();
     }
 
     /**
      * Get printer for a service location, preferring printer_type match over location string.
+     *
+     * Repo ini menggabungkan beberapa area (lounge + room) dalam satu instance, jadi
+     * $areaId wajib diteruskan pemanggil bila konteks areanya diketahui — tanpa itu
+     * printer area lain bisa terpilih dan struk tercetak di gedung yang salah.
      */
-    public static function getForService(string $serviceLocation): ?self
+    public static function getForService(string $serviceLocation, ?int $areaId = null): ?self
     {
         $normalized = strtolower(trim($serviceLocation));
 
@@ -104,14 +110,14 @@ class Printer extends Model
         };
 
         foreach ($aliases as $alias) {
-            $byType = static::getByType($alias);
+            $byType = static::getByType($alias, $areaId);
             if ($byType) {
                 return $byType;
             }
         }
 
         foreach ($aliases as $alias) {
-            $byLocation = static::getByLocation($alias);
+            $byLocation = static::getByLocation($alias, $areaId);
             if ($byLocation) {
                 return $byLocation;
             }

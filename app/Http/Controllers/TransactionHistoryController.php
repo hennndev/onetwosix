@@ -457,13 +457,21 @@ class TransactionHistoryController extends Controller
             if ($selectedPrinterId > 0) {
                 $printer = Printer::active()->find($selectedPrinterId);
             } else {
+                /** @var \App\Models\User|null $user */
+                $user = auth()->user();
+                // Cetak ulang harus keluar di area transaksinya, bukan area printer
+                // ber-id terkecil (repo ini menggabungkan beberapa area).
+                $printAreaId = $order->tableSession?->table?->area_id
+                    ?? $order->area_id
+                    ?? $user?->resolveActiveAreaId();
+
                 if ($type === 'resmi') {
-                    $printer = Printer::getForService('cashier');
+                    $printer = Printer::getForService('cashier', $printAreaId);
                 } else {
-                    $printer = Printer::getByLocation($location);
+                    $printer = Printer::getByLocation($location, $printAreaId);
 
                     if (! $printer) {
-                        $printer = Printer::getDefault();
+                        $printer = Printer::getDefault($printAreaId);
                     }
                 }
             }

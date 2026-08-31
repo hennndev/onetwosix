@@ -1653,6 +1653,22 @@ class PosController extends Controller
     }
 
     /**
+     * Area yang menentukan printer untuk sebuah cetakan.
+     *
+     * Prioritas: area meja order (struk harus keluar dekat meja yang dilayani) →
+     * area order → area aktif user (walk-in / tanpa meja).
+     */
+    protected function resolvePrintAreaId(?Order $order = null): ?int
+    {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+
+        return $order?->tableSession?->table?->area_id
+            ?? $order?->area_id
+            ?? $user?->resolveActiveAreaId();
+    }
+
+    /**
      * Print receipt for a specific order.
      */
     public function printReceipt(Request $request, ?Order $order = null): JsonResponse
@@ -1692,13 +1708,15 @@ class PosController extends Controller
             }
 
             if (in_array($type, ['kitchen', 'bar', 'checker'], true)) {
+                $printAreaId = $this->resolvePrintAreaId($order);
+
                 if ($type === 'kitchen') {
                     $printer = null;
                     if ($request->filled('printer_id')) {
                         $printer = Printer::active()->find($request->input('printer_id'));
                     }
                     if (! $printer) {
-                        $printer = Printer::getForService($type) ?? Printer::getDefault();
+                        $printer = Printer::getForService($type, $printAreaId) ?? Printer::getDefault($printAreaId);
                     }
 
                     if (! $printer) {
@@ -1729,7 +1747,7 @@ class PosController extends Controller
                         $printer = Printer::active()->find($request->input('printer_id'));
                     }
                     if (! $printer) {
-                        $printer = Printer::getForService($type) ?? Printer::getDefault();
+                        $printer = Printer::getForService($type, $printAreaId) ?? Printer::getDefault($printAreaId);
                     }
 
                     if (! $printer) {
@@ -1796,7 +1814,7 @@ class PosController extends Controller
                         $fallbackPrinter = Printer::active()->find((int) $request->input('printer_id'));
                     }
                     if (! $fallbackPrinter) {
-                        $fallbackPrinter = Printer::getForService('checker') ?? Printer::getDefault();
+                        $fallbackPrinter = Printer::getForService('checker', $printAreaId) ?? Printer::getDefault($printAreaId);
                     }
 
                     if (! $fallbackPrinter) {
@@ -2168,7 +2186,12 @@ class PosController extends Controller
     protected function resolveReceiptPrinter(string $receiptType, ?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $contextAreaId = $areaId ?? auth()->user()?->getAssignedArea()?->id;
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+        // resolveActiveAreaId(): assigned area bila user terikat satu area, jika tidak
+        // pakai area aktif di session. Tanpa ini user multi-area (admin) selalu null
+        // sehingga mapping printer per area terlewat.
+        $contextAreaId = $areaId ?: $user?->resolveActiveAreaId();
 
         $targetType = match ($receiptType) {
             'walk_in' => 'walk_in',
@@ -2185,7 +2208,7 @@ class PosController extends Controller
             }
         }
 
-        return Printer::getForService('cashier') ?? Printer::getDefault();
+        return Printer::getForService('cashier', $contextAreaId) ?? Printer::getDefault($contextAreaId);
     }
 
     /**
@@ -2561,26 +2584,27 @@ class PosController extends Controller
      * Get printer for a service location, considering counter location from session.
      * Priority: counter location > service location > default.
      */
-    protected function getPrinterForLocation(string $serviceLocation): ?Printer
+    protected function getPrinterForLocation(string $serviceLocation, ?int $areaId = null): ?Printer
     {
         $counterLocation = session()->get('pos_counter_location');
+        $contextAreaId = $areaId ?: $this->resolvePrintAreaId();
 
         // 1. Try counter location first (area-specific printer)
         if ($counterLocation) {
-            $printer = Printer::getByLocation($counterLocation);
+            $printer = Printer::getByLocation($counterLocation, $contextAreaId);
             if ($printer) {
                 return $printer;
             }
         }
 
         // 2. Fallback to service location printer (kitchen/bar) — prefer printer_type match
-        $printer = Printer::getForService($serviceLocation);
+        $printer = Printer::getForService($serviceLocation, $contextAreaId);
         if ($printer) {
             return $printer;
         }
 
         // 3. Final fallback to default printer
-        return Printer::getDefault();
+        return Printer::getDefault($contextAreaId);
     }
 
     /**

@@ -2621,13 +2621,17 @@ class TableReservationController extends Controller
 
     protected function printClosedBillingReceipt(TableSession $session, Billing $billing): bool
     {
+        $areaId = $session->table?->area_id;
+
         try {
-            $printer = $this->resolveClosedBillingReceiptPrinter($session->table?->area_id);
+            $printer = $this->resolveClosedBillingReceiptPrinter($areaId);
 
             if (! $printer) {
                 Log::warning('Close billing receipt auto print skipped because no printer is configured', [
                     'table_session_id' => $session->id,
                     'billing_id' => $billing->id,
+                    'area_id' => $areaId,
+                    'area_name' => $session->table?->area?->name,
                 ]);
 
                 return false;
@@ -2638,10 +2642,12 @@ class TableReservationController extends Controller
             Log::info('Close billing auto receipt print selected printer', [
                 'table_session_id' => $session->id,
                 'billing_id' => $billing->id,
+                'area_id' => $areaId,
                 'selected_printer_id' => $printer->id,
                 'selected_printer_name' => $printer->name,
                 'selected_printer_type' => $printer->printer_type,
                 'selected_printer_location' => $printer->location,
+                'selected_printer_area_id' => $printer->area_id,
                 'connection_type' => $printer->connection_type,
             ]);
 
@@ -2652,6 +2658,7 @@ class TableReservationController extends Controller
             Log::warning('Close billing receipt auto print failed', [
                 'table_session_id' => $session->id,
                 'billing_id' => $billing->id,
+                'area_id' => $areaId,
                 'message' => $e->getMessage(),
             ]);
 
@@ -2662,7 +2669,12 @@ class TableReservationController extends Controller
     protected function resolveClosedBillingReceiptPrinter(?int $areaId = null): ?Printer
     {
         $settings = GeneralSetting::instance();
-        $configuredPrinterId = $settings->getPrinterIdForArea($areaId, 'closed_billing');
+        /** @var \App\Models\User|null $user */
+        $user = auth()->user();
+        // Struk close billing ikut area meja; bila meja tanpa area (mis. sesi lama),
+        // pakai area aktif user agar tidak jatuh ke printer area lain.
+        $contextAreaId = $areaId ?: $user?->resolveActiveAreaId();
+        $configuredPrinterId = $settings->getPrinterIdForArea($contextAreaId, 'closed_billing');
 
         if ($configuredPrinterId && $configuredPrinterId > 0) {
             $configuredPrinter = Printer::active()->find($configuredPrinterId);
@@ -2672,7 +2684,7 @@ class TableReservationController extends Controller
             }
         }
 
-        return Printer::getForService('cashier') ?? Printer::getDefault();
+        return Printer::getForService('cashier', $contextAreaId) ?? Printer::getDefault($contextAreaId);
     }
 
     public function settlePayment(Request $request, TableReservation $booking): JsonResponse
