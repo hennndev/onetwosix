@@ -37,8 +37,14 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
       });
 
-      // Inject spinner if HTML button element
-      if (submitBtn.tagName.toLowerCase() === 'button' && !submitBtn.querySelector('.global-btn-spinner')) {
+      // Inject spinner if HTML button element.
+      // Lewati jika tombol sudah punya spinner sendiri (class animate-spin) —
+      // mencegah dua spinner berputar bersamaan saat loading.
+      if (
+        submitBtn.tagName.toLowerCase() === 'button' &&
+        !submitBtn.querySelector('.global-btn-spinner') &&
+        !submitBtn.querySelector('.animate-spin')
+      ) {
         const spinnerSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         spinnerSvg.setAttribute('class', 'global-btn-spinner inline-block w-4 h-4 mr-2 animate-spin text-current shrink-0');
         spinnerSvg.setAttribute('fill', 'none');

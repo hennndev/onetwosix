@@ -12,7 +12,6 @@ use App\Models\Printer;
 use App\Models\TableReservation;
 use App\Services\AccurateService;
 use App\Services\PrinterService;
-use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -767,13 +766,27 @@ class TransactionHistoryController extends Controller
             }
 
             $transDate = now()->format('d/m/Y');
-            $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
+            $settings = GeneralSetting::instance();
+            $warehouseName = $settings->getAccurateWarehouseName();
             $taxAmount = (float) ($billing->tax ?? 0);
             $serviceChargeAmount = (float) ($billing->service_charge ?? 0);
 
+            // FOC/Compliment invoice: push items at original amounts and book the
+            // discount as a negative detailExpense line using its dedicated COA.
+            $focCompMethod = $billing->foc_comp_payment_method;
+            $focCompAccountNo = match ($focCompMethod) {
+                'FOC' => $settings->accurate_foc_account_no,
+                'Compliment' => $settings->accurate_compliment_account_no,
+                default => null,
+            };
+            $discountAmount = (float) $order->items->sum('discount_amount');
+            $useFocCompExpenseLine = in_array($focCompMethod, ['FOC', 'Compliment'], true)
+                && filled($focCompAccountNo)
+                && $discountAmount > 0;
+
             $detailItem = $order->items
                 ->groupBy('inventory_item_id')
-                ->map(function ($group) use ($warehouseName) {
+                ->map(function ($group) use ($warehouseName, $useFocCompExpenseLine) {
                     $first = $group->first();
                     $gross = (float) $group->sum('subtotal');
                     $discountAmount = (float) $group->sum('discount_amount');
@@ -782,7 +795,9 @@ class TransactionHistoryController extends Controller
                         'itemNo' => $first->inventoryItem?->code ?? $first->item_code,
                         'quantity' => $group->sum('quantity'),
                         'unitPrice' => (float) $first->price,
-                        'discountPercent' => $gross > 0 ? round($discountAmount / $gross * 100, 6) : 0,
+                        'discountPercent' => $useFocCompExpenseLine
+                            ? 0.0
+                            : ($gross > 0 ? round($discountAmount / $gross * 100, 6) : 0),
                         'warehouseName' => $warehouseName,
                     ];
                 })
@@ -806,7 +821,7 @@ class TransactionHistoryController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $soBasePayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
                 ];
@@ -814,9 +829,17 @@ class TransactionHistoryController extends Controller
 
             if ($taxAmount > 0) {
                 $soBasePayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $soBasePayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 
@@ -858,7 +881,7 @@ class TransactionHistoryController extends Controller
 
             if ($taxAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
@@ -866,9 +889,17 @@ class TransactionHistoryController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 

@@ -177,6 +177,55 @@ class PosController extends Controller
     }
 
     /**
+     * Realtime poll: stock availability per product + ids of active table sessions.
+     * Read-only — never touches the cashier cart session, so checkout flows stay intact.
+     */
+    public function live(): JsonResponse
+    {
+        $posSettings = PosCategorySetting::visibleInArea(Auth::user()?->resolveActiveAreaId());
+
+        $products = InventoryItem::query()
+            ->whereIn('category_type', $posSettings->keys()->values()->all() ?: ['__none__'])
+            ->where('is_active', true)
+            ->where('is_visible_in_pos', true)
+            ->get()
+            ->map(function ($item) {
+                $isItemGroup = (bool) ($item->is_item_group ?? false);
+                $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
+                $possiblePortions = null;
+                $isAvailable = (bool) $item->is_active && ! ($isItemGroup && (bool) $item->is_group_sold_out);
+
+                if ($isItemGroup && $isCountPortionPossible) {
+                    $possiblePortions = $this->resolvePossiblePortions($item);
+                    $isAvailable = $isAvailable && $possiblePortions > 0;
+                } elseif (! $isItemGroup && (int) ($item->stock_quantity ?? 0) <= 0) {
+                    $isAvailable = false;
+                }
+
+                return [
+                    'id' => 'item_'.$item->id,
+                    'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
+                    'possible_portions' => $possiblePortions,
+                    'is_available' => $isAvailable,
+                ];
+            })
+            ->values();
+
+        $activeSessionIds = TableSession::query()
+            ->where('status', 'active')
+            ->whereNotNull('checked_in_at')
+            ->whereNull('checked_out_at')
+            ->when(Auth::user()?->resolveActiveAreaId(), fn ($q, $areaId) => $q->whereHas('table', fn ($t) => $t->where('area_id', $areaId)))
+            ->pluck('id')
+            ->values();
+
+        return response()->json([
+            'products' => $products,
+            'active_session_ids' => $activeSessionIds,
+        ]);
+    }
+
+    /**
      * Walk-in: search existing customers by name or phone.
      */
     public function walkInSearchCustomers(Request $request): JsonResponse
@@ -607,6 +656,16 @@ class PosController extends Controller
 
     public function checkout(Request $request): JsonResponse
     {
+        // Bersihkan auth code basi: field yang tidak relevan untuk pilihan diskon saat ini
+        // tidak boleh memicu error format (stale value tersembunyi tetap terkirim oleh form).
+        if (($request->input('discount_type') ?? 'none') === 'none') {
+            $request->merge(['discount_auth_code' => null]);
+        }
+
+        if (! in_array($request->input('foc_comp_payment_method'), ['FOC', 'Compliment'], true)) {
+            $request->merge(['foc_comp_auth_code' => null]);
+        }
+
         $validated = $request->validate([
             'customer_type' => 'required|in:booking,walk-in',
             'customer_user_id' => 'required_if:customer_type,booking|nullable|exists:users,id',
@@ -638,6 +697,9 @@ class PosController extends Controller
             'checker_printer_ids.*' => 'integer|exists:printers,id',
             'auto_print_receipt' => 'nullable|boolean',
             'idempotency_key' => 'nullable|uuid',
+        ], [
+            'discount_auth_code.digits' => 'Auth code diskon harus 4 digit.',
+            'foc_comp_auth_code.digits' => 'Auth code FOC / Compliment harus 4 digit.',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
@@ -760,7 +822,7 @@ class PosController extends Controller
                 $focTypeRequiresAuth = ($focCompPaymentMethod === 'FOC' && $generalSettings->focRequiresAuthCode())
                     || ($focCompPaymentMethod === 'Compliment' && $generalSettings->complimentRequiresAuthCode());
 
-                $requiresAuthCode = $focTypeRequiresAuth || (! $isFocComp && ($discountPercentage > 0 || count($discountItemValues) > 0));
+                $requiresAuthCode = $focTypeRequiresAuth || (! $isFocComp && ($discountPercentage > 0 || $discountNominal > 0 || count($discountItemValues) > 0));
 
                 if ($requiresAuthCode) {
                     // FOC/Compliment pakai field auth sendiri; diskon biasa pakai discount_auth_code.
@@ -921,6 +983,9 @@ class PosController extends Controller
                         'grand_total' => (float) $sessionTotals['grand_total'],
                         'foc_comp_payment_method' => $focCompPaymentMethod,
                     ]);
+
+                    // Grand total naik setelah close parsial → sisa utang harus ikut bertambah.
+                    $billing->recalculatePaymentStatus();
                 }
 
                 DB::commit();
@@ -2967,16 +3032,32 @@ class PosController extends Controller
             $taxAmount = (float) ($billing?->tax ?? 0);
             $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
 
-            $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
+            $settings = GeneralSetting::instance();
+            $warehouseName = $settings->getAccurateWarehouseName();
 
-            $detailItem = $order->items->map(function ($item) use ($warehouseName) {
+            // FOC/Compliment invoice: push items at original amounts and book the
+            // discount as a negative detailExpense line using its dedicated COA.
+            $focCompMethod = $billing?->foc_comp_payment_method;
+            $focCompAccountNo = match ($focCompMethod) {
+                'FOC' => $settings->accurate_foc_account_no,
+                'Compliment' => $settings->accurate_compliment_account_no,
+                default => null,
+            };
+            $discountAmount = (float) ($billing?->discount_amount ?? 0);
+            $useFocCompExpenseLine = in_array($focCompMethod, ['FOC', 'Compliment'], true)
+                && filled($focCompAccountNo)
+                && $discountAmount > 0;
+
+            $detailItem = $order->items->map(function ($item) use ($warehouseName, $useFocCompExpenseLine) {
                 $gross = (float) $item->subtotal;
 
                 return [
                     'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                     'quantity' => $item->quantity,
                     'unitPrice' => (float) $item->price,
-                    'discountPercent' => $gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0,
+                    'discountPercent' => $useFocCompExpenseLine
+                        ? 0.0
+                        : ($gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0),
                     'warehouseName' => $warehouseName,
                 ];
             })->values()->toArray();
@@ -2991,7 +3072,7 @@ class PosController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $soBasePayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
                 ];
@@ -2999,9 +3080,17 @@ class PosController extends Controller
 
             if ($taxAmount > 0) {
                 $soBasePayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $soBasePayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 
@@ -3033,7 +3122,7 @@ class PosController extends Controller
 
             if ($taxAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
@@ -3041,9 +3130,17 @@ class PosController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 

@@ -230,6 +230,108 @@
             @enderror
           </div>
 
+          <!-- Accurate Extra Charge Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_extra_charge_account_no">
+              Nomor Akun Pendapatan Extra Charge (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun pendapatan extra charge di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_extra_charge_account_no"
+                   name="accurate_extra_charge_account_no"
+                   value="{{ old('accurate_extra_charge_account_no', $settings->accurate_extra_charge_account_no) }}"
+                   placeholder="mis. 410105"
+                   class="w-full border @error('accurate_extra_charge_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_extra_charge_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Food Sales Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_food_sales_account_no">
+              Nomor Akun Penjualan Makanan (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun pendapatan penjualan makanan di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_food_sales_account_no"
+                   name="accurate_food_sales_account_no"
+                   value="{{ old('accurate_food_sales_account_no', $settings->accurate_food_sales_account_no) }}"
+                   placeholder="mis. 410101"
+                   class="w-full border @error('accurate_food_sales_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_food_sales_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Beverage Sales Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_beverage_sales_account_no">
+              Nomor Akun Penjualan Minuman (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun pendapatan penjualan minuman (non-alkohol) di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_beverage_sales_account_no"
+                   name="accurate_beverage_sales_account_no"
+                   value="{{ old('accurate_beverage_sales_account_no', $settings->accurate_beverage_sales_account_no) }}"
+                   placeholder="mis. 410102"
+                   class="w-full border @error('accurate_beverage_sales_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_beverage_sales_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Cigarette Sales Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_cigarette_sales_account_no">
+              Nomor Akun Pendapatan Rokok (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun pendapatan penjualan rokok di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_cigarette_sales_account_no"
+                   name="accurate_cigarette_sales_account_no"
+                   value="{{ old('accurate_cigarette_sales_account_no', $settings->accurate_cigarette_sales_account_no) }}"
+                   placeholder="mis. 410103"
+                   class="w-full border @error('accurate_cigarette_sales_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_cigarette_sales_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Sales Discount Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_sales_discount_account_no">
+              Nomor Akun Diskon Penjualan Barang (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun diskon penjualan barang (kontra-pendapatan) di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_sales_discount_account_no"
+                   name="accurate_sales_discount_account_no"
+                   value="{{ old('accurate_sales_discount_account_no', $settings->accurate_sales_discount_account_no) }}"
+                   placeholder="mis. 410109"
+                   class="w-full border @error('accurate_sales_discount_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_sales_discount_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
+          <!-- Accurate Breakage Account No -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1" for="accurate_breakage_account_no">
+              Nomor Akun Pendapatan Breakage Asset (Accurate)
+            </label>
+            <p class="text-xs text-slate-400 mb-2">Nomor akun pendapatan breakage asset di Accurate Online. Kosongkan bila belum dipakai.</p>
+            <input type="text"
+                   id="accurate_breakage_account_no"
+                   name="accurate_breakage_account_no"
+                   value="{{ old('accurate_breakage_account_no', $settings->accurate_breakage_account_no) }}"
+                   placeholder="mis. 410104"
+                   class="w-full border @error('accurate_breakage_account_no') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none" />
+            @error('accurate_breakage_account_no')
+              <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+            @enderror
+          </div>
+
           <!-- Can Choose Checker -->
           <div class="pt-2" x-data="{ canChooseChecker: @js((bool) old('can_choose_checker', $settings->can_choose_checker)) }">
             <p class="text-sm font-semibold text-slate-700 mb-1">Can Choose Checker</p>

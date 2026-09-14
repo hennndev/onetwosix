@@ -4,6 +4,7 @@ use App\Http\Controllers\PosController;
 use illuminate\Support\Facades\Route;
 
 Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+Route::get('pos/live', [PosController::class, 'live'])->name('pos.live');
 Route::post('pos/select-counter', [PosController::class, 'selectCounter'])->name('pos.select-counter');
 Route::post('pos/{productId}/add-to-cart', [PosController::class, 'addToCart'])->name('pos.add-to-cart');
 Route::post('pos/{productId}/update-cart', [PosController::class, 'updateCartQuantity'])->name('pos.update-cart');

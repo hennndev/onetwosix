@@ -51,7 +51,7 @@ test('accurate sync items saves detail group from list payload without detail fa
             ->andReturn(collect([$itemPayload]));
     });
 
-    $this->artisan('accurate:sync-items --force')->assertExitCode(0);
+    $this->artisan('accurate:sync-items --force --with-stock')->assertExitCode(0);
 
     $item = InventoryItem::query()->where('accurate_id', 919)->first();
 
@@ -128,7 +128,7 @@ test('accurate sync items deletes local items removed from accurate', function (
             ->andReturn(collect([$itemPayload]));
     });
 
-    $this->artisan('accurate:sync-items --force')->assertExitCode(0);
+    $this->artisan('accurate:sync-items --force --with-stock')->assertExitCode(0);
 
     expect((float) InventoryItem::query()->where('accurate_id', 1001)->value('stock_quantity'))->toBe(4.0)
         ->and(InventoryItem::query()->where('accurate_id', 1001)->exists())->toBeTrue()
@@ -181,7 +181,7 @@ test('accurate sync items updates existing item when accurate code already exist
             ->andReturn(collect([$itemPayload]));
     });
 
-    $this->artisan('accurate:sync-items --force')->assertExitCode(0);
+    $this->artisan('accurate:sync-items --force --with-stock')->assertExitCode(0);
 
     expect(InventoryItem::query()->where('code', '100337')->count())->toBe(1)
         ->and((int) $existing->fresh()->accurate_id)->toBe(1650)

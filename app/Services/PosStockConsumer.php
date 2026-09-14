@@ -98,6 +98,83 @@ class PosStockConsumer
         }
     }
 
+    /**
+     * Reverse the stock consumption of cancelled order items. Best-effort:
+     * missing/renamed ingredients are skipped so a cancellation never fails
+     * because of data drift — the sale already happened.
+     *
+     * @param  iterable<int, \App\Models\OrderItem>  $orderItems
+     */
+    public function releaseForOrderItems(iterable $orderItems): void
+    {
+        $stockIncrements = [];
+
+        foreach ($orderItems as $orderItem) {
+            $quantity = (int) ($orderItem->quantity ?? 0);
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $inventoryItem = InventoryItem::query()->find($orderItem->inventory_item_id);
+
+            if (! $inventoryItem) {
+                continue;
+            }
+
+            $components = [];
+
+            if ($this->isItemGroup($inventoryItem) && $inventoryItem->accurate_id) {
+                try {
+                    $components = $this->components($inventoryItem);
+                } catch (ValidationException) {
+                    $components = [];
+                }
+            }
+
+            if ($components === []) {
+                if (! $this->isItemGroup($inventoryItem)) {
+                    $stockIncrements[$inventoryItem->id] = ($stockIncrements[$inventoryItem->id] ?? 0) + $quantity;
+                }
+
+                continue;
+            }
+
+            foreach ($components as $component) {
+                $accurateId = (int) ($component['itemId'] ?? 0);
+                $componentQuantity = (float) ($component['quantity'] ?? 0);
+
+                if ($accurateId <= 0 || $componentQuantity <= 0) {
+                    continue;
+                }
+
+                $ingredient = InventoryItem::query()->where('accurate_id', $accurateId)->first();
+
+                if (! $ingredient) {
+                    continue;
+                }
+
+                $released = (int) ceil($componentQuantity * $quantity);
+                $stockIncrements[$ingredient->id] = ($stockIncrements[$ingredient->id] ?? 0) + $released;
+            }
+        }
+
+        if ($stockIncrements === []) {
+            return;
+        }
+
+        $lockedItems = InventoryItem::query()
+            ->whereIn('id', array_keys($stockIncrements))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($stockIncrements as $id => $quantity) {
+            $lockedItems->get($id)?->increment('stock_quantity', $quantity);
+        }
+    }
+
     private function validateProduct(?InventoryItem $inventoryItem): void
     {
         if (! $inventoryItem || ! $inventoryItem->is_active || ! $inventoryItem->is_visible_in_pos || ($this->isItemGroup($inventoryItem) && $inventoryItem->is_group_sold_out)) {

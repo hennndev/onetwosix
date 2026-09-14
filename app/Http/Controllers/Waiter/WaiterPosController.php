@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Waiter;
 use App\Http\Controllers\Controller;
 use App\Models\BarOrder;
 use App\Models\BarOrderItem;
+use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class WaiterPosController extends Controller
 {
@@ -57,7 +59,12 @@ class WaiterPosController extends Controller
         $nextQty = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
         $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
         $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
-        $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+
+        try {
+            $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+        } catch (\Throwable) {
+            return response()->json(['success' => false, 'message' => "Komposisi {$inventoryItem->name} tidak dapat diperiksa. Coba lagi sebentar."], 422);
+        }
 
         if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
             return response()->json(['success' => false, 'message' => 'Item ini berstatus Sold Out / tidak tersedia.'], 422);
@@ -124,7 +131,12 @@ class WaiterPosController extends Controller
 
             $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
             $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
-            $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+
+            try {
+                $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+            } catch (\Throwable) {
+                return response()->json(['success' => false, 'message' => "Komposisi {$inventoryItem->name} tidak dapat diperiksa. Coba lagi sebentar."], 422);
+            }
 
             if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
                 return response()->json(['success' => false, 'message' => 'Item ini berstatus Sold Out / tidak tersedia.'], 422);
@@ -384,6 +396,9 @@ class WaiterPosController extends Controller
                     (float) $billing->minimum_charge,
                 );
                 $billing->update($totals);
+
+                // Grand total naik setelah close parsial → sisa utang harus ikut bertambah.
+                $billing->recalculatePaymentStatus();
             }
 
             session()->forget(self::CART_KEY);
@@ -946,17 +961,19 @@ class WaiterPosController extends Controller
 
         $cacheKey = "accurate_item_group_{$inventoryItem->accurate_id}";
 
-        return Cache::remember(
-            $cacheKey,
-            now()->addHour(),
-            function () use ($inventoryItem): array {
-                try {
-                    return $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id);
-                } catch (\Throwable $exception) {
-                    return [];
-                }
-            }
-        );
+        $cached = Cache::get($cacheKey);
+
+        // Fail closed: error Accurate tidak boleh ter-cache sebagai "resep kosong",
+        // kalau tidak item group terjual tanpa batas dan tanpa potong stok bahan.
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $components = $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id);
+
+        Cache::put($cacheKey, $components, now()->addHour());
+
+        return $components;
     }
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array

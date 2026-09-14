@@ -149,7 +149,8 @@
                        name="walk_in_discount_type"
                        value="none"
                        class="sr-only"
-                       x-model="checkoutForm.discount_type">
+                       x-model="checkoutForm.discount_type"
+                       @change="if (checkoutForm.discount_type === 'none') { checkoutForm.discount_auth_code = ''; checkoutForm.discount_items = {}; checkoutForm.discount_item_ids = []; }">
                 <span class="text-xs font-semibold text-gray-700">Tanpa</span>
               </label>
               <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"

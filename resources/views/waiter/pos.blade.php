@@ -432,6 +432,10 @@
           },
 
           async pollLive() {
+            if (this.checkingOut || this.showConfirmOrder || document.hidden) {
+              return;
+            }
+
             try {
               const res = await fetch('{{ route('waiter.pos.live') }}', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },

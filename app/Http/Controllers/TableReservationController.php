@@ -34,6 +34,7 @@ class TableReservationController extends Controller
         protected AccurateService $accurateService,
         protected DashboardSyncService $dashboardSyncService,
         protected PrinterService $printerService,
+        protected \App\Services\PosStockConsumer $posStockConsumer,
     ) {}
 
     public function index(Request $request)
@@ -747,6 +748,28 @@ class TableReservationController extends Controller
 
         try {
             DB::transaction(function () use ($booking, $session, $billing, $validated) {
+                // Kunci sesi dulu (urutan sama dengan checkout kasir/waiter) supaya
+                // order baru tidak bisa selip di tengah proses close, lalu kunci billing
+                // dan tolak close ulang (dobel-klik / dua kasir) dengan tegas.
+                $session = TableSession::query()
+                    ->whereKey($session->id)
+                    ->lockForUpdate()
+                    ->first() ?? $session;
+
+                $billing = Billing::query()
+                    ->whereKey($billing->id)
+                    ->lockForUpdate()
+                    ->first() ?? $billing;
+
+                // Re-check di dalam lock: dobel-klik / dua kasir tidak boleh
+                // menghasilkan dua pembayaran untuk billing yang sudah paid.
+                // (partially_paid sengaja boleh di-close ulang — alur operasional.)
+                if ($billing->billing_status === 'paid') {
+                    throw ValidationException::withMessages([
+                        'billing' => 'Billing sudah ditutup.',
+                    ]);
+                }
+
                 $session->loadMissing('orders.items.inventoryItem');
 
                 $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
@@ -1650,7 +1673,8 @@ class TableReservationController extends Controller
 
             // Consolidate all order items across all orders in the session
             $session->loadMissing('orders.items.inventoryItem');
-            $warehouseName = GeneralSetting::instance()->getAccurateWarehouseName();
+            $settings = GeneralSetting::instance();
+            $warehouseName = $settings->getAccurateWarehouseName();
             $billing = $session->billing;
             $discountAmount = (float) ($billing->discount_amount ?? 0);
             $itemsTotal = (float) $session->orders
@@ -1658,6 +1682,21 @@ class TableReservationController extends Controller
                 ->where('status', '!=', 'cancelled')
                 ->sum(fn ($item) => (float) $item->subtotal);
             $discountPercent = $itemsTotal > 0 ? round(($discountAmount / $itemsTotal) * 100, 2) : 0;
+
+            // FOC/Compliment invoice: push items at original amounts and book the
+            // discount as a negative detailExpense line using its dedicated COA.
+            $focCompMethod = $billing->foc_comp_payment_method;
+            $focCompAccountNo = match ($focCompMethod) {
+                'FOC' => $settings->accurate_foc_account_no,
+                'Compliment' => $settings->accurate_compliment_account_no,
+                default => null,
+            };
+            $useFocCompExpenseLine = in_array($focCompMethod, ['FOC', 'Compliment'], true)
+                && filled($focCompAccountNo)
+                && $discountAmount > 0;
+            if ($useFocCompExpenseLine) {
+                $discountPercent = 0.0;
+            }
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
@@ -1704,7 +1743,7 @@ class TableReservationController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $soPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
                 ];
@@ -1712,9 +1751,17 @@ class TableReservationController extends Controller
 
             if ($taxAmount > 0) {
                 $soPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $soPayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 
@@ -1753,7 +1800,7 @@ class TableReservationController extends Controller
 
             if ($taxAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_tax_account_no ?? '210201',
+                    'accountNo' => $settings->accurate_tax_account_no ?? '210201',
                     'expenseAmount' => $taxAmount,
                     'expenseName' => 'PB 1',
                 ];
@@ -1761,9 +1808,17 @@ class TableReservationController extends Controller
 
             if ($serviceChargeAmount > 0) {
                 $invPayload['detailExpense'][] = [
-                    'accountNo' => GeneralSetting::instance()->accurate_service_charge_account_no ?? '210202',
+                    'accountNo' => $settings->accurate_service_charge_account_no ?? '210202',
                     'expenseAmount' => $serviceChargeAmount,
                     'expenseName' => 'Service Charge',
+                ];
+            }
+
+            if ($useFocCompExpenseLine) {
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => $focCompAccountNo,
+                    'expenseAmount' => -1 * $discountAmount,
+                    'expenseName' => $focCompMethod,
                 ];
             }
 
@@ -2355,6 +2410,11 @@ class TableReservationController extends Controller
                     ]);
                 }
 
+                // Stok bahan/item sudah dikonsumsi saat checkout — kembalikan saat dibatalkan.
+                $this->posStockConsumer->releaseForOrderItems(
+                    $order->items()->where('status', '!=', 'cancelled')->get()
+                );
+
                 $order->items()
                     ->where('status', '!=', 'cancelled')
                     ->update(['status' => 'cancelled']);
@@ -2434,6 +2494,9 @@ class TableReservationController extends Controller
                         'order_item_id' => 'Item hanya bisa dihapus jika order masih berstatus pending.',
                     ]);
                 }
+
+                // Stok bahan/item sudah dikonsumsi saat checkout — kembalikan saat item dihapus.
+                $this->posStockConsumer->releaseForOrderItems([$orderItem]);
 
                 $orderItem->delete();
 

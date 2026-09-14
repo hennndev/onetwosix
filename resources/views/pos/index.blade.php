@@ -36,6 +36,7 @@
       window.posUserId = {{ auth()->id() }};
       const posRoutes = {
         selectCounter: "{{ route('admin.pos.select-counter') }}",
+        live: "{{ route('admin.pos.live') }}",
         addToCart: "{{ route('admin.pos.add-to-cart', '__PRODUCT_ID__') }}",
         updateCart: "{{ route('admin.pos.update-cart', '__PRODUCT_ID__') }}",
         removeFromCart: "{{ route('admin.pos.remove-from-cart', '__PRODUCT_ID__') }}",
@@ -276,6 +277,8 @@
           availableTables: posAvailableTables,
           cartNotes: {},
           menuAvailability: null,
+          liveMap: {},
+          pollTimer: null,
 
           init() {
             this.cart = posInitialData.cart;
@@ -283,6 +286,62 @@
 
             if (this.cart.length > 0) {
               this.refreshMenuAvailability();
+            }
+
+            this.startPolling();
+          },
+
+          destroy() {
+            if (this.pollTimer) clearInterval(this.pollTimer);
+          },
+
+          isCheckoutBusy() {
+            return this.showCustomerTypeModal || this.showPaymentTypeModal ||
+              this.showCheckoutModal || this.showConfirmModal ||
+              this.showReceiptModal || this.showAuthModal ||
+              this.isProcessing || this.isVerifyingAuth;
+          },
+
+          startPolling() {
+            this.pollTimer = setInterval(() => this.pollLive(), 30000);
+          },
+
+          isProductUnavailable(productId, serverDisabled = false) {
+            const live = this.liveMap[productId];
+            if (live) {
+              return live.is_available === false;
+            }
+
+            return serverDisabled;
+          },
+
+          async pollLive() {
+            if (this.isCheckoutBusy() || document.hidden) {
+              return;
+            }
+
+            try {
+              const res = await fetch(posRoutes.live, {
+                headers: {
+                  Accept: 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                cache: 'no-store',
+              });
+              if (!res.ok) return;
+              const data = await res.json();
+
+              if (Array.isArray(data.products)) {
+                const map = {};
+                data.products.forEach((p) => { map[p.id] = p; });
+                this.liveMap = map;
+              }
+
+              if (this.cart.length > 0) {
+                await this.refreshMenuAvailability();
+              }
+            } catch (e) {
+              // transient failure — keep last known availability
             }
           },
 

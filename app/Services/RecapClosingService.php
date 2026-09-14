@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Billing;
 use App\Models\Dashboard;
 use App\Models\RecapHistory;
 use Illuminate\Support\Carbon;
@@ -9,6 +10,16 @@ use Illuminate\Support\Facades\DB;
 
 class RecapClosingService
 {
+    public function __construct(protected ?DashboardSyncService $dashboardSyncService = null)
+    {
+        // DashboardSyncService tidak bergantung pada RecapClosingService — aman dari siklus.
+    }
+
+    protected function syncService(): DashboardSyncService
+    {
+        return $this->dashboardSyncService ??= app(DashboardSyncService::class);
+    }
+
     /**
      * @return array{status: string, end_day: string, recap_history: ?RecapHistory}
      */
@@ -17,6 +28,36 @@ class RecapClosingService
         $closingAt ??= now('Asia/Jakarta');
         $closingAt = $closingAt->copy()->timezone('Asia/Jakarta');
         $endDay = RecapHistory::resolveNextEndDay($areaId);
+
+        // Seal harus berdasarkan data terkini: penjualan setelah sync terakhir
+        // di-aggregate dulu, kalau tidak akan hilang dari recap (dashboard di-zero).
+        // Sync hanya dilakukan bila memang ada billing terbayar baru sejak sync
+        // terakhir dashboard — menghindari menimpa angka yang sudah final.
+        $dashboardForSync = Dashboard::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+            ->first();
+
+        $lastSyncedAt = $dashboardForSync?->last_synced_at;
+        $hasPendingSales = Billing::query()
+            ->where('billing_status', 'paid')
+            ->where(function ($query) use ($lastSyncedAt): void {
+                $anchor = $lastSyncedAt ?? Carbon::createFromTimestamp(0, 'Asia/Jakarta');
+
+                $query->where(function ($paidAtQuery) use ($anchor): void {
+                    $paidAtQuery->whereNotNull('paid_at')->where('paid_at', '>', $anchor);
+                })->orWhere(function ($fallbackQuery) use ($anchor): void {
+                    $fallbackQuery->whereNull('paid_at')->where('updated_at', '>', $anchor);
+                });
+            })
+            ->exists();
+
+        if ($hasPendingSales) {
+            try {
+                $this->syncService()->sync($areaId);
+            } catch (\Throwable) {
+                // Jangan blok close-day karena sync gagal — recap tetap dari data terakhir yang tersedia.
+            }
+        }
 
         // Tolak close kedua dalam rentang pre-anchor: jika sudah ada recap dengan
         // created_at pada kalender hari yang sama untuk end_day yang berbeda,

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class SyncAccurateItems extends Command
 {
-    protected $signature = 'accurate:sync-items {--force : Force sync without confirmation}';
+    protected $signature = 'accurate:sync-items {--force : Force sync without confirmation} {--with-stock : Overwrite local stock quantities from Accurate (pastikan tidak ada transaksi berjalan)}';
 
     protected $description = 'Sync items data from Accurate to local database';
 
@@ -136,8 +136,11 @@ class SyncAccurateItems extends Command
         $stockMap = $this->fetchStockMap();
         $syncedAccurateIds = [];
 
+        $withStock = (bool) $this->option('with-stock');
+
         $page = 1;
         $pageSize = 100;
+        $paginationCompleted = false;
         do {
             $request = new \Illuminate\Http\Request;
             $request->merge([
@@ -150,6 +153,7 @@ class SyncAccurateItems extends Command
             Log::info('items', ['items' => $items]);
 
             if ($items->isEmpty()) {
+                $paginationCompleted = true;
                 break;
             }
 
@@ -161,16 +165,28 @@ class SyncAccurateItems extends Command
                         $syncedAccurateIds[] = $accurateId;
                     }
 
-                    $this->syncSingleItem($itemData, $stockMap);
+                    $this->syncSingleItem($itemData, $stockMap, $withStock);
                 } catch (Exception $e) {
                     Log::warning('Sync item failed', ['id' => $itemData['id'] ?? null, 'error' => $e->getMessage()]);
                 }
             }
 
+            if ($items->count() < $pageSize) {
+                $paginationCompleted = true;
+            }
+
             $page++;
         } while ($items->count() >= $pageSize);
 
-        $this->pruneDeletedItems($syncedAccurateIds);
+        // Prune hanya bila pagination selesai penuh: satu halaman kosong karena
+        // gangguan API tidak boleh memicu mass-disable/mass-delete item lokal.
+        if ($paginationCompleted && $syncedAccurateIds !== []) {
+            $this->pruneDeletedItems($syncedAccurateIds);
+        } else {
+            Log::warning('Accurate item sync: pagination incomplete, skipping prune to protect local items', [
+                'synced_count' => count($syncedAccurateIds),
+            ]);
+        }
     }
 
     /**
@@ -210,7 +226,7 @@ class SyncAccurateItems extends Command
         }
     }
 
-    protected function syncSingleItem(array $itemData, array $stockMap = [])
+    protected function syncSingleItem(array $itemData, array $stockMap = [], bool $withStock = false)
     {
         $accurateId = $itemData['id'] ?? null;
 
@@ -230,12 +246,20 @@ class SyncAccurateItems extends Command
         $price = (float) ($itemData['unitPrice'] ?? $itemData['unit1Price'] ?? $itemData['unitPrice1'] ?? $itemData['price'] ?? 0);
 
         $existingItem = InventoryItem::query()
-            ->where('accurate_id', $accurateId)
-            ->orWhere('code', $itemNo ?? 'UNKNOWN-'.$accurateId)
+            ->where(function ($query) use ($accurateId, $itemNo) {
+                $query->where('accurate_id', $accurateId)
+                    ->orWhere('code', $itemNo ?? 'UNKNOWN-'.$accurateId);
+            })
             ->first();
 
         if ($price <= 0 && $existingItem && (float) $existingItem->price > 0) {
             $price = (float) $existingItem->price;
+        }
+
+        // Stok lokal adalah sumber kebenaran penjualan POS (decrement saat checkout).
+        // Timpa dari Accurate hanya bila --with-stock dipakai secara sadar.
+        if ($existingItem && ! $withStock) {
+            $stockQuantity = (int) $existingItem->stock_quantity;
         }
 
         $itemDataToSave = [
@@ -252,6 +276,11 @@ class SyncAccurateItems extends Command
         ];
 
         if ($existingItem) {
+            // Item yang dinonaktifkan admin tidak boleh diaktifkan ulang diam-diam oleh sync.
+            if ($existingItem->is_active === false) {
+                $itemDataToSave['is_active'] = false;
+            }
+
             $existingItem->update($itemDataToSave);
 
             return;

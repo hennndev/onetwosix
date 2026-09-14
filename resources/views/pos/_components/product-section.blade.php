@@ -50,30 +50,34 @@
           $outOfStock = isset($product['type']) && $product['type'] === 'item' && !$isItemGroup && ($product['stock'] ?? 0) <= 0;
           $disabled = $outOfStock || !$isAvailable;
         @endphp
-        <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col {{ $disabled ? 'opacity-60' : '' }}">
+        <div :class="isProductUnavailable('{{ $product['id'] }}', {{ $disabled ? 'true' : 'false' }}) ? 'opacity-60' : ''"
+             class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col {{ $disabled ? 'opacity-60' : '' }}">
           <div class="px-3 pt-3 pb-1">
             <span class="font-bold text-gray-900 text-sm">Rp {{ number_format($product['price'], 0, ',', '.') }}</span>
           </div>
           <div class="relative bg-gradient-to-br {{ $gradientClass }} mx-3 rounded-xl overflow-hidden">
             <div class="absolute top-2 right-2 z-10 w-2.5 h-2.5 rounded-full {{ $dotColor }} opacity-80"></div>
-            @if ($disabled)
-              <div class="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-[1px] rounded-xl">
-                <span class="px-2.5 py-1 bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm tracking-wide uppercase">Sold Out</span>
-              </div>
-            @endif
+            <div x-show="isProductUnavailable('{{ $product['id'] }}', {{ $disabled ? 'true' : 'false' }})"
+                 x-cloak
+                 class="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-[1px] rounded-xl">
+              <span class="px-2.5 py-1 bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm tracking-wide uppercase">Sold Out</span>
+            </div>
             @if ($isItemGroup)
               <div class="absolute bottom-2 left-2 z-10">
                 <span class="px-2 py-0.5 bg-emerald-600 text-white text-xs font-bold rounded shadow-sm">Item Group</span>
               </div>
             @elseif (!$isKitchen && isset($product['stock']))
               <div class="absolute bottom-2 left-2 z-10">
-                @if (($product['stock'] ?? 0) > 10)
-                  <span class="px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded">Stock: {{ $product['stock'] }}</span>
-                @elseif(($product['stock'] ?? 0) > 0)
-                  <span class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded">Stock: {{ $product['stock'] }}</span>
-                @else
-                  <span class="px-2 py-0.5 bg-gray-500 text-white text-xs font-bold rounded">Stock: 0</span>
-                @endif
+                <span x-show="!liveMap['{{ $product['id'] }}']"
+                      @if (($product['stock'] ?? 0) > 10) class="px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded"
+                @elseif(($product['stock'] ?? 0) > 0) class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded"
+                @else class="px-2 py-0.5 bg-gray-500 text-white text-xs font-bold rounded"
+                @endif>Stock: {{ $product['stock'] }}</span>
+                <span x-show="liveMap['{{ $product['id'] }}']"
+                      x-cloak
+                      x-text="'Stock: ' + (liveMap['{{ $product['id'] }}'] ? liveMap['{{ $product['id'] }}'].stock : 0)"
+                      :class="liveMap['{{ $product['id'] }}'] && liveMap['{{ $product['id'] }}'].stock > 10 ? 'bg-green-500' : (liveMap['{{ $product['id'] }}'] && liveMap['{{ $product['id'] }}'].stock > 0 ? 'bg-red-500' : 'bg-gray-500')"
+                      class="px-2 py-0.5 text-white text-xs font-bold rounded"></span>
               </div>
             @endif
             <div class="h-28 flex items-center justify-center">
@@ -123,7 +127,7 @@
               <span class="text-sm font-bold text-gray-900">Rp {{ number_format($product['price'], 0, ',', '.') }}</span>
               <button type="button"
                       @click="addToCart('{{ $product['id'] }}')"
-                      :disabled="isProcessing || {{ $disabled ? 'true' : 'false' }}"
+                      :disabled="isProcessing || isProductUnavailable('{{ $product['id'] }}', {{ $disabled ? 'true' : 'false' }})"
                       class="w-8 h-8 bg-gray-900 hover:bg-gray-700 text-white rounded-lg flex items-center justify-center transition disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                 <svg x-show="!isProcessing"
                      class="w-4 h-4"
