@@ -1113,10 +1113,6 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
     $capturedInvoicePayload = null;
 
     mock(AccurateService::class, function (MockInterface $mock) use (&$capturedSalesOrderPayload, &$capturedInvoicePayload): void {
-        // Item has no group components → decrement item's own stock
-        $mock->shouldReceive('getItemGroupComponents')
-            ->andReturn([]);
-
         $mock->shouldReceive('saveCustomer')
             ->once()
             ->andReturn([
@@ -1250,7 +1246,6 @@ test('walk in checkout stores accurate sync error on billing when invoice push f
     ]);
 
     mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
         $mock->shouldReceive('saveCustomer')->once()->andReturn([
             'r' => [
                 'id' => 11111,
@@ -1373,7 +1368,6 @@ test('walk in checkout auto prints one menu to multiple assigned target printers
     );
 
     mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
         $mock->shouldReceive('saveCustomer')->andReturn(['r' => ['id' => 1, 'customerNo' => 'CUST-001']]);
         $mock->shouldReceive('saveSalesOrder')->andReturn(['r' => ['number' => 'SO-001']]);
         $mock->shouldReceive('saveSalesInvoice')->andReturn(['r' => ['number' => 'INV-001']]);
@@ -1504,7 +1498,6 @@ test('walk in checkout auto print only targets selected checker printers', funct
     );
 
     mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
         $mock->shouldReceive('saveCustomer')->andReturn(['r' => ['id' => 1, 'customerNo' => 'CUST-001']]);
         $mock->shouldReceive('saveSalesOrder')->andReturn(['r' => ['number' => 'SO-001']]);
         $mock->shouldReceive('saveSalesInvoice')->andReturn(['r' => ['number' => 'INV-001']]);
@@ -1606,7 +1599,6 @@ test('walk in checkout can skip automatic receipt printing', function () {
     );
 
     mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
         $mock->shouldReceive('saveCustomer')->andReturn(['r' => ['id' => 1, 'customerNo' => 'CUST-001']]);
         $mock->shouldReceive('saveSalesOrder')->andReturn(['r' => ['number' => 'SO-001']]);
         $mock->shouldReceive('saveSalesInvoice')->andReturn(['r' => ['number' => 'INV-001']]);
@@ -1807,6 +1799,7 @@ test('booking checkout for menu category decrements ingredient stock without dec
         'category_type' => 'main-course',
         'stock_quantity' => 10,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 2901, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     $ingredientItem = makePosInventoryItem([
@@ -1822,18 +1815,6 @@ test('booking checkout for menu category decrements ingredient stock without dec
         'checked_in_at' => now(),
         'status' => 'active',
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(1901)
-            ->andReturn([
-                [
-                    'itemId' => 2901,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -1980,24 +1961,13 @@ test('detail group menu can be added to cart when sold item stock is zero', func
         'stock_quantity' => 0,
         'is_item_group' => true,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 9201, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     makePosInventoryItem([
         'accurate_id' => 9201,
         'stock_quantity' => 10,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(8201)
-            ->andReturn([
-                [
-                    'itemId' => 9201,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     actingAs($admin)
         ->postJson(route('admin.pos.add-to-cart', [
@@ -2026,24 +1996,13 @@ test('non menu detail group item can be added to cart when sold item stock is ze
         'stock_quantity' => 0,
         'is_item_group' => true,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 9401, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     makePosInventoryItem([
         'accurate_id' => 9401,
         'stock_quantity' => 10,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(8401)
-            ->andReturn([
-                [
-                    'itemId' => 9401,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     actingAs($admin)
         ->postJson(route('admin.pos.add-to-cart', [
@@ -2072,6 +2031,7 @@ test('checkout availability preview uses detail group possible portions when ite
         'stock_quantity' => 999,
         'is_item_group' => true,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 9301, 'name' => 'Bahan A', 'quantity' => 2]],
     ]);
 
     makePosInventoryItem([
@@ -2079,19 +2039,6 @@ test('checkout availability preview uses detail group possible portions when ite
         'name' => 'Bahan A',
         'stock_quantity' => 5,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(8301)
-            ->andReturn([
-                [
-                    'itemId' => 9301,
-                    'detailName' => 'Bahan A',
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -2133,6 +2080,7 @@ test('checkout availability preview blocks item group products when ingredient s
         'stock_quantity' => 0,
         'is_item_group' => true,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 5101, 'name' => 'Bahan Preview', 'quantity' => 2]],
     ]);
 
     makePosInventoryItem([
@@ -2140,19 +2088,6 @@ test('checkout availability preview blocks item group products when ingredient s
         'name' => 'Bahan Preview',
         'stock_quantity' => 3,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(4101)
-            ->andReturn([
-                [
-                    'itemId' => 5101,
-                    'detailName' => 'Bahan Preview',
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -2216,18 +2151,7 @@ test('booking checkout is blocked when item group ingredient stock is insufficie
         'status' => 'active',
     ]);
 
-    mock(AccurateService::class, function (MockInterface $mock) use ($menuItem): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with((int) $menuItem->accurate_id)
-            ->andReturn([
-                [
-                    'itemId' => 7101,
-                    'detailName' => 'Ayam Fillet',
-                    'quantity' => 2,
-                ],
-            ]);
-    });
+    $menuItem->update(['detail_group' => [['accurate_id' => 7101, 'name' => 'Ayam Fillet', 'quantity' => 2]]]);
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -2473,17 +2397,7 @@ test('booking checkout rejects insufficient ingredient stock when portion displa
         'status' => 'active',
     ]);
 
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(1902)
-            ->andReturn([
-                [
-                    'itemId' => 2902,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
+    $menuItem->update(['detail_group' => [['accurate_id' => 2902, 'name' => 'Bahan', 'quantity' => 2]]]);
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -2550,17 +2464,7 @@ test('booking checkout never creates negative ingredient stock when portion disp
         'status' => 'active',
     ]);
 
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(1903)
-            ->andReturn([
-                [
-                    'itemId' => 2903,
-                    'quantity' => 5,
-                ],
-            ]);
-    });
+    $menuItem->update(['detail_group' => [['accurate_id' => 2903, 'name' => 'Bahan', 'quantity' => 5]]]);
 
     $cartKey = 'item_'.$menuItem->id;
 

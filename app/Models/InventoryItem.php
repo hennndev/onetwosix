@@ -45,6 +45,28 @@ class InventoryItem extends Model
         return $this->stock_quantity <= $this->threshold;
     }
 
+    /**
+     * Resep (BOM) menu item group dari data lokal `detail_group` — disinkronkan
+     * oleh accurate:sync-items / diisi via Menu Management. Sumber tunggal untuk
+     * hitung porsi dan konsumsi bahan; runtime POS tidak memanggil Accurate.
+     *
+     * @return array<int, array{itemId: int, quantity: float, detailName: string|null}>
+     */
+    public function recipeComponents(): array
+    {
+        return collect($this->detail_group ?? [])
+            ->map(function ($component): array {
+                return [
+                    'itemId' => (int) ($component['accurate_id'] ?? ($component['itemId'] ?? 0)),
+                    'quantity' => (float) ($component['quantity'] ?? 0),
+                    'detailName' => $component['name'] ?? ($component['detailName'] ?? null),
+                ];
+            })
+            ->filter(fn (array $component): bool => $component['itemId'] > 0 && $component['quantity'] > 0)
+            ->values()
+            ->all();
+    }
+
     public function getStockStatusAttribute(): string
     {
         return $this->isLowStock() ? 'low' : 'normal';

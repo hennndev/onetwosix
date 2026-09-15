@@ -25,7 +25,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -77,6 +76,10 @@ class WaiterPosController extends Controller
             if ($nextQty > $possiblePortions) {
                 return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
             }
+        } elseif ($isItemGroup && $isCountPortionPossible) {
+            // Group dengan count ON tapi tanpa resep BOM lokal: 0 porsi — tolak,
+            // jangan jual tanpa pencatatan bahan. (COUNT OFF = sengaja tak dihitung.)
+            return response()->json(['success' => false, 'message' => 'Item ini belum memiliki resep bahan yang valid.'], 422);
         } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
             return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
         }
@@ -957,25 +960,9 @@ class WaiterPosController extends Controller
 
     protected function getItemGroupComponents(InventoryItem $inventoryItem): array
     {
-        if (! $inventoryItem->accurate_id) {
-            return [];
-        }
-
-        $cacheKey = "accurate_item_group_{$inventoryItem->accurate_id}";
-
-        $cached = Cache::get($cacheKey);
-
-        // Fail closed: error Accurate tidak boleh ter-cache sebagai "resep kosong",
-        // kalau tidak item group terjual tanpa batas dan tanpa potong stok bahan.
-        if (is_array($cached)) {
-            return $cached;
-        }
-
-        $components = $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id);
-
-        Cache::put($cacheKey, $components, now()->addHour());
-
-        return $components;
+        // Resep dari BOM lokal (inventory_items.detail_group) — sinkron oleh
+        // accurate:sync-items. Runtime waiter tidak memanggil Accurate.
+        return $inventoryItem->recipeComponents();
     }
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array

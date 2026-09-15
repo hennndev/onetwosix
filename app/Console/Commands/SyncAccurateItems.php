@@ -113,11 +113,14 @@ class SyncAccurateItems extends Command
             }
 
             foreach ($stocks as $stock) {
-                $no = $stock['no'] ?? null;
-                if ($no !== null) {
-                    $map[$no] = $stock['quantity']
-                        ?? 0;
+                // Baris non-array / tanpa 'no' adalah tanda gudang salah (mis. "Gudang tidak tepat").
+                if (! is_array($stock) || ($stock['no'] ?? null) === null) {
+                    Log::warning('Accurate stock list: baris tidak valid dilewati', ['row' => is_array($stock) ? null : (string) $stock]);
+
+                    continue;
                 }
+
+                $map[$stock['no']] = $stock['quantity'] ?? 0;
             }
 
             $page++;
@@ -127,6 +130,12 @@ class SyncAccurateItems extends Command
             'warehouse_name' => $this->targetWarehouseName(),
             'total_items' => count($map),
         ]);
+
+        if ($map === []) {
+            Log::error('Accurate Stock Map KOSONG — kemungkinan besar nama gudang salah di Pengaturan Umum. Stok lokal tidak akan ditimpa (proteksi mass-zero).', [
+                'warehouse_name' => $this->targetWarehouseName(),
+            ]);
+        }
 
         return $map;
     }

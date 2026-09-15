@@ -2,12 +2,9 @@
 
 use App\Models\InventoryItem;
 use App\Models\PosCategorySetting;
-use App\Services\AccurateService;
-use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 
 use function Pest\Laravel\actingAs;
-use function Pest\Laravel\mock;
 
 function unifiedSetting(bool $isItemGroup): void
 {
@@ -58,16 +55,10 @@ test('setting flagged group with count portion uses ingredient based availabilit
         'accurate_id' => 551001,
         'is_count_portion_possible' => true,
         'stock_quantity' => 0,
+        'detail_group' => [['accurate_id' => 552001, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     unifiedItem(['accurate_id' => 552001, 'stock_quantity' => 6]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->andReturn([
-                ['itemId' => 552001, 'quantity' => 2],
-            ]);
-    });
 
     $response = actingAs($admin)->get(route('admin.pos.index'));
 
@@ -91,16 +82,10 @@ test('setting flagged group can be added to cart even when own stock is zero', f
         'accurate_id' => 551002,
         'is_count_portion_possible' => true,
         'stock_quantity' => 0,
+        'detail_group' => [['accurate_id' => 552002, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     unifiedItem(['accurate_id' => 552002, 'stock_quantity' => 10]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->andReturn([
-                ['itemId' => 552002, 'quantity' => 2],
-            ]);
-    });
 
     actingAs($admin)
         ->postJson(route('admin.pos.add-to-cart', ['productId' => 'item_'.$menu->id]))
@@ -165,16 +150,10 @@ test('waiter live feed shows setting flagged group portions with null stock', fu
         'accurate_id' => 551004,
         'is_count_portion_possible' => true,
         'stock_quantity' => 0,
+        'detail_group' => [['accurate_id' => 552004, 'name' => 'Bahan', 'quantity' => 4]],
     ]);
 
     unifiedItem(['accurate_id' => 552004, 'stock_quantity' => 8]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->andReturn([
-                ['itemId' => 552004, 'quantity' => 4],
-            ]);
-    });
 
     $products = collect(actingAs($waiter)->getJson(route('waiter.pos.live'))->json('products'))
         ->firstWhere('id', 'item_'.$menu->id);

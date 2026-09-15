@@ -19,7 +19,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class WaiterController extends Controller
@@ -326,16 +325,8 @@ class WaiterController extends Controller
 
     protected function resolvePossiblePortions(InventoryItem $inventoryItem): int
     {
-        try {
-            /** @var array<int, array<string, mixed>> $components */
-            $components = Cache::remember(
-                "accurate_item_group_{$inventoryItem->accurate_id}",
-                now()->addHour(),
-                fn (): array => app(\App\Services\AccurateService::class)->getItemGroupComponents((int) $inventoryItem->accurate_id),
-            );
-        } catch (\Throwable) {
-            return 0;
-        }
+        // Resep dari BOM lokal (inventory_items.detail_group) — runtime tidak memanggil Accurate.
+        $components = $inventoryItem->recipeComponents();
 
         if ($components === []) {
             return 0;

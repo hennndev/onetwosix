@@ -4,16 +4,13 @@ namespace App\Services;
 
 use App\Models\InventoryItem;
 use App\Models\PosCategorySetting;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PosStockConsumer
 {
-    public function __construct(protected AccurateService $accurateService) {}
-
     /**
-     * @param  array<string, array<string, mixed>>  $cart
+     * @param  array<int, array<string, mixed>>  $cart
      * @return array{products: array<int, int>, stock: array<int, int>}
      */
     public function requirements(array $cart): array
@@ -122,15 +119,7 @@ class PosStockConsumer
                 continue;
             }
 
-            $components = [];
-
-            if ($this->isItemGroup($inventoryItem) && $inventoryItem->accurate_id) {
-                try {
-                    $components = $this->components($inventoryItem);
-                } catch (ValidationException) {
-                    $components = [];
-                }
-            }
+            $components = $this->components($inventoryItem);
 
             if ($components === []) {
                 if (! $this->isItemGroup($inventoryItem)) {
@@ -185,23 +174,13 @@ class PosStockConsumer
     /** @return array<int, array<string, mixed>> */
     private function components(InventoryItem $inventoryItem): array
     {
-        if (! $this->isItemGroup($inventoryItem) || ! $inventoryItem->accurate_id) {
+        if (! $this->isItemGroup($inventoryItem)) {
             return [];
         }
 
-        try {
-            return Cache::remember(
-                "accurate_item_group_{$inventoryItem->accurate_id}",
-                now()->addHour(),
-                fn (): array => $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id),
-            );
-        } catch (\Throwable $exception) {
-            if ($this->isItemGroup($inventoryItem)) {
-                throw ValidationException::withMessages(['stock' => "Komposisi {$inventoryItem->name} tidak dapat diperiksa."]);
-            }
-
-            return [];
-        }
+        // Resep dari BOM lokal (inventory_items.detail_group) — sinkron oleh
+        // accurate:sync-items. Runtime POS tidak memanggil Accurate.
+        return $inventoryItem->recipeComponents();
     }
 
     private function isItemGroup(InventoryItem $inventoryItem): bool

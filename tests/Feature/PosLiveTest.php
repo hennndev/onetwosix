@@ -8,12 +8,9 @@ use App\Models\Tabel;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\UserProfile;
-use App\Services\AccurateService;
-use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 
 use function Pest\Laravel\actingAs;
-use function Pest\Laravel\mock;
 
 function makeLiveInventoryItem(array $attributes = []): InventoryItem
 {
@@ -163,24 +160,13 @@ test('admin pos live resolves possible portions for item group with count portio
         'stock_quantity' => 999,
         'is_item_group' => true,
         'is_count_portion_possible' => true,
+        'detail_group' => [['accurate_id' => 9901, 'name' => 'Bahan', 'quantity' => 2]],
     ]);
 
     makeLiveInventoryItem([
         'accurate_id' => 9901,
         'stock_quantity' => 7,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(8801)
-            ->andReturn([
-                [
-                    'itemId' => 9901,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     $response = actingAs($admin)->getJson(route('admin.pos.live'));
 

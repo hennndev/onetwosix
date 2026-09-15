@@ -32,7 +32,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -2945,17 +2944,9 @@ class PosController extends Controller
 
     protected function getItemGroupComponents(InventoryItem $inventoryItem): array
     {
-        if (! $inventoryItem->accurate_id) {
-            return [];
-        }
-
-        $cacheKey = "accurate_item_group_{$inventoryItem->accurate_id}";
-
-        return Cache::remember(
-            $cacheKey,
-            now()->addHour(),
-            fn () => $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id)
-        );
+        // Resep dari BOM lokal (inventory_items.detail_group) — sinkron oleh
+        // accurate:sync-items. Runtime POS tidak memanggil Accurate.
+        return $inventoryItem->recipeComponents();
     }
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array

@@ -7,7 +7,6 @@ use App\Models\DailyAuthCode;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
-use App\Models\PosDiscountApproval;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
@@ -158,7 +157,6 @@ test('walk in selected item discount is sent to accurate sales order and invoice
     $payloads = [];
 
     mock(AccurateService::class, function (MockInterface $mock) use (&$payloads): void {
-        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
         $mock->shouldReceive('saveSalesOrder')->once()->withArgs(function (array $payload) use (&$payloads): bool {
             $payloads['sales_order'] = $payload;
 

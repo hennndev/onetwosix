@@ -13,12 +13,9 @@ use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\UserProfile;
-use App\Services\AccurateService;
 use Illuminate\Support\Facades\Artisan;
-use Mockery\MockInterface;
 
 use function Pest\Laravel\actingAs;
-use function Pest\Laravel\mock;
 
 function critPosCategory(): void
 {
@@ -299,27 +296,23 @@ test('C6: cancelling a pending order restores consumed stock', function () {
     expect($item->fresh()->stock_quantity)->toBe(10);
 });
 
-test('C7: accurate failure is not cached as empty recipe', function () {
+test('C7: group menu without local recipe BOM is sold out and rejected at add to cart', function () {
     $waiter = critWaiter();
     $item = critItem(stock: 0, overrides: [
         'is_item_group' => true,
         'is_count_portion_possible' => true,
         'accurate_id' => 777001,
+        'detail_group' => null,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->twice()
-            ->andThrow(new RuntimeException('Accurate down'));
-    });
 
     foreach ([1, 2] as $attempt) {
         $response = actingAs($waiter)
             ->withSession(['accurate_database' => 'test'])
             ->postJson(route('waiter.pos.add-to-cart', 'item_'.$item->id));
 
+        // Porsi dari BOM lokal kosong → ditolak dengan pesan resep tidak valid.
         $response->assertStatus(422);
-        expect($response->json('message'))->toContain('tidak dapat diperiksa')
+        expect($response->json('message'))->toBe('Item ini belum memiliki resep bahan yang valid.')
             ->and($attempt)->toBe($attempt);
     }
 });

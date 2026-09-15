@@ -17,7 +17,6 @@ use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\UserProfile;
-use App\Services\AccurateService;
 use App\Services\PrinterService;
 use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
@@ -953,6 +952,7 @@ test('waiter add to cart allows item group when ingredient portions are sufficie
         'is_item_group' => true,
         'is_count_portion_possible' => true,
         'is_active' => true,
+        'detail_group' => [['accurate_id' => 6001, 'name' => 'Waiter Ingredient Group', 'quantity' => 2]],
     ]);
 
     InventoryItem::create([
@@ -964,18 +964,6 @@ test('waiter add to cart allows item group when ingredient portions are sufficie
         'stock_quantity' => 10,
         'is_active' => true,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(5001)
-            ->andReturn([
-                [
-                    'itemId' => 6001,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
@@ -1010,6 +998,7 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         'is_item_group' => true,
         'is_count_portion_possible' => true,
         'is_active' => true,
+        'detail_group' => [['accurate_id' => 6002, 'name' => 'Waiter Ingredient', 'quantity' => 2]],
     ]);
 
     InventoryItem::create([
@@ -1021,18 +1010,6 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         'stock_quantity' => 10,
         'is_active' => true,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(5002)
-            ->andReturn([
-                [
-                    'itemId' => 6002,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
@@ -1067,11 +1044,8 @@ test('waiter skips possible portions when is count portion possible is off and s
         'is_item_group' => true,
         'is_count_portion_possible' => false,
         'is_active' => true,
+        'detail_group' => [['accurate_id' => 60022, 'name' => 'Bahan No Count', 'quantity' => 1]],
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldNotReceive('getItemGroupComponents');
-    });
 
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
@@ -1108,10 +1082,6 @@ test('waiter rejects non group item with empty stock even when is count portion 
         'is_active' => true,
     ]);
 
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldNotReceive('getItemGroupComponents');
-    });
-
     // Item non-group selalu memakai stok sendiri (selaras dengan kasir),
     // terlepas dari flag count portion.
     actingAs($waiter)
@@ -1147,6 +1117,7 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         'is_item_group' => true,
         'is_count_portion_possible' => true,
         'is_active' => true,
+        'detail_group' => [['accurate_id' => 6003, 'name' => 'Waiter Warehouse Ingredient', 'quantity' => 2]],
     ]);
 
     InventoryItem::create([
@@ -1158,18 +1129,6 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         'stock_quantity' => 10,
         'is_active' => true,
     ]);
-
-    mock(AccurateService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getItemGroupComponents')
-            ->once()
-            ->with(5003)
-            ->andReturn([
-                [
-                    'itemId' => 6003,
-                    'quantity' => 2,
-                ],
-            ]);
-    });
 
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
