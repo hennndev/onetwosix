@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class SyncAccurateItems extends Command
 {
-    protected $signature = 'accurate:sync-items {--force : Force sync without confirmation} {--with-stock : Overwrite local stock quantities from Accurate (pastikan tidak ada transaksi berjalan)}';
+    protected $signature = 'accurate:sync-items {--force : Force sync without confirmation}';
 
     protected $description = 'Sync items data from Accurate to local database';
 
@@ -145,7 +145,10 @@ class SyncAccurateItems extends Command
         $stockMap = $this->fetchStockMap();
         $syncedAccurateIds = [];
 
-        $withStock = (bool) $this->option('with-stock');
+        // Stok selalu mengikuti Accurate (sumber kebenaran gudang), KECUALI
+        // stock map kosong — artinya nama gudang salah / API gagal — dan saat
+        // itu stok lokal dipertahankan (proteksi mass-zero).
+        $applyStock = $stockMap !== [];
 
         $page = 1;
         $pageSize = 100;
@@ -174,7 +177,7 @@ class SyncAccurateItems extends Command
                         $syncedAccurateIds[] = $accurateId;
                     }
 
-                    $this->syncSingleItem($itemData, $stockMap, $withStock);
+                    $this->syncSingleItem($itemData, $stockMap, $applyStock);
                 } catch (Exception $e) {
                     Log::warning('Sync item failed', ['id' => $itemData['id'] ?? null, 'error' => $e->getMessage()]);
                 }
@@ -235,7 +238,7 @@ class SyncAccurateItems extends Command
         }
     }
 
-    protected function syncSingleItem(array $itemData, array $stockMap = [], bool $withStock = false)
+    protected function syncSingleItem(array $itemData, array $stockMap = [], bool $applyStock = true)
     {
         $accurateId = $itemData['id'] ?? null;
 
@@ -282,9 +285,9 @@ class SyncAccurateItems extends Command
             $price = (float) $existingItem->price;
         }
 
-        // Stok lokal adalah sumber kebenaran penjualan POS (decrement saat checkout).
-        // Timpa dari Accurate hanya bila --with-stock dipakai secara sadar.
-        if ($existingItem && ! $withStock) {
+        // Stok mengikuti Accurate. Hanya dipertahankan saat stock map kosong
+        // (nama gudang salah / API gagal) — proteksi mass-zero.
+        if ($existingItem && ! $applyStock) {
             $stockQuantity = (int) $existingItem->stock_quantity;
         }
 

@@ -51,7 +51,7 @@ test('accurate sync items saves detail group from list payload without detail fa
             ->andReturn(collect([$itemPayload]));
     });
 
-    $this->artisan('accurate:sync-items --force --with-stock')->assertExitCode(0);
+    $this->artisan('accurate:sync-items --force')->assertExitCode(0);
 
     $item = InventoryItem::query()->where('accurate_id', 919)->first();
 
@@ -128,7 +128,7 @@ test('accurate sync items deletes local items removed from accurate', function (
             ->andReturn(collect([$itemPayload]));
     });
 
-    $this->artisan('accurate:sync-items --force --with-stock')->assertExitCode(0);
+    $this->artisan('accurate:sync-items --force')->assertExitCode(0);
 
     expect((float) InventoryItem::query()->where('accurate_id', 1001)->value('stock_quantity'))->toBe(4.0)
         ->and(InventoryItem::query()->where('accurate_id', 1001)->exists())->toBeTrue()
@@ -199,7 +199,7 @@ test('accurate sync items skips item when its code belongs to a different accura
         ->and($existing->fresh()->is_active)->toBeFalse();
 });
 
-test('accurate sync items replaces item data when accurate id matches and keeps local stock by default', function () {
+test('accurate sync items replaces item data when accurate id matches including stock', function () {
     config(['accurate.api_token' => 'dummy-token']);
     \App\Models\GeneralSetting::instance()->update(['accurate_stock_warehouse_name' => 'Room 126']);
 
@@ -237,10 +237,10 @@ test('accurate sync items replaces item data when accurate id matches and keeps 
 
     $fresh = $existing->fresh();
 
-    // accurate_id sama → nama/harga di-replace; stok lokal dipertahankan tanpa --with-stock.
+    // accurate_id sama → nama/harga/stok di-replace dari Accurate.
     expect($fresh->name)->toBe('Nama Baru dari Accurate')
         ->and((float) $fresh->price)->toBe(12000.0)
-        ->and((int) $fresh->stock_quantity)->toBe(7)
+        ->and((int) $fresh->stock_quantity)->toBe(999)
         ->and(InventoryItem::query()->where('accurate_id', 1001)->count())->toBe(1);
 });
 
