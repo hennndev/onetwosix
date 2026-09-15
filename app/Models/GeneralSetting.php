@@ -223,4 +223,28 @@ class GeneralSetting extends Model
 
         return $globalId ? (int) $globalId : null;
     }
+
+    /**
+     * Nomor akun pendapatan (COA) sesuai jenis item (category_main).
+     * Normalisasi nilai kotor: trim, lowercase, spasi → underscore ("Staff Meal" → staff_meal).
+     * Null bila kategori belum memiliki COA yang diisi.
+     */
+    public function revenueAccountForCategory(?string $categoryMain): ?string
+    {
+        if (blank($categoryMain)) {
+            return null;
+        }
+
+        $key = str_replace(' ', '_', strtolower(trim($categoryMain)));
+
+        $accountNo = match ($key) {
+            'food' => $this->accurate_food_sales_account_no,
+            'beverage' => $this->accurate_beverage_sales_account_no,
+            'cigarette' => $this->accurate_cigarette_sales_account_no,
+            'breakage' => $this->accurate_breakage_account_no,
+            default => null,
+        };
+
+        return filled($accountNo) ? (string) $accountNo : null;
+    }
 }

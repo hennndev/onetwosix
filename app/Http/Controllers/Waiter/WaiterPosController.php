@@ -57,7 +57,8 @@ class WaiterPosController extends Controller
 
         $cart = session()->get(self::CART_KEY, []);
         $nextQty = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
-        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+        // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
         $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
 
         try {
@@ -76,7 +77,7 @@ class WaiterPosController extends Controller
             if ($nextQty > $possiblePortions) {
                 return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
             }
-        } elseif (! $isItemGroup && $isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
+        } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
             return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
         }
 
@@ -129,7 +130,7 @@ class WaiterPosController extends Controller
                 return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
             }
 
-            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
             $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
 
             try {
@@ -148,7 +149,7 @@ class WaiterPosController extends Controller
                 if ($validated['quantity'] > $possiblePortions) {
                     return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
                 }
-            } elseif (! $isItemGroup && $isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
+            } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
                 return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
             }
 
@@ -906,7 +907,8 @@ class WaiterPosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
-            $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
+            // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
             if ($detailGroupComponents !== []) {
@@ -926,24 +928,24 @@ class WaiterPosController extends Controller
                 continue;
             }
 
-            if ($isCountPortionPossible) {
-                $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
-
-                if ($availableStock < $requestedQuantity) {
-                    $stockIssues[] = [
-                        'type' => 'stock',
-                        'product_id' => $productId,
-                        'name' => $inventoryItem->name,
-                        'available_stock' => $availableStock,
-                        'requested_quantity' => $requestedQuantity,
-                        'message' => "Stok {$inventoryItem->name} hanya tersisa {$availableStock}.",
-                    ];
-                }
-
+            // Group tanpa hitung porsi: tidak punya stok sendiri — konsumsi bahan
+            // tetap divalidasi PosStockConsumer saat checkout.
+            if ($isItemGroup) {
                 continue;
             }
 
-            continue;
+            $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
+
+            if ($availableStock < $requestedQuantity) {
+                $stockIssues[] = [
+                    'type' => 'stock',
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'available_stock' => $availableStock,
+                    'requested_quantity' => $requestedQuantity,
+                    'message' => "Stok {$inventoryItem->name} hanya tersisa {$availableStock}.",
+                ];
+            }
         }
 
         return [
@@ -978,7 +980,10 @@ class WaiterPosController extends Controller
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
-        if (! (bool) ($inventoryItem->is_item_group ?? false) || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
+        // Item group = flag item ATAU flag kategori (selaras dengan PosStockConsumer).
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
+
+        if (! $isItemGroup || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
             return [];
         }
 

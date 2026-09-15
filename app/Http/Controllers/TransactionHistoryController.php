@@ -786,10 +786,13 @@ class TransactionHistoryController extends Controller
 
             $detailItem = $order->items
                 ->groupBy('inventory_item_id')
-                ->map(function ($group) use ($warehouseName, $useFocCompExpenseLine) {
+                ->map(function ($group) use ($warehouseName, $useFocCompExpenseLine, $settings) {
                     $first = $group->first();
                     $gross = (float) $group->sum('subtotal');
                     $discountAmount = (float) $group->sum('discount_amount');
+
+                    // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
+                    $revenueAccountNo = $settings->revenueAccountForCategory($first->inventoryItem?->category_main);
 
                     return [
                         'itemNo' => $first->inventoryItem?->code ?? $first->item_code,
@@ -799,7 +802,7 @@ class TransactionHistoryController extends Controller
                             ? 0.0
                             : ($gross > 0 ? round($discountAmount / $gross * 100, 6) : 0),
                         'warehouseName' => $warehouseName,
-                    ];
+                    ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
                 })
                 ->values()
                 ->toArray();

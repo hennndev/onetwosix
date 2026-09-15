@@ -72,7 +72,9 @@ class PosController extends Controller
         // Map inventory items to product format
         $products = $inventoryQuery->get()->map(function ($item) use ($posSettings) {
             $setting = $posSettings->get($item->category_type);
-            $isItemGroup = (bool) ($item->is_item_group ?? false);
+            // Item group = flag item ATAU flag kategori (selaras dengan PosStockConsumer).
+            // Menu group tidak memiliki stok sendiri — ketersediaannya dari bahan.
+            $isItemGroup = (bool) ($item->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
             $isGroupSoldOut = (bool) ($item->is_group_sold_out ?? false);
             $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
             $possiblePortions = null;
@@ -189,8 +191,10 @@ class PosController extends Controller
             ->where('is_active', true)
             ->where('is_visible_in_pos', true)
             ->get()
-            ->map(function ($item) {
-                $isItemGroup = (bool) ($item->is_item_group ?? false);
+            ->map(function ($item) use ($posSettings) {
+                $setting = $posSettings->get($item->category_type);
+                // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+                $isItemGroup = (bool) ($item->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
                 $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
                 $possiblePortions = null;
                 $isAvailable = (bool) $item->is_active && ! ($isItemGroup && (bool) $item->is_group_sold_out);
@@ -207,6 +211,7 @@ class PosController extends Controller
                     'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
                     'possible_portions' => $possiblePortions,
                     'is_available' => $isAvailable,
+                    'is_item_group' => $isItemGroup,
                 ];
             })
             ->values();
@@ -399,7 +404,8 @@ class PosController extends Controller
 
         $nextQuantity = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
 
-        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+        // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
         $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
         if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
@@ -473,7 +479,8 @@ class PosController extends Controller
                     ], 404);
                 }
 
-                $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+                // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+                $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
                 $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
                 if ($inventoryItem->is_visible_in_pos === false || $inventoryItem->is_active === false || ($isItemGroup && (bool) $inventoryItem->is_group_sold_out)) {
@@ -2836,7 +2843,8 @@ class PosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
-            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
+            // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
             $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
@@ -2952,7 +2960,10 @@ class PosController extends Controller
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
-        if (! (bool) ($inventoryItem->is_item_group ?? false) || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
+        // Item group = flag item ATAU flag kategori (selaras dengan PosStockConsumer).
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
+
+        if (! $isItemGroup || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
             return [];
         }
 
@@ -3048,8 +3059,11 @@ class PosController extends Controller
                 && filled($focCompAccountNo)
                 && $discountAmount > 0;
 
-            $detailItem = $order->items->map(function ($item) use ($warehouseName, $useFocCompExpenseLine) {
+            $detailItem = $order->items->map(function ($item) use ($warehouseName, $useFocCompExpenseLine, $settings) {
                 $gross = (float) $item->subtotal;
+
+                // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
+                $revenueAccountNo = $settings->revenueAccountForCategory($item->inventoryItem?->category_main);
 
                 return [
                     'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
@@ -3059,7 +3073,7 @@ class PosController extends Controller
                         ? 0.0
                         : ($gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0),
                     'warehouseName' => $warehouseName,
-                ];
+                ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
             })->values()->toArray();
 
             // 1. Save Sales Order — retry with suffix on duplicate number conflict.

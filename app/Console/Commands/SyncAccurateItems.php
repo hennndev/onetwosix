@@ -245,12 +245,29 @@ class SyncAccurateItems extends Command
 
         $price = (float) ($itemData['unitPrice'] ?? $itemData['unit1Price'] ?? $itemData['unitPrice1'] ?? $itemData['price'] ?? 0);
 
+        // accurate_id adalah kunci tunggal pencocokan: cocok → replace data item.
+        // Pencocokan by code DIHAPUS — dulu bikin baris salah menerima accurate_id
+        // item lain (identitas tertukar). Tabrakan code kini hanya dilaporkan.
         $existingItem = InventoryItem::query()
-            ->where(function ($query) use ($accurateId, $itemNo) {
-                $query->where('accurate_id', $accurateId)
-                    ->orWhere('code', $itemNo ?? 'UNKNOWN-'.$accurateId);
-            })
+            ->where('accurate_id', $accurateId)
             ->first();
+
+        if (! $existingItem && $itemNo !== null) {
+            $codeOwner = InventoryItem::query()->where('code', $itemNo)->first();
+
+            if ($codeOwner && (int) $codeOwner->accurate_id !== (int) $accurateId) {
+                Log::warning('Accurate sync: konflik identitas — code sudah dipakai item lain, item dilewati. Perbaiki manual (rename code salah satunya).', [
+                    'incoming_accurate_id' => (int) $accurateId,
+                    'incoming_code' => $itemNo,
+                    'existing_item_id' => $codeOwner->id,
+                    'existing_name' => $codeOwner->name,
+                    'existing_accurate_id' => (int) $codeOwner->accurate_id,
+                ]);
+                $this->stats['failed']++;
+
+                return;
+            }
+        }
 
         if ($price <= 0 && $existingItem && (float) $existingItem->price > 0) {
             $price = (float) $existingItem->price;
@@ -282,11 +299,30 @@ class SyncAccurateItems extends Command
             }
 
             $existingItem->update($itemDataToSave);
+            $this->forgetRecipeCache((int) $accurateId, $detailGroup);
 
             return;
         }
 
         InventoryItem::create($itemDataToSave);
+        $this->forgetRecipeCache((int) $accurateId, $detailGroup);
+    }
+
+    /**
+     * Resep ter-cache harus mengikuti data terbaru: lupakan key lama agar
+     * perhitungan porsi tidak memakai BOM basi setelah sync.
+     */
+    protected function forgetRecipeCache(int $accurateId, array $detailGroup): void
+    {
+        Cache::forget("accurate_item_group_{$accurateId}");
+
+        foreach ($detailGroup as $component) {
+            $componentAccurateId = (int) ($component['accurate_id'] ?? 0);
+
+            if ($componentAccurateId > 0) {
+                Cache::forget("accurate_item_group_{$componentAccurateId}");
+            }
+        }
     }
 
     protected function mapDetailGroup(array $detailGroup): array

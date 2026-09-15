@@ -1701,14 +1701,17 @@ class TableReservationController extends Controller
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
                 ->where('status', '!=', 'cancelled')
-                ->map(function ($item) use ($warehouseName, $discountPercent) {
+                ->map(function ($item) use ($warehouseName, $discountPercent, $settings) {
+                    // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
+                    $revenueAccountNo = $settings->revenueAccountForCategory($item->inventoryItem?->category_main);
+
                     return [
                         'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                         'quantity' => $item->quantity,
                         'unitPrice' => (float) $item->price,
                         'discountPercent' => $discountPercent,
                         'warehouseName' => $warehouseName,
-                    ];
+                    ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
                 })
                 ->values()
                 ->toArray();

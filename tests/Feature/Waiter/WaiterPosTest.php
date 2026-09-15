@@ -1081,7 +1081,7 @@ test('waiter skips possible portions when is count portion possible is off and s
         ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
 });
 
-test('waiter can add non group item when is count portion possible is off even if stock is zero', function () {
+test('waiter rejects non group item with empty stock even when is count portion possible is off', function () {
     $waiter = posWaiter();
 
     PosCategorySetting::updateOrCreate(
@@ -1112,12 +1112,14 @@ test('waiter can add non group item when is count portion possible is off even i
         $mock->shouldNotReceive('getItemGroupComponents');
     });
 
+    // Item non-group selalu memakai stok sendiri (selaras dengan kasir),
+    // terlepas dari flag count portion.
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
         ->post(route('waiter.pos.add-to-cart', 'item_'.$menuItem->id))
-        ->assertSuccessful()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
+        ->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Stok tidak mencukupi.');
 });
 
 test('waiter add to cart allows non menu detail group item when sold item stock is zero', function () {
@@ -1176,4 +1178,3 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.item_'.$groupItem->id.'.qty', 1);
 });
-

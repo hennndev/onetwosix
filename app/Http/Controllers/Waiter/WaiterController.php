@@ -182,7 +182,8 @@ class WaiterController extends Controller
             ->get()
             ->map(function ($item) use ($posSettings) {
                 $setting = $posSettings->get($item->category_type);
-                $isItemGroup = (bool) ($item->is_item_group ?? false);
+                // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+                $isItemGroup = (bool) ($item->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
                 $displayName = filled($item->pos_name)
                     ? (string) $item->pos_name
                     : (string) $item->name;
@@ -281,8 +282,10 @@ class WaiterController extends Controller
             ->where('is_active', true)
             ->where('is_visible_in_pos', true)
             ->get()
-            ->map(function ($item) {
-                $isItemGroup = (bool) ($item->is_item_group ?? false);
+            ->map(function ($item) use ($posSettings) {
+                $setting = $posSettings->get($item->category_type);
+                // Item group = flag item ATAU flag kategori; stok sendiri bukan milik group.
+                $isItemGroup = (bool) ($item->is_item_group ?? false) || (bool) ($setting?->is_item_group ?? false);
                 $isCountPortionPossible = (bool) ($item->is_count_portion_possible ?? false);
                 $possiblePortions = null;
                 $isAvailable = (bool) $item->is_active && ! ($isItemGroup && (bool) $item->is_group_sold_out);
@@ -290,8 +293,8 @@ class WaiterController extends Controller
                 if ($isItemGroup && $isCountPortionPossible) {
                     $possiblePortions = $this->resolvePossiblePortions($item);
                     $isAvailable = $isAvailable && $possiblePortions > 0;
-                } elseif (! $isItemGroup && $isCountPortionPossible) {
-                    $isAvailable = $isAvailable && (int) ($item->stock_quantity ?? 0) > 0;
+                } elseif (! $isItemGroup && (int) ($item->stock_quantity ?? 0) <= 0) {
+                    $isAvailable = false;
                 }
 
                 return [
