@@ -1691,30 +1691,53 @@ class TableReservationController extends Controller
                 'Compliment' => $settings->accurate_compliment_account_no,
                 default => null,
             };
-            $useFocCompExpenseLine = in_array($focCompMethod, ['FOC', 'Compliment'], true)
-                && filled($focCompAccountNo)
-                && $discountAmount > 0;
-            if ($useFocCompExpenseLine) {
-                $discountPercent = 0.0;
-            }
+            $isFocComp = in_array($focCompMethod, ['FOC', 'Compliment'], true);
+            $useFocCompExpenseLine = $isFocComp && filled($focCompAccountNo);
+
+            // Semua diskon direkam sebagai nominal rupiah per baris — discountPercent tidak pernah dikirim.
+            $useCashDiscount = $discountAmount > 0 && ! $useFocCompExpenseLine;
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
                 ->where('status', '!=', 'cancelled')
-                ->map(function ($item) use ($warehouseName, $discountPercent, $settings) {
+                ->map(function ($item) use ($warehouseName, $settings, $useCashDiscount, $discountAmount, $itemsTotal) {
                     // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
                     $revenueAccountNo = $settings->revenueAccountForCategory($item->inventoryItem?->category_main);
 
-                    return [
+                    $line = [
                         'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                         'quantity' => $item->quantity,
                         'unitPrice' => (float) $item->price,
-                        'discountPercent' => $discountPercent,
                         'warehouseName' => $warehouseName,
-                    ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
+                    ];
+
+                    if ($useCashDiscount) {
+                        // Bagian diskon billing yang ditanggung baris ini (pro-rata subtotal).
+                        $share = (float) $item->subtotal > 0 && $itemsTotal > 0
+                            ? (float) $item->subtotal / $itemsTotal
+                            : 0.0;
+                        $line['itemCashDiscount'] = round($discountAmount * $share, 2);
+                    }
+
+                    return $line + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
                 })
                 ->values()
                 ->toArray();
+
+            // Selisih pembulatan pro-rata diserap baris terakhir agar Σ itemCashDiscount
+            // = discountAmount dan total invoice tetap sama dengan grand_total billing.
+            if ($useCashDiscount && $detailItem !== []) {
+                $allocatedCash = round(array_sum(array_column($detailItem, 'itemCashDiscount')), 2);
+                $roundingGap = round($discountAmount - $allocatedCash, 2);
+
+                if ($roundingGap !== 0.0) {
+                    $lastIndex = count($detailItem) - 1;
+                    $detailItem[$lastIndex]['itemCashDiscount'] = round(
+                        (float) ($detailItem[$lastIndex]['itemCashDiscount'] ?? 0) + $roundingGap,
+                        2
+                    );
+                }
+            }
 
             $taxAmount = (float) ($billing->tax ?? 0);
             $serviceChargeAmount = (float) ($billing->service_charge ?? 0);

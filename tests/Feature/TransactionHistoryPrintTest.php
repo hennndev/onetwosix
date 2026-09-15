@@ -775,8 +775,8 @@ test('transaction history resync sends item discount to accurate', function () {
         ->assertRedirect()
         ->assertSessionHas('success', 'Re-sync Accurate berhasil.');
 
-    expect($payloads['sales_order']['detailItem'][0]['discountPercent'])->toBe(10.0)
-        ->and($payloads['sales_invoice']['detailItem'][0]['discountPercent'])->toBe(10.0);
+    expect($payloads['sales_order']['detailItem'][0]['itemCashDiscount'])->toBe(5000.0)
+        ->and($payloads['sales_invoice']['detailItem'][0]['itemCashDiscount'])->toBe(5000.0);
 });
 
 test('transaction history filters orders by area_id', function () {

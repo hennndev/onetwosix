@@ -185,10 +185,13 @@ test('walk in selected item discount is sent to accurate sales order and invoice
         ])->assertSuccessful();
 
     expect($payloads['sales_order']['detailItem'])->toHaveCount(2)
-        ->and($payloads['sales_order']['detailItem'][0]['discountPercent'])->toBe(10.0)
-        ->and($payloads['sales_order']['detailItem'][1]['discountPercent'])->toBe(0.0)
-        ->and($payloads['sales_invoice']['detailItem'][0]['discountPercent'])->toBe(10.0)
-        ->and($payloads['sales_invoice']['detailItem'][1]['discountPercent'])->toBe(0.0);
+        // Baris berdiskon: itemCashDiscount nominal rupiah. Baris bersih: tanpa kunci diskon.
+        ->and($payloads['sales_order']['detailItem'][0]['itemCashDiscount'])->toBe(10000.0)
+        ->and($payloads['sales_order']['detailItem'][0])->not->toHaveKey('discountPercent')
+        ->and($payloads['sales_order']['detailItem'][1])->not->toHaveKey('discountPercent')
+        ->and($payloads['sales_invoice']['detailItem'][0]['itemCashDiscount'])->toBe(10000.0)
+        ->and($payloads['sales_invoice']['detailItem'][0])->not->toHaveKey('discountPercent')
+        ->and($payloads['sales_invoice']['detailItem'][1])->not->toHaveKey('discountPercent');
 });
 
 test('per-item discount requires valid auth code', function () {

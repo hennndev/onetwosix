@@ -3050,21 +3050,27 @@ class PosController extends Controller
                 && filled($focCompAccountNo)
                 && $discountAmount > 0;
 
-            $detailItem = $order->items->map(function ($item) use ($warehouseName, $useFocCompExpenseLine, $settings) {
+            $detailItem = $order->items->map(function ($item) use ($warehouseName, $settings, $focCompMethod) {
                 $gross = (float) $item->subtotal;
+                $lineDiscount = (float) $item->discount_amount;
+                $isFocComp = in_array($focCompMethod, ['FOC', 'Compliment'], true);
 
                 // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
                 $revenueAccountNo = $settings->revenueAccountForCategory($item->inventoryItem?->category_main);
 
-                return [
+                $line = [
                     'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                     'quantity' => $item->quantity,
                     'unitPrice' => (float) $item->price,
-                    'discountPercent' => $useFocCompExpenseLine
-                        ? 0.0
-                        : ($gross > 0 ? round((float) $item->discount_amount / $gross * 100, 6) : 0),
                     'warehouseName' => $warehouseName,
-                ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
+                ];
+
+                // Semua diskon direkam sebagai nominal rupiah — discountPercent tidak pernah dikirim.
+                if ($lineDiscount > 0) {
+                    $line['itemCashDiscount'] = round($lineDiscount, 2);
+                }
+
+                return $line + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
             })->values()->toArray();
 
             // 1. Save Sales Order — retry with suffix on duplicate number conflict.

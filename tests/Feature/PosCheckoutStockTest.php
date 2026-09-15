@@ -1188,8 +1188,8 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
     $scExpense = $expenses->firstWhere('expenseName', 'Service Charge');
 
     expect($capturedInvoicePayload)->not->toBeNull()
-        ->and($capturedSalesOrderPayload['detailItem'][0]['discountPercent'])->toBe(0.0)
-        ->and($capturedInvoicePayload['detailItem'][0]['discountPercent'])->toBe(0.0)
+        ->and($capturedSalesOrderPayload['detailItem'][0])->not->toHaveKey('discountPercent')
+        ->and($capturedInvoicePayload['detailItem'][0])->not->toHaveKey('discountPercent')
         ->and((string) ($taxExpense['accountNo'] ?? ''))->toBe('210201')
         ->and((string) ($scExpense['accountNo'] ?? ''))->toBe('210202')
         ->and((float) ($scExpense['expenseAmount'] ?? 0))->toBe(5550.0)

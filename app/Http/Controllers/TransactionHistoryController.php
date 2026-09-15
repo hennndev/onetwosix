@@ -786,7 +786,7 @@ class TransactionHistoryController extends Controller
 
             $detailItem = $order->items
                 ->groupBy('inventory_item_id')
-                ->map(function ($group) use ($warehouseName, $useFocCompExpenseLine, $settings) {
+                ->map(function ($group) use ($warehouseName, $settings) {
                     $first = $group->first();
                     $gross = (float) $group->sum('subtotal');
                     $discountAmount = (float) $group->sum('discount_amount');
@@ -794,15 +794,19 @@ class TransactionHistoryController extends Controller
                     // COA pendapatan sesuai jenis item (category_main) — hanya bila diisi.
                     $revenueAccountNo = $settings->revenueAccountForCategory($first->inventoryItem?->category_main);
 
-                    return [
+                    $line = [
                         'itemNo' => $first->inventoryItem?->code ?? $first->item_code,
                         'quantity' => $group->sum('quantity'),
                         'unitPrice' => (float) $first->price,
-                        'discountPercent' => $useFocCompExpenseLine
-                            ? 0.0
-                            : ($gross > 0 ? round($discountAmount / $gross * 100, 6) : 0),
                         'warehouseName' => $warehouseName,
-                    ] + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
+                    ];
+
+                    // Semua diskon direkam sebagai nominal rupiah — discountPercent tidak pernah dikirim.
+                    if ($discountAmount > 0) {
+                        $line['itemCashDiscount'] = round($discountAmount, 2);
+                    }
+
+                    return $line + (filled($revenueAccountNo) ? ['accountNo' => $revenueAccountNo] : []);
                 })
                 ->values()
                 ->toArray();

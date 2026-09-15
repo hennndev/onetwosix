@@ -124,7 +124,7 @@ test('walk in compliment invoice pushes original amounts with compliment expense
     foreach (['sales_order', 'sales_invoice'] as $document) {
         $line = $payloads[$document]['detailItem'][0];
 
-        expect($line['discountPercent'])->toBe(0.0)
+        expect($line)->not->toHaveKey('discountPercent')
             ->and($line['unitPrice'])->toBe(25000.0)
             ->and($line['quantity'])->toBe(2);
 
@@ -187,7 +187,7 @@ test('walk in foc invoice pushes original amounts with foc expense line', functi
     foreach (['sales_order', 'sales_invoice'] as $document) {
         $line = $payloads[$document]['detailItem'][0];
 
-        expect($line['discountPercent'])->toBe(0.0)
+        expect($line)->not->toHaveKey('discountPercent')
             ->and($line['unitPrice'])->toBe(25000.0);
 
         $focExpense = collect($payloads[$document]['detailExpense'] ?? [])
@@ -239,7 +239,8 @@ test('walk in compliment falls back to discount percent when compliment account 
         ->assertJsonPath('success', true);
 
     foreach (['sales_order', 'sales_invoice'] as $document) {
-        expect($payloads[$document]['detailItem'][0]['discountPercent'])->toBe(100.0);
+        expect($payloads[$document]['detailItem'][0])->not->toHaveKey('discountPercent')
+            ->and($payloads[$document]['detailItem'][0]['itemCashDiscount'])->toBe(50000.0);
 
         $complimentExpense = collect($payloads[$document]['detailExpense'] ?? [])
             ->firstWhere('expenseName', 'Compliment');
@@ -358,7 +359,7 @@ test('booking close billing compliment pushes original amounts with compliment e
     foreach (['sales_order', 'sales_invoice'] as $document) {
         $line = $payloads[$document]['detailItem'][0];
 
-        expect($line['discountPercent'])->toBe(0.0)
+        expect($line)->not->toHaveKey('discountPercent')
             ->and($line['unitPrice'])->toBe(60000.0)
             ->and($line['quantity'])->toBe(2);
 
@@ -442,7 +443,7 @@ test('transaction history resync of compliment billing pushes original amounts w
         ->assertSessionHas('success', 'Re-sync Accurate berhasil.');
 
     foreach (['sales_order', 'sales_invoice'] as $document) {
-        expect($payloads[$document]['detailItem'][0]['discountPercent'])->toBe(0.0);
+        expect($payloads[$document]['detailItem'][0])->not->toHaveKey('discountPercent');
 
         $complimentExpense = collect($payloads[$document]['detailExpense'] ?? [])
             ->firstWhere('expenseName', 'Compliment');

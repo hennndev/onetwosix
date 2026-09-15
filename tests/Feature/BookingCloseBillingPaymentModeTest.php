@@ -606,9 +606,55 @@ test('close billing discounts only selected item and sends it to receipt and acc
         ->and($selectedItem->fresh()->is_discount)->toBeTrue()
         ->and((float) $selectedItem->fresh()->discount_pct)->toBe(10.0)
         ->and((float) $regularItem->fresh()->discount_amount)->toBe(0.0)
-        // Accurate: discountPercent rata ke seluruh item = total diskon / itemsTotal (6000/120000 = 5%).
-        ->and($salesOrderPayload['detailItem'][0]['discountPercent'])->toBe(5.0)
-        ->and($salesOrderPayload['detailItem'][1]['discountPercent'])->toBe(5.0);
+        // Accurate: diskon reguler kini nominal rupiah pro-rata subtotal per baris (6000 total).
+        ->and($salesOrderPayload['detailItem'][0]['itemCashDiscount'])->toBe(3000.0)
+        ->and($salesOrderPayload['detailItem'][1]['itemCashDiscount'])->toBe(3000.0);
+});
+
+test('close billing cash discount pro-rata absorbs rounding so invoice stays balanced', function () {
+    $admin = adminUser();
+    [$booking, $session, $billing] = makeBookingCloseBillingFixture($admin);
+
+    $customer = $booking->customer;
+    $profile = UserProfile::create(['user_id' => $customer->id]);
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 120777,
+        'customer_code' => 'CUST-CASH-777',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $salesOrderPayload = null;
+
+    mock(AccurateService::class, function (MockInterface $mock) use (&$salesOrderPayload): void {
+        $mock->shouldReceive('saveSalesOrder')->once()->withArgs(function (array $payload) use (&$salesOrderPayload): bool {
+            $salesOrderPayload = $payload;
+
+            return true;
+        })->andReturnUsing(fn (array $payload) => ['r' => ['number' => $payload['number']]]);
+        $mock->shouldReceive('saveSalesInvoice')->once()->andReturnUsing(fn (array $payload) => ['r' => ['number' => $payload['number']]]);
+        $mock->shouldReceive('saveSalesReceipt')->zeroOrMoreTimes();
+    });
+
+    // Diskon 999 di 2 baris @500 → pro-rata 499,50 per baris (total mentah 999).
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'nominal',
+            'discount_nominal' => 999,
+            'discount_auth_code' => \App\Models\DailyAuthCode::forDate(now()->format('Y-m-d'))->active_code,
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $cashValues = collect($salesOrderPayload['detailItem'])->pluck('itemCashDiscount');
+
+    // Σ itemCashDiscount = tepat 999 — selisih pembulatan diserap baris terakhir.
+    expect((float) $cashValues->sum())->toBe(999.0)
+        ->and($salesOrderPayload['detailItem'])->each->toHaveKey('itemCashDiscount');
 });
 
 test('close billing calculates service charge based on subtotal plus tax when tax is active', function () {
