@@ -63,8 +63,13 @@
               <span class="px-2.5 py-1 bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm tracking-wide uppercase">Sold Out</span>
             </div>
             @if ($isItemGroup)
-              <div class="absolute bottom-2 left-2 z-10">
+              <div class="absolute bottom-2 left-2 z-10 flex items-center gap-1">
                 <span class="px-2 py-0.5 bg-emerald-600 text-white text-xs font-bold rounded shadow-sm">Item Group</span>
+                @if (! is_null($product['possible_portions']) && $product['possible_portions'] > 0)
+                  <span x-cloak
+                        x-text="'Sisa ' + (liveMap['{{ $product['id'] }}']?.possible_portions ?? {{ $product['possible_portions'] }}) + ' porsi'"
+                        class="px-2 py-0.5 bg-amber-500/90 text-white text-xs font-bold rounded shadow-sm">Sisa {{ $product['possible_portions'] }} porsi</span>
+                @endif
               </div>
             @elseif (!$isKitchen && isset($product['stock']))
               <div class="absolute bottom-2 left-2 z-10">

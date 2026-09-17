@@ -339,14 +339,17 @@ class SyncAccurateItems extends Command
 
     protected function mapDetailGroup(array $detailGroup): array
     {
+        // Simpan itemId BAHAN (bukan id baris detailGroup) — id inilah yang
+        // dipakai hitung porsi & konsumsi bahan via inventory_items.accurate_id.
         return collect($detailGroup)
             ->map(function (array $detail): array {
                 return [
-                    'accurate_id' => $detail['id'] ?? null,
+                    'accurate_id' => $detail['itemId'] ?? null,
                     'name' => $detail['detailName'] ?? null,
                     'quantity' => $detail['quantity'] ?? 0,
                 ];
             })
+            ->filter(fn (array $detail): bool => filled($detail['accurate_id']))
             ->values()
             ->all();
     }

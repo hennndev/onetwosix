@@ -266,6 +266,13 @@
                   <span class="@if ($item->isLowStock()) text-red-600 font-bold @else text-green-600 font-medium @endif">
                     {{ $item->stock_quantity }} {{ $item->unit }}
                   </span>
+                  @if ($item->is_item_group && $item->is_count_portion_possible && isset($portionsById[$item->id]))
+                    <div class="mt-1">
+                      <span class="inline-flex items-center px-2 py-0.5 text-xs font-bold rounded bg-amber-100 text-amber-700 border border-amber-200">
+                        ± {{ $portionsById[$item->id] }} porsi
+                      </span>
+                    </div>
+                  @endif
                 </div>
               </td>
               <td class="px-6 py-4">

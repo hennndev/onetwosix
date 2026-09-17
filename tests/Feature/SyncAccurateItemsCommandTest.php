@@ -20,12 +20,14 @@ test('accurate sync items saves detail group from list payload without detail fa
         'suspended' => false,
         'detailGroup' => [
             [
-                'id' => 178,
+                'id' => 555001,
+                'itemId' => 178,
                 'detailName' => 'Bawang Bombay',
                 'quantity' => 100,
             ],
             [
-                'id' => 179,
+                'id' => 555002,
+                'itemId' => 179,
                 'detailName' => 'Bawang Merah',
                 'quantity' => 80,
             ],
@@ -258,7 +260,7 @@ test('accurate sync items invalidates cached recipes after sync', function () {
         'allQuantity' => 10,
         'suspended' => false,
         'detailGroup' => [
-            ['id' => 1701, 'detailName' => 'Bahan A', 'quantity' => 2],
+            ['id' => 555004, 'itemId' => 1701, 'detailName' => 'Bahan A', 'quantity' => 2],
         ],
     ];
 

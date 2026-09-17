@@ -67,6 +67,38 @@ class InventoryItem extends Model
             ->all();
     }
 
+    /**
+     * Estimasi stok jadi (porsi) menu group berdasarkan BOM lokal dan stok bahan
+     * saat ini: MIN antar-bahan dari floor(stok ÷ qty resep). Null bila bukan
+     * group dengan count portion aktif.
+     */
+    public function possiblePortions(): ?int
+    {
+        if (! $this->is_item_group || ! $this->is_count_portion_possible) {
+            return null;
+        }
+
+        $components = $this->recipeComponents();
+
+        if ($components === []) {
+            return 0;
+        }
+
+        $ingredients = InventoryItem::query()
+            ->whereIn('accurate_id', array_column($components, 'itemId'))
+            ->pluck('stock_quantity', 'accurate_id');
+
+        $min = null;
+
+        foreach ($components as $component) {
+            $stock = max((float) ($ingredients[$component['itemId']] ?? 0), 0);
+            $portions = (int) floor($stock / $component['quantity']);
+            $min = $min === null ? $portions : min($min, $portions);
+        }
+
+        return $min ?? 0;
+    }
+
     public function getStockStatusAttribute(): string
     {
         return $this->isLowStock() ? 'low' : 'normal';

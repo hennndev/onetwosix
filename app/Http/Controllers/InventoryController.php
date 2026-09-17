@@ -44,6 +44,14 @@ class InventoryController extends Controller
             ->paginate((int) $request->integer('per_page', 20))
             ->withQueryString();
 
+        // Hitung porsi (stok turunan bahan) untuk item group dengan count portion aktif.
+        $portionsById = [];
+        foreach ($items as $item) {
+            if (($portions = $item->possiblePortions()) !== null) {
+                $portionsById[$item->id] = $portions;
+            }
+        }
+
         // Modal edit threshold butuh semua item sekaligus — koleksi terpisah dari paginator.
         $allItems = InventoryItem::orderBy('name')->get(['id', 'name', 'threshold', 'unit', 'stock_quantity']);
 
@@ -59,6 +67,7 @@ class InventoryController extends Controller
             'totalStockValue',
             'lowStockCount',
             'categoryTypes',
+            'portionsById',
         ));
     }
 
@@ -165,11 +174,18 @@ class InventoryController extends Controller
             return response()->json(['success' => false, 'message' => 'Gagal mengambil detail dari Accurate.'], 502);
         }
 
+        // Stok bahan saat ini (sudah tersinkron) untuk tiap komponen BOM.
+        $ingredientIds = collect($detail['detailGroup'] ?? [])->pluck('itemId')->filter()->values();
+        $ingredientStocks = InventoryItem::query()
+            ->whereIn('accurate_id', $ingredientIds)
+            ->pluck('stock_quantity', 'accurate_id');
+
         $detailGroup = collect($detail['detailGroup'] ?? [])->map(fn ($g) => [
             'item_id' => $g['itemId'] ?? null,
             'detail_name' => $g['detailName'] ?? null,
             'quantity' => $g['quantity'] ?? 0,
             'unit' => $g['itemUnit']['name'] ?? null,
+            'stock' => (int) ($ingredientStocks[(int) ($g['itemId'] ?? 0)] ?? 0),
             'seq' => $g['seq'] ?? null,
         ])->values()->all();
 

@@ -209,6 +209,7 @@
                 <td class="px-4 py-2 font-medium text-gray-800">${g.detail_name ?? '-'}</td>
                 <td class="px-4 py-2 text-right text-gray-700">${g.quantity}</td>
                 <td class="px-4 py-2 text-gray-600">${g.unit ?? '-'}</td>
+                <td class="px-4 py-2 text-right font-semibold ${g.stock <= 0 ? 'text-red-600' : 'text-gray-800'}">${g.stock ?? 0} ${g.unit ?? ''}</td>
               </tr>
             `).join('');
             document.getElementById('detailGroupTable').classList.remove('hidden');

@@ -48,6 +48,7 @@
             <th class="px-4 py-2 text-left">Nama</th>
             <th class="px-4 py-2 text-right">Qty</th>
             <th class="px-4 py-2 text-left">Satuan</th>
+            <th class="px-4 py-2 text-right">Stok Saat Ini</th>
           </tr>
         </thead>
         <tbody id="detailGroupBody"
