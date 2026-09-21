@@ -258,8 +258,10 @@ class RecapHistory extends Model
             ];
         }
 
-        // Start time is the exact time the previous recap was closed (stored opened_at, or created_at fallback)
-        $startAt = ($latestRecap->opened_at ?? $latestRecap->created_at)->copy()->timezone('Asia/Jakarta');
+        // Start = SAAT close terakhir (created_at). JANGAN opened_at: opened_at
+        // adalah awal periode yang baru ter-seal — memakainya menghisap ulang
+        // seluruh periode ter-seal ke rekap berjalan (bug "ambil tanggal 20").
+        $startAt = $latestRecap->created_at->copy()->timezone('Asia/Jakarta');
 
         // Calculate expected end time based on next day to close
         $nextDayToClose = $latestRecap->end_day->copy()->addDay()->timezone('Asia/Jakarta');
