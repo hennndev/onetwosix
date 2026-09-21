@@ -17,7 +17,7 @@ class DashboardSyncService
     {
         [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow($areaId);
         $lastCloseAt = RecapHistory::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereNull('area_id')
             ->latest('created_at')
             ->value('created_at');
 

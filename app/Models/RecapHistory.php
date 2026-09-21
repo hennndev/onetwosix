@@ -105,8 +105,9 @@ class RecapHistory extends Model
             ? $now->copy()->subDay()->toDateString()
             : $now->toDateString();
 
+        // Timeline siklus = global (lihat resolveActiveWindow)
         $latestRecap = self::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereNull('area_id')
             ->latest('end_day')
             ->first();
 
@@ -136,8 +137,9 @@ class RecapHistory extends Model
     public static function resolveNextEndDayForEarlyClose(?int $areaId = null): string
     {
         $now = now('Asia/Jakarta');
+        // Timeline siklus = global (lihat resolveActiveWindow)
         $latestRecap = self::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereNull('area_id')
             ->latest('end_day')
             ->first();
 
@@ -166,8 +168,9 @@ class RecapHistory extends Model
     public static function resolveEndDayWindowForToday(?int $areaId = null): array
     {
         $now = now('Asia/Jakarta');
+        // Timeline siklus = global (lihat resolveActiveWindow)
         $latestRecap = self::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereNull('area_id')
             ->latest('end_day')
             ->first();
 
@@ -210,9 +213,11 @@ class RecapHistory extends Model
         $now = now('Asia/Jakarta');
         $defaultAnchor = self::resolveOperationalAnchor($now);
 
-        // Find the latest closed recap
+        // Siklus end-day itu OUTLET-LEVEL: window berjalan selalu diturunkan
+        // dari timeline recap GLOBAL (area_id NULL) — BUKAN per-area — supaya
+        // angka "Semua Area" = penjumlahan angka tiap area (window identik).
         $latestRecap = self::query()
-            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
+            ->whereNull('area_id')
             ->latest('end_day')
             ->first();
 
@@ -227,7 +232,6 @@ class RecapHistory extends Model
 
             $hasUnclosedPreAnchorBillings = \App\Models\Billing::query()
                 ->where('billing_status', 'paid')
-                ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub->where('area_id', $areaId)->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
                 ->where(function ($q) use ($defaultAnchor): void {
                     $q->where(function ($paidAtQuery) use ($defaultAnchor): void {
                         $paidAtQuery->whereNotNull('paid_at')

@@ -30,8 +30,9 @@ class DashboardController extends Controller
         }
 
         [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
+        // lastClose selalu dari timeline recap GLOBAL (siklus outlet-level)
         $lastCloseAt = RecapHistory::query()
-            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->whereNull('area_id')
             ->latest('created_at')
             ->value('created_at');
 
@@ -204,8 +205,9 @@ class DashboardController extends Controller
     private function liveStats(?int $selectedAreaId): array
     {
         [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
+        // lastClose selalu dari timeline recap GLOBAL (siklus outlet-level)
         $lastCloseAt = RecapHistory::query()
-            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId))
+            ->whereNull('area_id')
             ->latest('created_at')
             ->value('created_at');
 
