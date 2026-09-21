@@ -198,6 +198,10 @@
           cart: posInitialData.cart,
           cartTotal: posInitialData.cartTotal,
           isProcessing: false,
+          // Idempotency token for the in-flight checkout attempt; kept on
+          // failure so a retry replays instead of double-charging, reset
+          // after success so the next checkout is a new logical order.
+          checkoutToken: null,
           showHistoryModal: false,
           recentOrders: [],
           historyLoading: false,
@@ -1323,6 +1327,7 @@
               const payload = {
                 ...this.checkoutForm,
                 cart_notes: this.cartNotes,
+                idempotency_key: this.checkoutToken ??= crypto.randomUUID(),
               };
 
               if (this.shouldChooseCheckerOnCheckout()) {
@@ -1359,6 +1364,7 @@
               });
               const data = await response.json();
               if (data.success) {
+                this.checkoutToken = null;
                 const checkoutSnapshot = {
                   ...this.checkoutForm,
                 };

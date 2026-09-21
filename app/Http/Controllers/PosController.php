@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
+use App\Services\OrderNumberGenerator;
 use App\Services\PosStockConsumer;
 use App\Services\PrinterService;
 use App\Services\SessionBillingCalculator;
@@ -46,6 +47,7 @@ class PosController extends Controller
         protected DashboardSyncService $dashboardSyncService,
         protected PosStockConsumer $posStockConsumer,
         protected SessionBillingCalculator $sessionBillingCalculator,
+        protected OrderNumberGenerator $orderNumberGenerator,
     ) {}
 
     public function index(Request $request)
@@ -964,8 +966,8 @@ class PosController extends Controller
                     'total' => $finalTotal,
                 ]);
 
-                // Route items to Kitchen/Bar and print tickets
-                $this->routeOrderToPreparation($order, $tableSession, $orderNumber, null, $selectedCheckerPrinterIds);
+                // Route items to Kitchen/Bar; tickets are printed after commit.
+                $pendingTickets = $this->routeOrderToPreparation($order, $tableSession, $orderNumber, null, $selectedCheckerPrinterIds);
 
                 // Update Billing
                 if ($tableSession->billing) {
@@ -995,6 +997,11 @@ class PosController extends Controller
                 }
 
                 DB::commit();
+
+                // Printer I/O runs outside the transaction so hung printers
+                // cannot hold table-session/inventory locks and stall the
+                // other floor's concurrent checkouts.
+                $this->printPreparationTickets($pendingTickets, $selectedCheckerPrinterIds);
 
                 try {
                     $this->dashboardSyncService->sync();
@@ -1035,8 +1042,6 @@ class PosController extends Controller
 
                 // Resolve CustomerUser for kitchen/bar checker
                 $customerUser = CustomerUser::where('user_id', $customerId)->first();
-
-                $orderNumber = $this->generateDailyOrderNumber('WALKIN', 'walk-in');
 
                 $paymentMode = $validated['payment_mode'] ?? 'normal';
                 $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
@@ -1213,6 +1218,11 @@ class PosController extends Controller
                     }
                 }
 
+                // Consume stock before creating the order so every checkout
+                // path takes locks in the same order: session → billing →
+                // inventory → order sequence. Prevents lock-order inversion.
+                $this->posStockConsumer->consume($stockRequirements);
+
                 $order = $this->createOrderWithRetry([
                     'table_session_id' => null,
                     'customer_user_id' => $customerUser?->id,
@@ -1228,8 +1238,6 @@ class PosController extends Controller
                     'foc_comp_payment_method' => $focCompPaymentMethod,
                     'idempotency_key' => $validated['idempotency_key'] ?? null,
                 ], 'WALKIN', 'walk-in');
-
-                $this->posStockConsumer->consume($stockRequirements);
 
                 $orderNumber = (string) $order->order_number;
 
@@ -1442,10 +1450,12 @@ class PosController extends Controller
                     }
                 }
 
-                // Route to kitchen/bar checkers (no table session)
-                $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id, $selectedCheckerPrinterIds);
+                // Route to kitchen/bar checkers (no table session); tickets are printed after commit.
+                $pendingTickets = $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id, $selectedCheckerPrinterIds);
 
                 DB::commit();
+
+                $this->printPreparationTickets($pendingTickets, $selectedCheckerPrinterIds);
 
                 try {
                     $this->dashboardSyncService->sync();
@@ -1964,17 +1974,6 @@ class PosController extends Controller
         }
     }
 
-    protected function generateDailyOrderNumber(string $prefix, string $scope): string
-    {
-        $date = today()->toDateString();
-        $sequence = Order::query()
-            ->whereDate('created_at', $date)
-            ->when($scope === 'walk-in', fn ($query) => $query->whereNull('table_session_id'))
-            ->count() + 1;
-
-        return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
-    }
-
     protected function generateWalkInTransactionCode(int $offset = 0): string
     {
         $sequence = Billing::query()
@@ -1987,7 +1986,6 @@ class PosController extends Controller
 
     protected function createOrderWithRetry(array $attributes, string $prefix, string $scope): Order
     {
-        $offset = 0;
         $maxAttempts = 10;
 
         if (empty($attributes['area_id'])) {
@@ -2001,8 +1999,10 @@ class PosController extends Controller
         }
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            // Primary path: locked daily sequence — race-free by design.
+            // Random fallbacks stay as a net for leftover edge collisions.
             $attributes['order_number'] = $attempt === 1
-                ? $this->generateDailyOrderNumberWithOffset($prefix, $scope, $offset)
+                ? $this->orderNumberGenerator->orderNumber($prefix, $scope)
                 : $this->generateFallbackDailyOrderNumber($prefix, $attempt);
 
             try {
@@ -2015,8 +2015,6 @@ class PosController extends Controller
                 if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
                     throw $exception;
                 }
-
-                $offset++;
             }
         }
 
@@ -2052,7 +2050,9 @@ class PosController extends Controller
         }
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            $transactionCode = $this->generateWalkInTransactionCode($offset);
+            $transactionCode = $attempt === 1
+                ? $this->orderNumberGenerator->walkInTransactionCode()
+                : $this->generateWalkInTransactionCode($offset);
             $attributes['transaction_code'] = $transactionCode;
 
             try {
@@ -2069,17 +2069,6 @@ class PosController extends Controller
         }
 
         throw new \RuntimeException('Gagal membuat kode transaksi walk-in unik.');
-    }
-
-    protected function generateDailyOrderNumberWithOffset(string $prefix, string $scope, int $offset = 0): string
-    {
-        $date = today()->toDateString();
-        $sequence = Order::query()
-            ->whereDate('created_at', $date)
-            ->when($scope === 'walk-in', fn ($query) => $query->whereNull('table_session_id'))
-            ->count() + 1 + $offset;
-
-        return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
     }
 
     protected function isDuplicateEntryException(QueryException $exception): bool
@@ -2284,18 +2273,27 @@ class PosController extends Controller
     /**
      * Route order items to Kitchen/Bar preparation queues and print tickets.
      */
+    /**
+     * Create kitchen/bar preparation orders for the routed items and return
+     * the tickets to print. Printing must run AFTER the checkout transaction
+     * commits: printer I/O inside the transaction holds row locks for its
+     * full duration, which piles up concurrent checkouts across floors.
+     *
+     * @return array<int, array{type: string, order: Order|KitchenOrder|BarOrder, items: Collection, order_number: string, table_id: int|null}>
+     */
     protected function routeOrderToPreparation(
         Order $order,
         ?TableSession $tableSession,
         string $orderNumber,
         ?int $walkInCustomerUserId = null,
         ?Collection $selectedCheckerPrinterIds = null
-    ): void {
+    ): array {
         $order->loadMissing(['items.inventoryItem.printers']);
 
         $kitchenItems = collect();
         $barItems = collect();
         $checkerCashierItems = collect();
+        $pendingTickets = [];
 
         // Prioritize explicit Kitchen / Bar destination, fallback to prep location or category type
         foreach ($order->items as $item) {
@@ -2402,12 +2400,13 @@ class PosController extends Controller
                 ]);
             }
 
-            // Auto-print kitchen ticket safely
-            try {
-                $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
-            } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing kitchen ticket: '.$e->getMessage());
-            }
+            $pendingTickets[] = [
+                'type' => 'kitchen',
+                'order' => $kitchenOrder,
+                'items' => $kitchenItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
         }
 
         // Create Bar Order if there are bar items
@@ -2436,25 +2435,53 @@ class PosController extends Controller
                 ]);
             }
 
-            // Auto-print bar ticket safely
-            try {
-                $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
-            } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing bar ticket: '.$e->getMessage());
-            }
+            $pendingTickets[] = [
+                'type' => 'bar',
+                'order' => $barOrder,
+                'items' => $barItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
+            $pendingTickets[] = [
+                'type' => 'checker',
+                'order' => $order,
+                'items' => $checkerCashierItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
+        }
+
+        return $pendingTickets;
+    }
+
+    /**
+     * Print deferred preparation tickets after the checkout transaction has
+     * committed. Each ticket fails independently — a jammed printer never
+     * fails the order.
+     *
+     * @param  array<int, array{type: string, order: Order|KitchenOrder|BarOrder, items: Collection, order_number: string, table_id: int|null}>  $pendingTickets
+     */
+    protected function printPreparationTickets(array $pendingTickets, ?Collection $selectedCheckerPrinterIds = null): void
+    {
+        foreach ($pendingTickets as $ticket) {
             try {
-                $this->printCheckerCashierItemsWithoutPreparationOrder(
-                    $order,
-                    $checkerCashierItems,
-                    $orderNumber,
-                    $tableId,
-                    $selectedCheckerPrinterIds
-                );
+                match ($ticket['type']) {
+                    'kitchen' => $this->printKitchenTicket($ticket['order'], $ticket['items'], $selectedCheckerPrinterIds),
+                    'bar' => $this->printBarTicket($ticket['order'], $ticket['items'], $selectedCheckerPrinterIds),
+                    'checker' => $this->printCheckerCashierItemsWithoutPreparationOrder(
+                        $ticket['order'],
+                        $ticket['items'],
+                        $ticket['order_number'],
+                        $ticket['table_id'],
+                        $selectedCheckerPrinterIds
+                    ),
+                    default => null,
+                };
             } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing checker ticket: '.$e->getMessage());
+                logger()->error("Failed auto-printing {$ticket['type']} ticket: ".$e->getMessage());
             }
         }
     }
@@ -2637,6 +2664,8 @@ class PosController extends Controller
 
     protected function idempotentOrderResponse(Order $order): JsonResponse
     {
+        $billing = Billing::query()->where('order_id', $order->id)->latest('id')->first();
+
         return response()->json([
             'success' => true,
             'message' => "Order #{$order->order_number} sudah diproses.",
@@ -2644,9 +2673,14 @@ class PosController extends Controller
             'order_id' => $order->id,
             'items_total' => (float) $order->items_total,
             'discount_amount' => (float) $order->discount_amount,
+            'service_charge_percentage' => (float) ($billing?->service_charge_percentage ?? 0),
+            'service_charge' => (float) ($billing?->service_charge ?? 0),
+            'tax_percentage' => (float) ($billing?->tax_percentage ?? 0),
+            'tax' => (float) ($billing?->tax ?? 0),
             'total' => (float) $order->total,
             'formatted_total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
             'receipt_printed' => false,
+            'receipt_url' => route('admin.pos.order-receipt', $order),
             'idempotent_replay' => true,
         ]);
     }

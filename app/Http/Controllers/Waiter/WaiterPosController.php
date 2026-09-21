@@ -17,6 +17,7 @@ use App\Models\PosCategorySetting;
 use App\Models\Printer;
 use App\Models\TableSession;
 use App\Services\AccurateService;
+use App\Services\OrderNumberGenerator;
 use App\Services\PosStockConsumer;
 use App\Services\PrinterService;
 use App\Services\SessionBillingCalculator;
@@ -40,6 +41,7 @@ class WaiterPosController extends Controller
         protected AccurateService $accurateService,
         protected PosStockConsumer $posStockConsumer,
         protected SessionBillingCalculator $sessionBillingCalculator,
+        protected OrderNumberGenerator $orderNumberGenerator,
     ) {}
 
     public function addToCart(Request $request, string $productId): JsonResponse
@@ -389,7 +391,7 @@ class WaiterPosController extends Controller
             ]);
 
             $order->load('items');
-            $this->routeOrderToPreparation($order, $tableSession, $orderNumber, $selectedCheckerPrinterIds);
+            $pendingTickets = $this->routeOrderToPreparation($order, $tableSession, $orderNumber, $selectedCheckerPrinterIds);
 
             if ($tableSession->billing) {
                 $billing = $tableSession->billing;
@@ -409,6 +411,11 @@ class WaiterPosController extends Controller
             session()->forget(self::SESSION_KEY);
 
             DB::commit();
+
+            // Printer I/O runs outside the transaction so hung printers
+            // cannot hold table-session/inventory locks and stall the
+            // other floor's concurrent checkouts.
+            $this->printPreparationTickets($pendingTickets, $selectedCheckerPrinterIds);
 
             return response()->json(['success' => true, 'order_number' => $orderNumber]);
         } catch (ValidationException $e) {
@@ -441,17 +448,26 @@ class WaiterPosController extends Controller
         }
     }
 
+    /**
+     * Create kitchen/bar preparation orders for the routed items and return
+     * the tickets to print. Printing must run AFTER the checkout transaction
+     * commits: printer I/O inside the transaction holds row locks for its
+     * full duration, which piles up concurrent checkouts.
+     *
+     * @return array<int, array{type: string, order: Order|KitchenOrder|BarOrder, items: Collection, order_number: string, table_id: int|null}>
+     */
     protected function routeOrderToPreparation(
         Order $order,
         TableSession $tableSession,
         string $orderNumber,
         ?Collection $selectedCheckerPrinterIds = null
-    ): void {
+    ): array {
         $order->loadMissing(['items.inventoryItem.printers']);
 
         $kitchenItems = collect();
         $barItems = collect();
         $checkerCashierItems = collect();
+        $pendingTickets = [];
 
         foreach ($order->items as $item) {
             $assignedTypes = $item->inventoryItem?->printers
@@ -551,12 +567,13 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            // Auto-print kitchen ticket safely
-            try {
-                $this->printKitchenTicket($kitchenOrder, $kitchenItems, $selectedCheckerPrinterIds);
-            } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing kitchen ticket: '.$e->getMessage());
-            }
+            $pendingTickets[] = [
+                'type' => 'kitchen',
+                'order' => $kitchenOrder,
+                'items' => $kitchenItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
         }
 
         if ($barItems->isNotEmpty()) {
@@ -583,28 +600,55 @@ class WaiterPosController extends Controller
                 ]);
             }
 
-            // Auto-print bar ticket safely
-            try {
-                $this->printBarTicket($barOrder, $barItems, $selectedCheckerPrinterIds);
-            } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing bar ticket: '.$e->getMessage());
-            }
+            $pendingTickets[] = [
+                'type' => 'bar',
+                'order' => $barOrder,
+                'items' => $barItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
         }
 
         if ($checkerCashierItems->isNotEmpty()) {
-            try {
-                $this->printCheckerCashierItemsWithoutPreparationOrder(
-                    $order,
-                    $checkerCashierItems,
-                    $orderNumber,
-                    $tableId,
-                    $selectedCheckerPrinterIds
-                );
-            } catch (\Throwable $e) {
-                logger()->error('Failed auto-printing checker ticket: '.$e->getMessage());
-            }
+            $pendingTickets[] = [
+                'type' => 'checker',
+                'order' => $order,
+                'items' => $checkerCashierItems,
+                'order_number' => $orderNumber,
+                'table_id' => $tableId,
+            ];
         }
 
+        return $pendingTickets;
+    }
+
+    /**
+     * Print deferred preparation tickets after the checkout transaction has
+     * committed. Each ticket fails independently — a jammed printer never
+     * fails the order.
+     *
+     * @param  array<int, array{type: string, order: Order|KitchenOrder|BarOrder, items: Collection, order_number: string, table_id: int|null}>  $pendingTickets
+     */
+    protected function printPreparationTickets(array $pendingTickets, ?Collection $selectedCheckerPrinterIds = null): void
+    {
+        foreach ($pendingTickets as $ticket) {
+            try {
+                match ($ticket['type']) {
+                    'kitchen' => $this->printKitchenTicket($ticket['order'], $ticket['items'], $selectedCheckerPrinterIds),
+                    'bar' => $this->printBarTicket($ticket['order'], $ticket['items'], $selectedCheckerPrinterIds),
+                    'checker' => $this->printCheckerCashierItemsWithoutPreparationOrder(
+                        $ticket['order'],
+                        $ticket['items'],
+                        $ticket['order_number'],
+                        $ticket['table_id'],
+                        $selectedCheckerPrinterIds
+                    ),
+                    default => null,
+                };
+            } catch (\Throwable $e) {
+                logger()->error("Failed auto-printing {$ticket['type']} ticket: ".$e->getMessage());
+            }
+        }
     }
 
     protected function printCheckerCashierItemsWithoutPreparationOrder(
@@ -1010,19 +1054,8 @@ class WaiterPosController extends Controller
         return $linePossiblePortions ?? 0;
     }
 
-    protected function generateDailyOrderNumber(int $offset = 0): string
-    {
-        $date = today()->toDateString();
-        $sequence = Order::query()
-            ->whereDate('created_at', $date)
-            ->count() + 1 + $offset;
-
-        return sprintf('ORD-%s-%04d', today()->format('Ymd'), $sequence);
-    }
-
     protected function createOrderWithRetry(array $attributes): Order
     {
-        $offset = 0;
         $maxAttempts = 10;
 
         if (empty($attributes['area_id'])) {
@@ -1036,8 +1069,10 @@ class WaiterPosController extends Controller
         }
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            // Primary path: locked daily sequence — race-free by design.
+            // Random fallbacks stay as a net for leftover edge collisions.
             $attributes['order_number'] = $attempt === 1
-                ? $this->generateDailyOrderNumber($offset)
+                ? $this->orderNumberGenerator->orderNumber('ORD', 'booking')
                 : $this->generateFallbackDailyOrderNumber($attempt);
 
             try {
@@ -1050,8 +1085,6 @@ class WaiterPosController extends Controller
                 if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
                     throw $exception;
                 }
-
-                $offset++;
             }
         }
 

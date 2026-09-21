@@ -35,6 +35,7 @@ class TableReservationController extends Controller
         protected DashboardSyncService $dashboardSyncService,
         protected PrinterService $printerService,
         protected \App\Services\PosStockConsumer $posStockConsumer,
+        protected \App\Services\OrderNumberGenerator $orderNumberGenerator,
     ) {}
 
     public function index(Request $request)
@@ -909,11 +910,10 @@ class TableReservationController extends Controller
                 );
                 $totals['discount_amount'] = $requestedDiscountAmount;
 
-                $billingSequence = Billing::query()
-                    ->where('is_booking', true)
-                    ->whereDate('created_at', today())
-                    ->count() + 1;
-                $transactionCode = 'BILLING-'.str_pad((string) $billingSequence, 6, '0', STR_PAD_LEFT);
+                // Locked daily sequence (same generator as POS/waiter checkout):
+                // the old count-based scheme raced concurrent closes into
+                // duplicate codes, and this code is the Accurate reference.
+                $transactionCode = $this->orderNumberGenerator->bookingTransactionCode();
 
                 $paymentMode = $validated['payment_mode'];
                 $paymentMethod = $paymentMode === 'split'
@@ -2372,20 +2372,9 @@ class TableReservationController extends Controller
 
     protected function generateOrderNumber(): string
     {
-        $baseSequence = Order::query()
-            ->whereDate('created_at', today())
-            ->count() + 1;
-
-        $attempt = 0;
-
-        do {
-            $sequence = $baseSequence + $attempt;
-            $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
-            $exists = Order::query()->where('order_number', $orderNumber)->exists();
-            $attempt++;
-        } while ($exists);
-
-        return $orderNumber;
+        // Locked daily sequence shared with POS/waiter checkouts — the old
+        // count-then-check scheme raced concurrent orders into duplicates.
+        return $this->orderNumberGenerator->orderNumber('ORD', 'booking');
     }
 
     public function cancelOrder(Request $request, TableReservation $booking)

@@ -115,13 +115,18 @@ test('order ticket routing prioritizes printer matching user assigned area', fun
 
     actingAs($loungeUser);
 
-    // Call checkoutWalkIn or routeOrderToPreparation via PosController
+    // Route the order (creates preparation orders, returns deferred tickets),
+    // then print the tickets the way checkout does after committing.
     $controller = app(\App\Http\Controllers\PosController::class);
     $reflection = new ReflectionClass($controller);
-    $method = $reflection->getMethod('routeOrderToPreparation');
-    $method->setAccessible(true);
+    $routeMethod = $reflection->getMethod('routeOrderToPreparation');
+    $routeMethod->setAccessible(true);
 
-    $method->invoke($controller, $order, null, $order->order_number, null, null);
+    $pendingTickets = $routeMethod->invoke($controller, $order, null, $order->order_number, null, null);
+
+    $printMethod = $reflection->getMethod('printPreparationTickets');
+    $printMethod->setAccessible(true);
+    $printMethod->invoke($controller, $pendingTickets, null);
 });
 
 test('menu item with cashier target printer does not resolve to kitchen preparation location or create kitchen order', function () {
