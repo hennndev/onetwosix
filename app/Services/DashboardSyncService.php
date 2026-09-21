@@ -277,6 +277,21 @@ class DashboardSyncService
         }
     }
 
+    /**
+     * Sinkronkan dashboard hari berjalan untuk baris GLOBAL + baris area
+     * tempat transaksi terjadi. Dipanggil setelah checkout/close — tanpa ini
+     * baris per-area hanya ter-update lewat sync manual dan angka dashboard
+     * berbeda terus saat berpindah area.
+     */
+    public function syncRunningDay(?int $areaId): void
+    {
+        $this->sync(null);
+
+        if (filled($areaId)) {
+            $this->sync((int) $areaId);
+        }
+    }
+
     private function normalizePaymentMethod(?string $paymentMethod): ?string
     {
         return match (strtolower(trim((string) $paymentMethod))) {

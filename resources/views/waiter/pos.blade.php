@@ -424,7 +424,14 @@
           init() {
             this.hydrateCartCheckerAssignments();
             this.pollLive();
-            this._liveTimer = setInterval(() => this.pollLive(), 30000);
+            // Polling 10 detik (kompromi baterai mobile) + segarkan seketika
+            // saat aplikasi kembali dibuka dari latar belakang.
+            this._liveTimer = setInterval(() => this.pollLive(), 10000);
+            document.addEventListener('visibilitychange', () => {
+              if (!document.hidden) {
+                this.pollLive();
+              }
+            });
           },
 
           destroy() {
@@ -814,6 +821,8 @@
                 this.showCart = false;
                 this.showConfirmOrder = false;
                 this.flash('Pesanan berhasil dikirim ke dapur/bar!', true);
+                // Stok produk segarkan seketika setelah order masuk.
+                this.pollLive();
               } else {
                 this.flash(data.message || 'Checkout gagal.', false);
               }

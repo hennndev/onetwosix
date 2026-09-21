@@ -1004,7 +1004,7 @@ class PosController extends Controller
                 $this->printPreparationTickets($pendingTickets, $selectedCheckerPrinterIds);
 
                 try {
-                    $this->dashboardSyncService->sync();
+                    $this->dashboardSyncService->syncRunningDay($order->area_id);
                 } catch (\Throwable $e) {
                 }
 
@@ -1458,7 +1458,7 @@ class PosController extends Controller
                 $this->printPreparationTickets($pendingTickets, $selectedCheckerPrinterIds);
 
                 try {
-                    $this->dashboardSyncService->sync();
+                    $this->dashboardSyncService->syncRunningDay($order->area_id);
                 } catch (\Throwable $e) {
                 }
 

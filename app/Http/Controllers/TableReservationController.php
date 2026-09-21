@@ -1137,7 +1137,7 @@ class TableReservationController extends Controller
             $session->load('orders.items');
 
             try {
-                $this->dashboardSyncService->sync();
+                $this->dashboardSyncService->syncRunningDay($billing->area_id ?? $session->table?->area_id);
             } catch (\Throwable $e) {
                 Log::warning('Dashboard sync failed after close billing', [
                     'booking_id' => $booking->id,
@@ -1434,7 +1434,7 @@ class TableReservationController extends Controller
             ]);
 
             try {
-                $this->dashboardSyncService->sync();
+                $this->dashboardSyncService->syncRunningDay($billing->area_id ?? $booking->table?->area_id);
             } catch (\Throwable $e) {
                 Log::warning('Dashboard sync failed after history payment update', [
                     'booking_id' => $booking->id,

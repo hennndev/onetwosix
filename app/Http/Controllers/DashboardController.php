@@ -39,7 +39,12 @@ class DashboardController extends Controller
         $todayBillings = Billing::query()
             ->where('billing_status', 'paid')
             ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
-                $query->whereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId));
+                // Samakan semantik dengan DashboardSyncService: area_id billing
+                // ATAU area meja dari session-nya. Walk-in tidak punya session,
+                // jadi tanpa cabang area_id ia lenyap dari tampilan per-area.
+                $query->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)));
             })
             ->where(function ($query) {
                 $query->where('is_booking', true)
@@ -81,7 +86,9 @@ class DashboardController extends Controller
             'barOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -89,7 +96,9 @@ class DashboardController extends Controller
             'kitchenOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -203,7 +212,12 @@ class DashboardController extends Controller
         $todayBillings = Billing::query()
             ->where('billing_status', 'paid')
             ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
-                $query->whereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId));
+                // Samakan semantik dengan DashboardSyncService: area_id billing
+                // ATAU area meja dari session-nya. Walk-in tidak punya session,
+                // jadi tanpa cabang area_id ia lenyap dari tampilan per-area.
+                $query->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)));
             })
             ->where(function ($query) {
                 $query->where('is_booking', true)->orWhere('is_walk_in', true);
@@ -235,7 +249,9 @@ class DashboardController extends Controller
             'barOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -243,7 +259,9 @@ class DashboardController extends Controller
             'kitchenOrder',
             fn ($q) => $q->where('created_at', '>=', $windowStart)
                 ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->whereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)))
+                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
+                    ->where('area_id', $selectedAreaId)
+                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 

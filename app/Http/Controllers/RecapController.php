@@ -777,12 +777,48 @@ class RecapController extends Controller
      */
     private function buildTodayTransactionsRecap(): array
     {
-        [$todayStart, $todayEnd] = $this->resolveOperationalWindow();
+        [$todayStart, $todayEnd] = $this->resolveTodayCycleWindow();
 
         return [
             $this->buildTodayBillingTransactions($todayStart, $todayEnd),
             $this->buildTodayWalkInTransactions($todayStart, $todayEnd),
         ];
+    }
+
+    /**
+     * Window "Transaction Recap Hari Ini": terikat pada siklus berjalan,
+     * bukan menelan semua tanggal.
+     *
+     * Batas awal = yang TERBARU antara:
+     *  - batasan outlet buka siklus berjalan (jangkar operasional, default 09:00),
+     *  - jam awal siklus end day = waktu close terakhir (mis. close dini hari 03:33).
+     *
+     * Dengan ini transaksi dari tanggal-tanggal sebelum siklus berjalan tidak
+     * ikut tampil di daftar "hari ini".
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveTodayCycleWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $anchor = RecapHistory::resolveOperationalAnchor($now);
+        $cycleOpen = $now->lt($anchor)
+            ? $anchor->copy()->subDay()
+            : $anchor->copy();
+
+        $lastClose = RecapHistory::query()
+            ->latest('created_at')
+            ->value('created_at');
+
+        if ($lastClose && $lastClose->copy()->timezone('Asia/Jakarta')->gt($cycleOpen) && $lastClose->lte($now)) {
+            $cycleOpen = $lastClose->copy()->timezone('Asia/Jakarta');
+        }
+
+        $cycleEnd = $now->lt($anchor)
+            ? $anchor->copy()->subSecond()
+            : $anchor->copy()->addDay()->subSecond();
+
+        return [$cycleOpen, $cycleEnd];
     }
 
     /**

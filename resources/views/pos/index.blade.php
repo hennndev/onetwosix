@@ -293,6 +293,13 @@
             }
 
             this.startPolling();
+
+            // Tab kembali terlihat → segarkan stok seketika, jangan tunggu tick berikutnya.
+            document.addEventListener('visibilitychange', () => {
+              if (!document.hidden) {
+                this.pollLive();
+              }
+            });
           },
 
           destroy() {
@@ -307,7 +314,9 @@
           },
 
           startPolling() {
-            this.pollTimer = setInterval(() => this.pollLive(), 30000);
+            // Polling ketat (5 detik): stok di kartu produk harus nyaris
+            // realtime — checkout dari waiter/kasir lain harus segera terlihat.
+            this.pollTimer = setInterval(() => this.pollLive(), 5000);
           },
 
           isProductUnavailable(productId, serverDisabled = false) {
@@ -320,7 +329,8 @@
           },
 
           async pollLive() {
-            if (this.isCheckoutBusy() || document.hidden) {
+            // Receipt modal bersifat informasional — stok tetap boleh refresh.
+            if ((this.isCheckoutBusy() && !this.showReceiptModal) || document.hidden) {
               return;
             }
 
@@ -1365,6 +1375,8 @@
               const data = await response.json();
               if (data.success) {
                 this.checkoutToken = null;
+                // Order sudah masuk — segarkan stok produk seketika.
+                this.pollLive();
                 const checkoutSnapshot = {
                   ...this.checkoutForm,
                 };
