@@ -553,7 +553,7 @@ class RecapController extends Controller
                 ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
                 ->values();
 
-        [$todayBillingTransactions, $todayWalkInTransactions] = $this->buildTodayTransactionsRecap();
+        [$todayBillingTransactions, $todayWalkInTransactions] = $this->buildTodayTransactionsRecap($areaId);
 
         return [
             'selectedDate' => $startAt->toDateString(),
@@ -777,13 +777,13 @@ class RecapController extends Controller
     /**
      * @return array{0: \Illuminate\Support\Collection<int, array<string, mixed>>, 1: \Illuminate\Support\Collection<int, array<string, mixed>>}
      */
-    private function buildTodayTransactionsRecap(): array
+    private function buildTodayTransactionsRecap(?int $areaId = null): array
     {
         [$todayStart, $todayEnd] = $this->resolveTodayCycleWindow();
 
         return [
-            $this->buildTodayBillingTransactions($todayStart, $todayEnd),
-            $this->buildTodayWalkInTransactions($todayStart, $todayEnd),
+            $this->buildTodayBillingTransactions($todayStart, $todayEnd, $areaId),
+            $this->buildTodayWalkInTransactions($todayStart, $todayEnd, $areaId),
         ];
     }
 
@@ -826,7 +826,7 @@ class RecapController extends Controller
     /**
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
-    private function buildTodayBillingTransactions(Carbon $todayStart, Carbon $todayEnd)
+    private function buildTodayBillingTransactions(Carbon $todayStart, Carbon $todayEnd, ?int $areaId = null)
     {
         return Billing::query()
             ->with([
@@ -836,6 +836,9 @@ class RecapController extends Controller
             ])
             ->where('billing_status', 'paid')
             ->where('is_booking', true)
+            ->when($areaId, fn ($q) => $q->where(fn ($sub) => $sub
+                ->where('area_id', $areaId)
+                ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
             ->where(function ($query) use ($todayStart, $todayEnd): void {
                 $query->where(function ($paidAtQuery) use ($todayStart, $todayEnd): void {
                     $paidAtQuery->whereNotNull('paid_at')
@@ -920,12 +923,13 @@ class RecapController extends Controller
     /**
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
-    private function buildTodayWalkInTransactions(Carbon $todayStart, Carbon $todayEnd)
+    private function buildTodayWalkInTransactions(Carbon $todayStart, Carbon $todayEnd, ?int $areaId = null)
     {
         $walkInOrders = Order::query()
             ->with(['items.inventoryItem', 'customer.user'])
             ->whereNull('table_session_id')
             ->where('status', '!=', 'cancelled')
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId))
             ->where(function ($query) use ($todayStart, $todayEnd): void {
                 $query->whereBetween('ordered_at', [$todayStart, $todayEnd])
                     ->orWhere(function ($fallbackQuery) use ($todayStart, $todayEnd): void {
@@ -1168,8 +1172,8 @@ class RecapController extends Controller
 
         [$startAt, $endAt] = $this->resolveHistoryTransactionWindow($recapHistory);
         $liveRecapData = $this->buildRecapData($startAt, $endAt, true);
-        $historyBillingTransactions = $this->buildTodayBillingTransactions($startAt, $endAt);
-        $historyWalkInTransactions = $this->buildTodayWalkInTransactions($startAt, $endAt);
+        $historyBillingTransactions = $this->buildTodayBillingTransactions($startAt, $endAt, $recapHistory->area_id);
+        $historyWalkInTransactions = $this->buildTodayWalkInTransactions($startAt, $endAt, $recapHistory->area_id);
         $historyTotalDp = (float) ($recapHistory->total_dp ?? 0);
         $historyGrossSales = (float) $recapHistory->total_amount + $historyTotalDp;
         $historyNetSales = max(0.0, $historyGrossSales - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge);
