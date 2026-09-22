@@ -213,9 +213,38 @@ class RecapHistory extends Model
         $now = now('Asia/Jakarta');
         $defaultAnchor = self::resolveOperationalAnchor($now);
 
-        // Siklus end-day itu OUTLET-LEVEL: window berjalan selalu diturunkan
-        // dari timeline recap GLOBAL (area_id NULL) — BUKAN per-area — supaya
-        // angka "Semua Area" = penjumlahan angka tiap area (window identik).
+        // ===== SIKLUS PER-AREA =====
+        // End-day dilakukan per area (recap area_id = X). Window area X mulai
+        // dari close terakhir yang mencakupnya: recap areanya SENDIRI, atau
+        // recap GLOBAL — mana yang terbaru. Tanpa ini, merge "Semua Area"
+        // menghisap ulang transaksi yang sudah ter-seal ke baris area.
+        if ($areaId) {
+            $lastClose = self::query()
+                ->where(fn ($q) => $q->where('area_id', $areaId)->orWhereNull('area_id'))
+                ->latest('created_at')
+                ->first();
+
+            if ($lastClose) {
+                $startAt = $lastClose->created_at->copy()->timezone('Asia/Jakarta');
+
+                $nextDayToClose = $lastClose->end_day->copy()->addDay()->timezone('Asia/Jakarta');
+                $expectedEndAt = self::resolveOperationalAnchor($nextDayToClose)->addDay()->subSecond();
+
+                $endAt = $now->gt($expectedEndAt)
+                    ? ($now->lt($defaultAnchor) ? $defaultAnchor->copy()->subSecond() : $defaultAnchor->copy()->addDay()->subSecond())
+                    : $expectedEndAt;
+
+                return [$startAt, $endAt];
+            }
+
+            // Area belum pernah di-close dan tak ada recap global:
+            // siklus = sejak jangkar operasional berjalan.
+            return $now->lt($defaultAnchor)
+                ? [$defaultAnchor->copy()->subDay(), $defaultAnchor->copy()->subSecond()]
+                : [$defaultAnchor, $defaultAnchor->copy()->addDay()->subSecond()];
+        }
+
+        // ===== SIKLUS GLOBAL (tampilan "Semua Area") =====
         $latestRecap = self::query()
             ->whereNull('area_id')
             ->latest('end_day')

@@ -24,8 +24,10 @@ class DashboardSyncService
         }
 
         [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow($areaId);
+        // Penanda seal utk area ini: close terakhir yang mencakupnya —
+        // recap areanya sendiri ATAU recap global, mana yang terbaru.
         $lastCloseAt = RecapHistory::query()
-            ->whereNull('area_id')
+            ->where(fn ($q) => $q->where('area_id', $areaId)->orWhereNull('area_id'))
             ->latest('created_at')
             ->value('created_at');
 
