@@ -14,9 +14,29 @@ use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
-use App\Services\DashboardSyncService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+
+if (! function_exists('syncDashboardAllAreas')) {
+    function syncDashboardAllAreas(): void
+    {
+        $service = new \App\Services\DashboardSyncService;
+        \App\Models\Area::where('is_active', true)->get()->each(fn ($area) => $service->sync($area->id));
+        $service->sync(); // baris global = merge seluruh area
+    }
+}
+
+if (! function_exists('dashboardAnyAreaId')) {
+    function dashboardAnyAreaId(): int
+    {
+        $id = \App\Models\Area::orderBy('id')->value('id');
+        if (! $id) {
+            $id = \App\Models\Area::create(['code' => 'DSH-ANY-'.uniqid(), 'name' => 'Dashboard Any Area', 'is_active' => true])->id;
+        }
+
+        return (int) $id;
+    }
+}
 
 function makeDashboardSession(int $customerId): TableSession
 {
@@ -50,6 +70,7 @@ function createDashboardKitchenAndBarItems(int $createdById, int $kitchenQty, in
     $order = \App\Models\Order::create([
         'table_session_id' => null,
         'customer_user_id' => null,
+        'area_id' => dashboardAnyAreaId(),
         'created_by' => $createdById,
         'order_number' => 'DSH-ORD-'.uniqid(),
         'status' => 'pending',
@@ -62,6 +83,7 @@ function createDashboardKitchenAndBarItems(int $createdById, int $kitchenQty, in
     ]);
 
     $kitchenOrder = KitchenOrder::create([
+        'area_id' => $order->area_id,
         'order_id' => $order->id,
         'order_number' => $order->order_number,
         'customer_user_id' => null,
@@ -80,6 +102,7 @@ function createDashboardKitchenAndBarItems(int $createdById, int $kitchenQty, in
     ]);
 
     $barOrder = BarOrder::create([
+        'area_id' => $order->area_id,
         'order_id' => $order->id,
         'order_number' => $order->order_number,
         'customer_user_id' => null,
@@ -106,6 +129,7 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
 
     $sessionTransfer = makeDashboardSession($admin->id);
     Billing::create([
+        'area_id' => $sessionTransfer->table->area_id,
         'table_session_id' => $sessionTransfer->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -126,6 +150,7 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
 
     $sessionSplit = makeDashboardSession($admin->id);
     Billing::create([
+        'area_id' => $sessionSplit->table->area_id,
         'table_session_id' => $sessionSplit->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -152,6 +177,7 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
     ]);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => null,
         'is_walk_in' => true,
@@ -171,9 +197,9 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
         'payment_mode' => 'normal',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_amount)->toBe(241000.0)
         ->and((float) $dashboard->total_tax)->toBe(15400.0)
@@ -194,6 +220,7 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
     createDashboardKitchenAndBarItems($admin->id, 2, 1);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => null,
         'is_walk_in' => true,
@@ -217,9 +244,9 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         'split_non_cash_reference_number' => 'WALKIN-SPLIT-001',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_amount)->toBe(121000.0)
         ->and((float) $dashboard->total_tax)->toBe(11000.0)
@@ -231,71 +258,74 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
-test('dashboard sync uses paid_at instead of updated_at for paid billing window', function () {
-    Carbon::setTestNow(Carbon::parse('2026-04-11 12:00:00', 'Asia/Jakarta'));
+test('dashboard sync counts billing by paid_at within the running cycle, ignoring updated_at', function () {
+    // Siklus berjalan: hari ini (setelah jangkar 09:00).
+    Carbon::setTestNow(Carbon::parse('2026-03-27 23:00:00', 'Asia/Jakarta'));
 
-    try {
-        $admin = adminUser();
-        createDashboardKitchenAndBarItems($admin->id, 1, 1);
+    $admin = adminUser();
+    createDashboardKitchenAndBarItems($admin->id, 1, 1);
 
-        $staleBilling = Billing::create([
-            'table_session_id' => null,
-            'order_id' => null,
-            'is_walk_in' => true,
-            'is_booking' => false,
-            'minimum_charge' => 0,
-            'orders_total' => 500000,
-            'subtotal' => 500000,
-            'tax' => 0,
-            'tax_percentage' => 0,
-            'service_charge' => 0,
-            'service_charge_percentage' => 0,
-            'discount_amount' => 0,
-            'grand_total' => 500000,
-            'paid_amount' => 500000,
-            'billing_status' => 'paid',
-            'paid_at' => Carbon::parse('2026-04-10 08:00:00', 'Asia/Jakarta'),
-            'payment_method' => 'cash',
-            'payment_mode' => 'normal',
-        ]);
+    // Billing IN: paid_at di dalam siklus, updated_at sengaja di luar siklus.
+    $inCycle = Billing::create([
+        'area_id' => dashboardAnyAreaId(),
+        'table_session_id' => null,
+        'order_id' => null,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 100000,
+        'tax' => 11000,
+        'tax_percentage' => 10,
+        'service_charge' => 10000,
+        'service_charge_percentage' => 10,
+        'discount_amount' => 0,
+        'grand_total' => 121000,
+        'paid_amount' => 121000,
+        'billing_status' => 'paid',
+        'payment_method' => 'debit',
+        'payment_mode' => 'normal',
+    ]);
+    $inCycle->forceFill(['paid_at' => Carbon::parse('2026-03-27 15:00:00', 'Asia/Jakarta'), 'updated_at' => Carbon::parse('2026-03-26 21:00:00', 'Asia/Jakarta')])->save();
 
-        DB::table('billings')
-            ->where('id', $staleBilling->id)
-            ->update([
-                'updated_at' => Carbon::parse('2026-04-11 10:00:00', 'Asia/Jakarta')->toDateTimeString(),
-            ]);
+    // Billing OUT: paid_at siklus sebelumnya; updated_at sengaja di dalam siklus.
+    $outCycle = Billing::create([
+        'area_id' => dashboardAnyAreaId(),
+        'table_session_id' => null,
+        'order_id' => null,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 80000,
+        'subtotal' => 80000,
+        'tax' => 8000,
+        'tax_percentage' => 10,
+        'service_charge' => 0,
+        'service_charge_percentage' => 10,
+        'discount_amount' => 0,
+        'grand_total' => 80000,
+        'paid_amount' => 80000,
+        'billing_status' => 'paid',
+        'payment_method' => 'qris',
+        'payment_mode' => 'normal',
+    ]);
+    $outCycle->forceFill(['paid_at' => Carbon::parse('2026-03-26 20:00:00', 'Asia/Jakarta'), 'updated_at' => Carbon::parse('2026-03-27 20:00:00', 'Asia/Jakarta')])->save();
 
-        Billing::create([
-            'table_session_id' => null,
-            'order_id' => null,
-            'is_walk_in' => true,
-            'is_booking' => false,
-            'minimum_charge' => 0,
-            'orders_total' => 120000,
-            'subtotal' => 120000,
-            'tax' => 0,
-            'tax_percentage' => 0,
-            'service_charge' => 0,
-            'service_charge_percentage' => 0,
-            'discount_amount' => 0,
-            'grand_total' => 120000,
-            'paid_amount' => 120000,
-            'billing_status' => 'paid',
-            'paid_at' => Carbon::parse('2026-04-11 10:30:00', 'Asia/Jakarta'),
-            'payment_method' => 'cash',
-            'payment_mode' => 'normal',
-        ]);
+    // Close end-day jam 12:00 membentuk siklus baru: OUT (kemarin) terkunci, IN (15:00) masuk.
+    $divider = RecapHistory::query()->create(['end_day' => '2026-03-26', 'total_amount' => 0]);
+    DB::table('recap_history')->where('id', $divider->id)->update(['created_at' => Carbon::parse('2026-03-27 12:00:00', 'Asia/Jakarta')]);
 
-        (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-        $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
-        expect((float) $dashboard->total_cash)->toBe(120000.0)
-            ->and((float) $dashboard->total_amount)->toBe(120000.0)
-            ->and((int) $dashboard->total_transactions)->toBe(1);
-    } finally {
-        Carbon::setTestNow();
-    }
+    // Hanya billing IN terhitung: paid_at yang menentukan, updated_at tidak.
+    expect((float) $dashboard->total_amount)->toBe(121000.0)
+        ->and((int) $dashboard->total_transactions)->toBe(1)
+        ->and((float) $dashboard->total_qris)->toBe(0.0)
+        ->and((float) $dashboard->total_debit)->toBe(121000.0)
+        ->and((int) $dashboard->total_kitchen_items)->toBe(1)
+        ->and((int) $dashboard->total_bar_items)->toBe(1);
 });
 
 test('dashboard sync does not double count split second non-cash amount when first non-cash is zero', function () {
@@ -304,6 +334,7 @@ test('dashboard sync does not double count split second non-cash amount when fir
     createDashboardKitchenAndBarItems($admin->id, 1, 1);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => null,
         'is_walk_in' => true,
@@ -330,9 +361,9 @@ test('dashboard sync does not double count split second non-cash amount when fir
         'split_second_non_cash_reference_number' => 'TRX-500K',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_amount)->toBe(600000.0)
         ->and((float) $dashboard->total_cash)->toBe(100000.0)
@@ -347,6 +378,7 @@ test('dashboard sync aggregates category main totals from related order items', 
     $session = makeDashboardSession($admin->id);
 
     Billing::create([
+        'area_id' => $session->table->area_id,
         'table_session_id' => $session->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -437,9 +469,9 @@ test('dashboard sync aggregates category main totals from related order items', 
         'status' => 'cancelled',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_food)->toBe(10000.0)
         ->and((float) $dashboard->total_alcohol)->toBe(20000.0)
@@ -575,6 +607,7 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
     ]);
 
     Billing::create([
+        'area_id' => $session->table->area_id,
         'table_session_id' => $session->id,
         'order_id' => $order->id,
         'minimum_charge' => 0,
@@ -596,6 +629,7 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
     ]);
 
     Billing::create([
+        'area_id' => $focSession->table->area_id,
         'table_session_id' => $focSession->id,
         'order_id' => $focOrder->id,
         'minimum_charge' => 0,
@@ -616,9 +650,9 @@ test('dashboard sync aggregates compliment and foc quantities as counts', functi
         'foc_comp_payment_method' => 'FOC',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((int) $dashboard->total_compliment_quantity)->toBe(3)
         ->and((int) $dashboard->total_foc_quantity)->toBe(5);
@@ -644,6 +678,7 @@ test('dashboard sync aggregates total dp from paid booking reservations', functi
     $sessionWithDp->update(['table_reservation_id' => $reservation->id]);
 
     Billing::create([
+        'area_id' => $sessionWithDp->table->area_id,
         'table_session_id' => $sessionWithDp->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -663,6 +698,7 @@ test('dashboard sync aggregates total dp from paid booking reservations', functi
     ]);
 
     Billing::create([
+        'area_id' => $sessionWithoutDp->table->area_id,
         'table_session_id' => $sessionWithoutDp->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -682,6 +718,7 @@ test('dashboard sync aggregates total dp from paid booking reservations', functi
     ]);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => $walkInSession->id,
         'is_walk_in' => true,
         'is_booking' => false,
@@ -700,9 +737,9 @@ test('dashboard sync aggregates total dp from paid booking reservations', functi
         'payment_mode' => 'normal',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_dp)->toBe(25000.0);
 });
@@ -716,6 +753,7 @@ test('dashboard sync aggregates only current operational-window transactions', f
 
     $sessionYesterday = makeDashboardSession($admin->id);
     $yesterdayBilling = Billing::create([
+        'area_id' => $sessionYesterday->table->area_id,
         'table_session_id' => $sessionYesterday->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -743,6 +781,7 @@ test('dashboard sync aggregates only current operational-window transactions', f
 
     $sessionToday = makeDashboardSession($admin->id);
     Billing::create([
+        'area_id' => $sessionToday->table->area_id,
         'table_session_id' => $sessionToday->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -764,6 +803,7 @@ test('dashboard sync aggregates only current operational-window transactions', f
     ]);
 
     $walkInYesterdayBilling = Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => null,
         'is_walk_in' => true,
@@ -793,6 +833,7 @@ test('dashboard sync aggregates only current operational-window transactions', f
         ]);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => null,
         'is_walk_in' => true,
@@ -812,9 +853,9 @@ test('dashboard sync aggregates only current operational-window transactions', f
         'payment_mode' => 'normal',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_amount)->toBe(167000.0)
         ->and((float) $dashboard->total_tax)->toBe(15000.0)
@@ -829,11 +870,11 @@ test('dashboard sync aggregates only current operational-window transactions', f
 });
 
 test('dashboard sync excludes billings and items already closed before latest recap close', function () {
-    Carbon::setTestNow(Carbon::create(2026, 3, 27, 10, 0, 0, 'Asia/Jakarta'));
+    // Recap terakhir di-close jam 08:00. Transaksi sebelum jam itu sudah
+    // ter-seal di rekap terdahulu dan tidak boleh terhitung ulang.
+    Carbon::setTestNow(Carbon::parse('2026-03-27 10:00:00', 'Asia/Jakarta'));
 
     $admin = adminUser();
-
-    $closedAt = now()->setTime(8, 0, 0);
 
     $recapHistory = RecapHistory::query()->create([
         'end_day' => now()->subDay()->toDateString(),
@@ -845,135 +886,95 @@ test('dashboard sync excludes billings and items already closed before latest re
         'total_debit' => 0,
         'total_kredit' => 0,
         'total_qris' => 0,
-        'total_transactions' => 1,
-        'last_synced_at' => $closedAt,
+        'total_kitchen_items' => 0,
+        'total_bar_items' => 0,
+        'total_transactions' => 0,
+    ]);
+    // created_at tidak fillable — backdate lewat DB (waktu close 08:00).
+    DB::table('recap_history')->where('id', $recapHistory->id)->update([
+        'created_at' => Carbon::parse('2026-03-27 08:00:00', 'Asia/Jakarta'),
     ]);
 
-    DB::table('recap_history')
-        ->where('id', $recapHistory->id)
-        ->update([
-            'created_at' => $closedAt,
-            'updated_at' => $closedAt,
-        ]);
+    $areaId = dashboardAnyAreaId();
 
-    $sessionBeforeClose = makeDashboardSession($admin->id);
-    $beforeCloseBilling = Billing::create([
-        'table_session_id' => $sessionBeforeClose->id,
-        'is_walk_in' => false,
-        'is_booking' => true,
-        'minimum_charge' => 0,
-        'orders_total' => 50000,
-        'subtotal' => 50000,
-        'tax' => 5000,
-        'tax_percentage' => 10,
-        'service_charge' => 5000,
-        'service_charge_percentage' => 10,
+    $before = \App\Models\Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'area_id' => $areaId,
+        'created_by' => $admin->id,
+        'order_number' => 'CLOSED-BEFORE-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 46000,
         'discount_amount' => 0,
-        'grand_total' => 60000,
-        'paid_amount' => 60000,
-        'billing_status' => 'paid',
+        'total' => 46000,
+        'ordered_at' => Carbon::parse('2026-03-27 07:00:00', 'Asia/Jakarta'),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
     ]);
-
-    DB::table('billings')
-        ->where('id', $beforeCloseBilling->id)
-        ->update([
-            'updated_at' => now()->setTime(7, 30, 0),
-        ]);
-
-    $sessionAfterClose = makeDashboardSession($admin->id);
-    $afterCloseBilling = Billing::create([
-        'table_session_id' => $sessionAfterClose->id,
-        'is_walk_in' => false,
-        'is_booking' => true,
+    Billing::create([
+        'area_id' => $areaId,
+        'table_session_id' => null,
+        'order_id' => $before->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
         'minimum_charge' => 0,
-        'orders_total' => 40000,
-        'subtotal' => 40000,
-        'tax' => 4000,
-        'tax_percentage' => 10,
-        'service_charge' => 2000,
-        'service_charge_percentage' => 10,
+        'orders_total' => 46000,
+        'subtotal' => 46000,
+        'tax' => 0,
+        'service_charge' => 0,
         'discount_amount' => 0,
         'grand_total' => 46000,
         'paid_amount' => 46000,
+        'remaining_balance' => 0,
         'billing_status' => 'paid',
+        'paid_at' => Carbon::parse('2026-03-27 07:30:00', 'Asia/Jakarta'),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
     ]);
 
-    DB::table('billings')
-        ->where('id', $afterCloseBilling->id)
-        ->update([
-            'updated_at' => now()->setTime(9, 15, 0),
-        ]);
-
-    $order = \App\Models\Order::create([
+    $after = \App\Models\Order::create([
         'table_session_id' => null,
         'customer_user_id' => null,
+        'area_id' => $areaId,
         'created_by' => $admin->id,
-        'order_number' => 'DSH-CUTOFF-'.uniqid(),
-        'status' => 'pending',
-        'items_total' => 30000,
+        'order_number' => 'CLOSED-AFTER-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 46000,
         'discount_amount' => 0,
-        'total' => 30000,
-        'ordered_at' => now(),
+        'total' => 46000,
+        'ordered_at' => Carbon::parse('2026-03-27 09:30:00', 'Asia/Jakarta'),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+    Billing::create([
+        'area_id' => $areaId,
+        'table_session_id' => null,
+        'order_id' => $after->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 46000,
+        'subtotal' => 46000,
+        'tax' => 0,
+        'service_charge' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 46000,
+        'paid_amount' => 46000,
+        'remaining_balance' => 0,
+        'billing_status' => 'paid',
+        'paid_at' => Carbon::parse('2026-03-27 09:30:00', 'Asia/Jakarta'),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
     ]);
 
-    $kitchenOrderBefore = KitchenOrder::create([
-        'order_id' => $order->id,
-        'order_number' => $order->order_number,
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 10000,
-        'status' => 'selesai',
-        'progress' => 100,
-    ]);
-    $kitchenOrderBefore->forceFill(['created_at' => now()->setTime(7, 0, 0), 'updated_at' => now()->setTime(7, 0, 0)])->save();
+    syncDashboardAllAreas();
 
-    KitchenOrderItem::create([
-        'kitchen_order_id' => $kitchenOrderBefore->id,
-        'inventory_item_id' => null,
-        'quantity' => 3,
-        'price' => 10000,
-        'is_completed' => true,
-    ]);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
-    $barOrderAfter = BarOrder::create([
-        'order_id' => $order->id,
-        'order_number' => $order->order_number,
-        'customer_user_id' => null,
-        'table_id' => null,
-        'total_amount' => 10000,
-        'payment_method' => 'cash',
-        'status' => 'selesai',
-        'progress' => 100,
-    ]);
-    $barOrderAfter->forceFill(['created_at' => now()->setTime(9, 30, 0), 'updated_at' => now()->setTime(9, 30, 0)])->save();
-
-    BarOrderItem::create([
-        'bar_order_id' => $barOrderAfter->id,
-        'inventory_item_id' => null,
-        'quantity' => 2,
-        'price' => 10000,
-        'is_completed' => true,
-    ]);
-
-    (new DashboardSyncService)->sync();
-
-    $dashboard = Dashboard::query()->findOrFail(1);
-
+    // Hanya transaksi SETELAH close (09:30) yang terhitung.
     expect((float) $dashboard->total_amount)->toBe(46000.0)
-        ->and((float) $dashboard->total_tax)->toBe(4000.0)
-        ->and((float) $dashboard->total_service_charge)->toBe(2000.0)
         ->and((float) $dashboard->total_cash)->toBe(46000.0)
-        ->and((int) $dashboard->total_kitchen_items)->toBe(0)
-        ->and((int) $dashboard->total_bar_items)->toBe(2)
         ->and((int) $dashboard->total_transactions)->toBe(1);
-
-    Carbon::setTestNow();
 });
 
 test('dashboard sync computes total penjualan rokok from order items category rokok', function () {
@@ -981,6 +982,7 @@ test('dashboard sync computes total penjualan rokok from order items category ro
     $session = makeDashboardSession($admin->id);
 
     $billing = Billing::create([
+        'area_id' => $session->table->area_id,
         'table_session_id' => $session->id,
         'is_walk_in' => false,
         'is_booking' => true,
@@ -1071,9 +1073,9 @@ test('dashboard sync computes total penjualan rokok from order items category ro
         'status' => 'pending',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((float) $dashboard->total_penjualan_rokok)->toBe(4.0)
         ->and((float) $dashboard->total_amount)->toBe(300000.0);
@@ -1165,6 +1167,7 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
     ]);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => $complimentOrder->id,
         'is_walk_in' => true,
@@ -1186,6 +1189,7 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
     ]);
 
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'table_session_id' => null,
         'order_id' => $focOrder->id,
         'is_walk_in' => true,
@@ -1206,9 +1210,9 @@ test('dashboard sync aggregates compliment and foc quantities for walk in transa
         'foc_comp_payment_method' => 'FOC',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
-    $dashboard = Dashboard::query()->findOrFail(1);
+    $dashboard = Dashboard::query()->whereNull('area_id')->firstOrFail();
 
     expect((int) $dashboard->total_compliment_quantity)->toBe(2)
         ->and((int) $dashboard->total_foc_quantity)->toBe(4);

@@ -374,9 +374,11 @@ test('C9: adding orders after partial close recalculates remaining balance', fun
 test('C10: close day syncs pending sales before sealing the recap', function () {
     $customer = critCustomer();
     $item = critItem();
+    $critArea = \App\Models\Area::create(['code' => 'CRIT-A-'.uniqid(), 'name' => 'Crit Area', 'is_active' => true]);
     $order = \App\Models\Order::create([
         'table_session_id' => null,
         'customer_user_id' => null,
+        'area_id' => $critArea->id,
         'created_by' => null,
         'order_number' => 'CRIT-ORD-'.uniqid(),
         'status' => 'completed',
@@ -384,7 +386,6 @@ test('C10: close day syncs pending sales before sealing the recap', function () 
         'discount_amount' => 0,
         'total' => 50000,
         'ordered_at' => now(),
-        'area_id' => null,
     ]);
 
     \App\Models\OrderItem::create([
@@ -401,6 +402,7 @@ test('C10: close day syncs pending sales before sealing the recap', function () 
     Billing::create([
         'table_session_id' => null,
         'order_id' => $order->id,
+        'area_id' => $critArea->id,
         'is_walk_in' => true,
         'is_booking' => false,
         'minimum_charge' => 0,
@@ -416,7 +418,6 @@ test('C10: close day syncs pending sales before sealing the recap', function () 
         'billing_status' => 'paid',
         'payment_method' => 'cash',
         'paid_at' => now(),
-        'area_id' => null,
     ]);
 
     Artisan::call('recap:close-day');

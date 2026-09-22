@@ -84,3 +84,51 @@ test('dashboard page renders area selector pills and filters metrics by area', f
         ->assertSeeText('Test Lounge Area')
         ->assertSeeText('500.000');
 });
+
+test('dashboard aggregate shows zero after end-day close until the area re-syncs', function (): void {
+    $admin = adminUser();
+
+    $area = Area::create([
+        'code' => 'GRD-1',
+        'name' => 'Guard Area',
+        'is_active' => true,
+        'sort_order' => 20,
+    ]);
+
+    // End-day ditutup jam 08:00 hari ini (recap global).
+    $recap = \App\Models\RecapHistory::create([
+        'end_day' => '2026-03-27',
+        'total_amount' => 500000,
+        'total_transactions' => 5,
+        'last_synced_at' => now('Asia/Jakarta'),
+    ]);
+    \Illuminate\Support\Facades\DB::table('recap_history')
+        ->where('id', $recap->id)
+        ->update(['created_at' => '2026-03-27 08:00:00']);
+
+    // Baris dashboard area: terakhir di-sync 07:00 (SEBELUM close) — angka basi.
+    \App\Models\Dashboard::create([
+        'area_id' => $area->id,
+        'total_amount' => 999000,
+        'total_transactions' => 9,
+        'last_synced_at' => \Illuminate\Support\Carbon::parse('2026-03-27 07:00:00', 'Asia/Jakarta'),
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.dashboard', ['area_id' => $area->id]))
+        ->assertOk()
+        ->assertViewHas('dashboardGrossSales', 0.0);
+
+    // Setelah area di-sync ulang (transaksi baru masuk), angka tampil lagi.
+    \App\Models\Dashboard::where('area_id', $area->id)
+        ->update([
+            'total_amount' => 5000,
+            'total_transactions' => 1,
+            'last_synced_at' => \Illuminate\Support\Carbon::parse('2026-03-27 09:00:00', 'Asia/Jakarta'),
+        ]);
+
+    actingAs($admin)
+        ->get(route('admin.dashboard', ['area_id' => $area->id]))
+        ->assertOk()
+        ->assertViewHas('dashboardGrossSales', 5000.0);
+});

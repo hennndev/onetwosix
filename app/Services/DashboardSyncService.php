@@ -15,6 +15,14 @@ class DashboardSyncService
 {
     public function sync(?int $areaId = null): Dashboard
     {
+        // Posisi "Semua Area" = baris GLOBAL TIDAK dihitung sendiri dari
+        // sumber, melainkan MERGE (penjumlahan) baris tiap area — sumber
+        // kebenaran hanya baris per-area, jadi tampilan "Semua Area"
+        // selalu persis hasil merging seluruh area.
+        if ($areaId === null) {
+            return $this->mergeGlobalFromAreas();
+        }
+
         [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow($areaId);
         $lastCloseAt = RecapHistory::query()
             ->whereNull('area_id')
@@ -270,26 +278,79 @@ class DashboardSyncService
 
     public function syncAll(): void
     {
-        $this->sync(null);
+        // "Sync Semua Area" = sync TIAP area satu per satu (dari sumber),
+        // lalu baris global = merge hasil areanya. Urutannya penting:
+        // sync per-area dulu, merge paling akhir.
         $areas = \App\Models\Area::where('is_active', true)->get();
         foreach ($areas as $area) {
             $this->sync($area->id);
         }
+
+        $this->mergeGlobalFromAreas();
     }
 
     /**
-     * Sinkronkan dashboard hari berjalan untuk baris GLOBAL + baris area
-     * tempat transaksi terjadi. Dipanggil setelah checkout/close — tanpa ini
-     * baris per-area hanya ter-update lewat sync manual dan angka dashboard
-     * berbeda terus saat berpindah area.
+     * Baris dashboard GLOBAL (area_id NULL) = penjumlahan seluruh baris
+     * area aktif. Inilah data tampilan "Semua Area" — hasil merging, bukan
+     * perhitungan kedua dari sumber.
+     */
+    public function mergeGlobalFromAreas(): Dashboard
+    {
+        // Sync tiap area dari sumber dulu (transaksi baru masuk), baru
+        // dijumlahkan ke baris global. Tanpa ini, baris global bisa membaca
+        // baris area yang masih basi.
+        \App\Models\Area::where('is_active', true)
+            ->pluck('id')
+            ->each(fn ($id) => $this->sync((int) $id));
+
+        $columns = [
+            'total_amount', 'total_food', 'total_alcohol', 'total_beverage',
+            'total_cigarette', 'total_breakage', 'total_room', 'total_staff_meal',
+            'total_compliment_quantity', 'total_foc_quantity', 'total_ld',
+            'total_ld_quantity', 'total_penjualan_rokok', 'total_tax',
+            'total_service_charge', 'total_dp', 'total_cash', 'total_transfer',
+            'total_debit', 'total_kredit', 'total_qris', 'total_foc_amount',
+            'total_compliment_amount', 'total_kitchen_items', 'total_bar_items',
+            'total_transactions',
+        ];
+
+        $sums = array_fill_keys($columns, 0);
+
+        Dashboard::query()
+            ->whereNotNull('area_id')
+            ->get()
+            ->each(function (Dashboard $row) use (&$sums, $columns): void {
+                foreach ($columns as $column) {
+                    $sums[$column] += (float) $row->{$column};
+                }
+            });
+
+        $global = Dashboard::query()->whereNull('area_id')->first();
+
+        if ($global) {
+            $global->update([...$sums, 'last_synced_at' => now()]);
+
+            return $global;
+        }
+
+        return Dashboard::query()->create([
+            'area_id' => null,
+            ...$sums,
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    /**
+     * Sinkronkan dashboard hari berjalan untuk baris area transaksi,
+     * lalu baris GLOBAL ikut di-merge dari seluruh area.
      */
     public function syncRunningDay(?int $areaId): void
     {
-        $this->sync(null);
-
         if (filled($areaId)) {
             $this->sync((int) $areaId);
         }
+
+        $this->mergeGlobalFromAreas();
     }
 
     private function normalizePaymentMethod(?string $paymentMethod): ?string

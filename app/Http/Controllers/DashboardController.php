@@ -128,9 +128,7 @@ class DashboardController extends Controller
         $outOfStockCount = InventoryItem::where('stock_quantity', 0)->count();
 
         // --- Dashboard aggregate totals ---
-        $dashboardAggregate = Dashboard::query()
-            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId), fn ($q) => $q->whereNull('area_id'))
-            ->first();
+        $dashboardAggregate = $this->resolveDashboardAggregate($selectedAreaId, $lastCloseAt);
 
         $dashboardTotalFood = (float) ($dashboardAggregate?->total_food ?? 0);
         $dashboardTotalAlcohol = (float) ($dashboardAggregate?->total_alcohol ?? 0);
@@ -280,9 +278,7 @@ class DashboardController extends Controller
             ->where('status', 'available')
             ->count();
 
-        $dashboardAggregate = Dashboard::query()
-            ->when($selectedAreaId, fn ($q) => $q->where('area_id', $selectedAreaId), fn ($q) => $q->whereNull('area_id'))
-            ->first();
+        $dashboardAggregate = $this->resolveDashboardAggregate($selectedAreaId, $lastCloseAt);
 
         $dashboardTotalDp = (float) ($dashboardAggregate?->total_dp ?? 0);
         $dashboardGrossSales = (float) ($dashboardAggregate?->total_amount ?? 0) + $dashboardTotalDp;
@@ -300,6 +296,28 @@ class DashboardController extends Controller
             'dashboardGrossSales',
             'dashboardNetSales'
         );
+    }
+
+    /**
+     * GUARD end-day: baris dashboard yang terakhir di-sync SEBELUM close
+     * terakhir berisi angka siklus yang sudah ter-seal — tampilkan nol.
+     * Angka area muncul kembali setelah ada transaksi baru (sync berjalan).
+     */
+    private function resolveDashboardAggregate(?int $areaId, ?\Illuminate\Support\Carbon $lastCloseAt): ?Dashboard
+    {
+        $aggregate = Dashboard::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
+            ->first();
+
+        if (! $aggregate) {
+            return null;
+        }
+
+        if ($lastCloseAt && ($aggregate->last_synced_at === null || $aggregate->last_synced_at->lt($lastCloseAt))) {
+            return null;
+        }
+
+        return $aggregate;
     }
 
     public function syncToday(\Illuminate\Http\Request $request, DashboardSyncService $dashboardSyncService): RedirectResponse

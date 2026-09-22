@@ -8,7 +8,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
 use App\Models\UserProfile;
-use App\Services\DashboardSyncService;
 
 use function Pest\Laravel\actingAs;
 
@@ -37,6 +36,7 @@ test('dashboard sync excludes FOC and Compliment amounts from total_amount', fun
         'payment_mode' => 'normal',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $normalOrder->id,
         'is_walk_in' => true,
         'subtotal' => 100000,
@@ -85,6 +85,7 @@ test('dashboard sync excludes FOC and Compliment amounts from total_amount', fun
         'status' => 'served',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $focOrder->id,
         'is_walk_in' => true,
         'subtotal' => 61050 * 2,
@@ -134,6 +135,7 @@ test('dashboard sync excludes FOC and Compliment amounts from total_amount', fun
         'status' => 'served',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $compOrder->id,
         'is_walk_in' => true,
         'subtotal' => 50000 * 3,
@@ -147,7 +149,7 @@ test('dashboard sync excludes FOC and Compliment amounts from total_amount', fun
         'foc_comp_payment_method' => 'Compliment',
     ]);
 
-    (new DashboardSyncService)->sync();
+    syncDashboardAllAreas();
 
     $dashboard = Dashboard::query()->find(1);
 
@@ -185,6 +187,7 @@ test('dashboard revenue today excludes FOC and Compliment grand totals', functio
         'payment_mode' => 'normal',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $normalOrder->id,
         'is_walk_in' => true,
         'subtotal' => 50000,
@@ -208,6 +211,7 @@ test('dashboard revenue today excludes FOC and Compliment grand totals', functio
         'payment_mode' => 'normal',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $focOrder->id,
         'is_walk_in' => true,
         'subtotal' => 61050,
@@ -254,6 +258,7 @@ test('FOC checkout does not increment customer lifetime spending', function () {
         'payment_mode' => 'normal',
     ]);
     Billing::create([
+        'area_id' => dashboardAnyAreaId(),
         'order_id' => $focOrder->id,
         'is_walk_in' => true,
         'subtotal' => 50000,
