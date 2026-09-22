@@ -64,12 +64,14 @@
                     class="px-5 py-3 text-sm transition whitespace-nowrap">
               Recap
             </button>
+          @if (! is_null($selectedAreaId))
             <button type="button"
                     @click="activeTab = 'history'"
                     :class="activeTab === 'history' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
                     class="px-5 py-3 text-sm transition whitespace-nowrap">
               History
             </button>
+          @endif
             <button type="button"
                     @click="activeTab = 'transactions-recap-today'"
                     :class="activeTab === 'transactions-recap-today' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
@@ -592,6 +594,7 @@
         </div>
       </div>
 
+      @if (! is_null($selectedAreaId))
       <div x-show="activeTab === 'history'"
            class="space-y-4">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
@@ -673,6 +676,7 @@
           </div>
         </div>
       </div>
+      @endif
 
       <div x-show="showHistoryModal"
            x-transition:enter="ease-out duration-300"

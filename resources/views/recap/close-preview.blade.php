@@ -107,17 +107,21 @@
         </button>
 
         @unless ($isReprintPreview ?? false)
-          <form method="POST"
-                action="{{ route('admin.recap.close-export') }}">
-            @csrf
-            @if ($selectedAreaId ?? null)
+          @if (blank($selectedAreaId ?? null))
+            <span class="inline-flex items-center rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800">
+              End-day dilakukan per area — pilih area tertentu di halaman Recap. Mode Semua Area hanya preview.
+            </span>
+          @else
+            <form method="POST"
+                  action="{{ route('admin.recap.close-export') }}">
+              @csrf
               <input type="hidden" name="area_id" value="{{ $selectedAreaId }}">
-            @endif
-            <button type="submit"
-                    class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-              Tutup End Day {{ $selectedAreaId ? '(' . ($areas->firstWhere('id', $selectedAreaId)?->name ?? 'Area') . ')' : '' }}
-            </button>
-          </form>
+              <button type="submit"
+                      class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                Tutup End Day {{ '(' . ($areas->firstWhere('id', $selectedAreaId)?->name ?? 'Area') . ')' }}
+              </button>
+            </form>
+          @endif
         @endunless
       </div>
     </div>

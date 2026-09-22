@@ -455,9 +455,11 @@ class RecapController extends Controller
         $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
         $liveTotalDownPayment = $this->resolveLiveTotalDownPayment($startAt, $endAt, $areaId);
 
+        // Preview "Semua Area" membaca baris dashboard GLOBAL (area_id NULL)
+        // yang sudah = merge seluruh area. Per-area membaca baris areanya.
         $dashboardAggregate = Dashboard::query()
             ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
-            ->first() ?? Dashboard::query()->find(1);
+            ->first();
         $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
         $dashboardTotalLdQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalComplimentQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);

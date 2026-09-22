@@ -223,11 +223,14 @@ test('recap close preview page shows printable a4 summary', function () {
     $start = now()->startOfDay()->addHours(8);
     $end = now()->startOfDay()->addHours(23)->addMinutes(59);
 
+    $cpArea = \App\Models\Area::create(['code' => 'RPT-CP-'.uniqid(), 'name' => 'Recap Preview Area', 'is_active' => true]);
+
     $order = makeRecapOrder($admin->id, now()->startOfDay()->addHours(10), 'RCP-PRV-001', [
         'payment_method' => 'qris',
         'payment_reference_number' => 'QR-9988',
         'items_total' => 30000,
         'total' => 30000,
+        'area_id' => $cpArea->id,
     ]);
 
     $item = makeRecapInventoryItem([
@@ -289,7 +292,7 @@ test('recap close preview page shows printable a4 summary', function () {
     ]);
 
     Dashboard::query()->updateOrCreate(
-        ['id' => 1],
+        ['area_id' => $cpArea->id],
         [
             'total_amount' => 500000,
             'total_penjualan_rokok' => 42,
@@ -316,6 +319,7 @@ test('recap close preview page shows printable a4 summary', function () {
         ->get(route('admin.recap.close-preview', [
             'start_datetime' => $start->format('Y-m-d\TH:i'),
             'end_datetime' => $end->format('Y-m-d\TH:i'),
+            'area_id' => $cpArea->id,
         ]))
         ->assertSuccessful()
         ->assertViewIs('recap.close-preview')
@@ -1791,8 +1795,11 @@ test('recap page shows automatic closing history list and modal content shell', 
     $start = now()->startOfDay()->addHours(8);
     $end = now()->startOfDay()->addHours(23)->addMinutes(59);
 
-    collect(range(1, 11))->each(function (int $offset): void {
+    // History closing bersifat per-area; buat recap ber-area lalu lihat area itu.
+    $histArea = \App\Models\Area::create(['code' => 'RPT-HIST-'.uniqid(), 'name' => 'Recap History Area', 'is_active' => true]);
+    collect(range(1, 11))->each(function (int $offset) use ($histArea): void {
         RecapHistory::query()->create([
+            'area_id' => $histArea->id,
             'end_day' => now()->subDays($offset)->toDateString(),
             'total_amount' => 120000,
             'total_tax' => 12000,
@@ -1813,6 +1820,7 @@ test('recap page shows automatic closing history list and modal content shell', 
         ->get(route('admin.recap.index', [
             'start_datetime' => $start->format('Y-m-d\TH:i'),
             'end_datetime' => $end->format('Y-m-d\TH:i'),
+            'area_id' => $histArea->id,
         ]))
         ->assertSuccessful()
         ->assertViewHas('recapHistories', function ($recapHistories): bool {
