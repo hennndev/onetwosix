@@ -400,6 +400,7 @@ class WaiterPosController extends Controller
                     $tableSession,
                     (float) $billing->discount_amount,
                     (float) $billing->minimum_charge,
+                    (float) ($tableSession->reservation?->down_payment_amount ?? 0),
                 );
                 $billing->update($totals);
 

@@ -128,10 +128,13 @@ class PrinterService
             $isPartial = (bool) ($payload['is_parsial_payment'] ?? false) || ($payload['payment_mode'] ?? '') === 'partial' || ((float) ($payload['remaining_balance'] ?? 0)) > 0;
 
             if ($isPartial) {
+                // Sisa hutang selalu konsisten dengan dua baris di atasnya:
+                // Total Tagihan (sudah net-DP) dikurangi yang dibayar saat ini.
+                $sisaTagihan = max((float) $payload['grand_total'] - (float) ($payload['paid_amount'] ?? 0), 0);
                 $escpos->text($this->formatClosedBillingPair('Total Tagihan', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
                 $escpos->text($this->formatClosedBillingPair('Dibayar Saat Ini (Parsial)', 'Rp '.number_format((float) ($payload['paid_amount'] ?? 0), 0, ',', '.'), $width)."\n");
                 $escpos->setEmphasis(true);
-                $escpos->text($this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format((float) ($payload['remaining_balance'] ?? 0), 0, ',', '.'), $width)."\n");
+                $escpos->text($this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format($sisaTagihan, 0, ',', '.'), $width)."\n");
                 $escpos->setEmphasis(false);
             } else {
                 $escpos->setEmphasis(true);
@@ -998,9 +1001,12 @@ class PrinterService
         $isPartial = (bool) ($payload['is_parsial_payment'] ?? false) || ($payload['payment_mode'] ?? '') === 'partial' || ((float) ($payload['remaining_balance'] ?? 0)) > 0;
 
         if ($isPartial) {
+            // Sisa hutang selalu konsisten dengan dua baris di atasnya:
+            // Total Tagihan (sudah net-DP) dikurangi yang dibayar saat ini.
+            $sisaTagihan = max((float) $payload['grand_total'] - (float) ($payload['paid_amount'] ?? 0), 0);
             $lines[] = $this->formatClosedBillingPair('Total Tagihan', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
             $lines[] = $this->formatClosedBillingPair('Dibayar Saat Ini (Parsial)', 'Rp '.number_format((float) ($payload['paid_amount'] ?? 0), 0, ',', '.'), $width);
-            $lines[] = $this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format((float) ($payload['remaining_balance'] ?? 0), 0, ',', '.'), $width);
+            $lines[] = $this->formatClosedBillingPair('Sisa Tagihan (Hutang)', 'Rp '.number_format($sisaTagihan, 0, ',', '.'), $width);
         } else {
             $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
         }

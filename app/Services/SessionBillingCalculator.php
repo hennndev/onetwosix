@@ -8,7 +8,14 @@ use App\Models\TableSession;
 class SessionBillingCalculator
 {
     /** @return array<string, float> */
-    public function calculate(TableSession $session, float $discountAmount, float $minimumCharge): array
+    /**
+     * Hitung total tagihan sesi. $downPaymentAmount opsional: DP booking
+     * booking mengurangi grand total SETELAH pajak & service charge — aturan
+     * yang sama dengan close billing (calculateSessionBillingTotals), supaya
+     * grand_total konsisten net-DP di semua jalur (tambah order POS/waiter,
+     * running receipt, dan close) dan tidak menghidupkan ulang DP.
+     */
+    public function calculate(TableSession $session, float $discountAmount, float $minimumCharge, float $downPaymentAmount = 0.0): array
     {
         $session->loadMissing('orders.items.inventoryItem');
         $settings = GeneralSetting::instance();
@@ -47,6 +54,8 @@ class SessionBillingCalculator
         $serviceCharge = round(($serviceChargeBase + $serviceChargeTax) * ((float) $settings->service_charge_percentage / 100), 2);
         $beforeDiscount = $subtotal + $serviceCharge + $tax;
         $discountAmount = min(max($discountAmount, 0), $beforeDiscount);
+        $grandTotalBeforeDownPayment = max($beforeDiscount - $discountAmount, 0);
+        $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
 
         return [
             'orders_total' => $ordersTotal,
@@ -56,7 +65,7 @@ class SessionBillingCalculator
             'tax' => $tax,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceCharge,
-            'grand_total' => max($beforeDiscount - $discountAmount, 0),
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
         ];
     }
 }

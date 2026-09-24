@@ -2590,6 +2590,10 @@ class TableReservationController extends Controller
                     'service_charge' => (float) $totals['service_charge'],
                     'grand_total' => (float) $totals['grand_total'],
                 ]);
+
+                // Grand total baru saja dihitung ulang net-DP; segarkan sisa
+                // tagihan agar tidak membawa remaining basi dari jalur lain.
+                $billing->recalculatePaymentStatus();
             });
 
             $billing->refresh();

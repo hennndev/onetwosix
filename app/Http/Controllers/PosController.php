@@ -978,6 +978,7 @@ class PosController extends Controller
                         $tableSession,
                         (float) $billing->discount_amount,
                         (float) $billing->minimum_charge,
+                        (float) ($tableSession->reservation?->down_payment_amount ?? 0),
                     );
 
                     $billing->update([
@@ -1586,9 +1587,9 @@ class PosController extends Controller
     /**
      * @return array<string, float>
      */
-    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
+    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge, float $downPaymentAmount = 0.0): array
     {
-        $totals = $this->sessionBillingCalculator->calculate($session, $discountAmount, $minimumCharge);
+        $totals = $this->sessionBillingCalculator->calculate($session, $discountAmount, $minimumCharge, $downPaymentAmount);
 
         return $totals + [
             'minimum_charge' => $minimumCharge,
