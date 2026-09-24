@@ -12,8 +12,10 @@ use App\Http\Controllers\RewardController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Settings\DailyAuthCodeController;
 use App\Http\Controllers\Settings\GeneralSettingController;
+use App\Http\Controllers\Settings\PaymentSettingController;
 use App\Http\Controllers\Settings\PosCategorySettingController;
 use App\Http\Controllers\Settings\TierSettingsController;
+use App\Http\Controllers\TableLayoutController;
 use App\Http\Controllers\TransactionCheckerController;
 use App\Http\Controllers\TransactionHistoryController;
 use App\Http\Controllers\UserController;
@@ -26,6 +28,11 @@ use Illuminate\Support\Str;
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+Route::get('/denah/preview/{area?}/{status?}/{table?}', [TableLayoutController::class, 'preview'])
+    ->where('status', 'available|reserved|occupied|maintenance')
+    ->scopeBindings()
+    ->name('denah.preview');
 
 require __DIR__.'/auth.php';
 
@@ -115,6 +122,9 @@ Route::middleware('auth')->group(function () {
 
         // Event Management
         require __DIR__.'/events.php';
+
+        // Promo Management
+        require __DIR__.'/promos.php';
 
         // Inventory Management
         require __DIR__.'/inventories.php';
@@ -219,6 +229,15 @@ Route::middleware('auth')->group(function () {
             Route::get('/', [GeneralSettingController::class, 'index'])->name('index');
             Route::put('/', [GeneralSettingController::class, 'update'])->name('update');
             Route::post('/test-email', [GeneralSettingController::class, 'sendTestEmail'])->name('test-email');
+        });
+
+        Route::prefix('settings/payment')->name('settings.payment.')->group(function () {
+            Route::get('/', [PaymentSettingController::class, 'index'])->name('index');
+            Route::post('/bank-accounts', [PaymentSettingController::class, 'storeBankAccount'])->name('bank-accounts.store');
+            Route::put('/bank-accounts/{bankAccount}', [PaymentSettingController::class, 'updateBankAccount'])->name('bank-accounts.update');
+            Route::delete('/bank-accounts/{bankAccount}', [PaymentSettingController::class, 'destroyBankAccount'])->name('bank-accounts.destroy');
+            Route::post('/whatsapp', [PaymentSettingController::class, 'saveWhatsapp'])->name('whatsapp.save');
+            Route::post('/qris', [PaymentSettingController::class, 'saveQris'])->name('qris.save');
         });
     });
 });

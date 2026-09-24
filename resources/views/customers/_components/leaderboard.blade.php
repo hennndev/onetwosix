@@ -58,7 +58,7 @@
               <div class="text-xs text-gray-500">{{ $customer->customer_code }}</div>
             </div>
             <div class="text-right">
-              <div class="font-bold text-green-600">Rp {{ number_format((float) ($customer->transaction_lifetime_spending ?? 0), 0, ',', '.') }}</div>
+              <div class="font-bold text-green-600">Rp {{ number_format((float) $customer->lifetime_spending, 0, ',', '.') }}</div>
             </div>
             @php $lifetimeTier = $tiers->first(fn($t) => $t->minimum_spent <= (float) ($customer->transaction_lifetime_spending ?? 0)); @endphp
             @if ($lifetimeTier)

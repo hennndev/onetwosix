@@ -159,11 +159,11 @@
                     </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-center">
-                    <div class="text-lg font-bold text-gray-900">{{ number_format((int) ($customer->transaction_total_visits ?? 0), 0, ',', '.') }}</div>
+                    <div class="text-lg font-bold text-gray-900">{{ number_format($customer->total_visits, 0, ',', '.') }}</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-bold text-green-600">Rp {{ number_format((float) ($customer->transaction_lifetime_spending ?? 0), 0, ',', '.') }}</div>
-                    <div class="text-xs text-gray-500">{{ number_format(((float) ($customer->transaction_lifetime_spending ?? 0)) / 1000000, 1) }}jt</div>
+                    <div class="text-sm font-bold text-green-600">Rp {{ number_format((float) $customer->lifetime_spending, 0, ',', '.') }}</div>
+                    <div class="text-xs text-gray-500">{{ number_format(((float) $customer->lifetime_spending) / 1000000, 1) }}jt</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
                     @if ($customer->customer_code && $customer->accurate_id)

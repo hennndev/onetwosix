@@ -8,6 +8,7 @@ class DisplayMessageRequest extends Model
 {
     protected $fillable = [
         'customer_id',
+        'table_session_id',
         'message',
         'tip',
         'status',
@@ -20,5 +21,10 @@ class DisplayMessageRequest extends Model
     public function customer()
     {
         return $this->belongsTo(User::class, 'customer_id');
+    }
+
+    public function tableSession()
+    {
+        return $this->belongsTo(TableSession::class);
     }
 }

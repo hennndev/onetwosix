@@ -90,6 +90,7 @@
             <tr>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Kode</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Area</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Denah</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deskripsi</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Kapasitas</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -99,6 +100,18 @@
           <tbody class="divide-y divide-gray-100"
                  id="areaTableBody">
             @forelse($areas as $area)
+              @php
+                $areaEditPayload = [
+                    'id' => $area->id,
+                    'name' => $area->name,
+                    'code' => $area->code,
+                    'capacity' => $area->capacity,
+                    'description' => $area->description,
+                    'sort_order' => $area->sort_order,
+                    'is_active' => $area->is_active,
+                    'image_url' => $area->image ? Storage::disk('public')->url($area->image) : null,
+                ];
+              @endphp
               <tr class="hover:bg-gray-50 transition area-row">
                 <td class="px-6 py-4">
                   <span class="bg-slate-100 text-slate-700 px-3 py-1 rounded-md font-mono text-sm font-semibold">
@@ -108,6 +121,23 @@
                 <td class="px-6 py-4">
                   <div class="font-semibold text-gray-800">{{ $area->name }}</div>
                   <div class="text-xs text-gray-500">ID: {{ $area->id }}</div>
+                </td>
+                <td class="px-6 py-4">
+                  @if ($area->image)
+                    <a href="{{ Storage::disk('public')->url($area->image) }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="block w-24 h-16 overflow-hidden rounded-lg border border-gray-200 hover:ring-2 hover:ring-teal-500 transition"
+                       title="Buka gambar denah {{ $area->name }}">
+                      <img src="{{ Storage::disk('public')->url($area->image) }}"
+                           alt="Denah {{ $area->name }}"
+                           class="w-full h-full object-cover">
+                    </a>
+                  @else
+                    <span class="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                      Belum diunggah
+                    </span>
+                  @endif
                 </td>
                 <td class="px-6 py-4">
                   <p class="text-sm text-gray-600 max-w-xs">{{ $area->description ?? '-' }}</p>
@@ -141,8 +171,9 @@
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end space-x-2">
-                    <button onclick='editArea(@json($area))'
-                            class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                    <button type="button"
+                            data-area='@json($areaEditPayload)'
+                            class="js-edit-area p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                             title="Edit">
                       <svg class="w-5 h-5"
                            fill="none"
@@ -172,7 +203,7 @@
               </tr>
             @empty
               <tr>
-                <td colspan="6"
+                <td colspan="7"
                     class="px-6 py-12 text-center">
                   <div class="flex flex-col items-center justify-center">
                     <svg class="w-16 h-16 text-gray-300 mb-4"
@@ -224,6 +255,7 @@
           document.getElementById('formMethod').value = 'POST';
           document.getElementById('areaForm').reset();
           document.getElementById('is_active').checked = true;
+          resetImagePreview();
         }
       }
 
@@ -242,12 +274,56 @@
         document.getElementById('description').value = area.description || '';
         document.getElementById('sort_order').value = area.sort_order || 0;
         document.getElementById('is_active').checked = area.is_active;
+        showImagePreview(area.image_url);
       }
+
+      document.addEventListener('click', function(event) {
+        const editButton = event.target.closest('.js-edit-area');
+
+        if (editButton) {
+          editArea(JSON.parse(editButton.dataset.area));
+        }
+      });
 
       // Close Modal
       function closeModal() {
         document.getElementById('areaModal').classList.add('hidden');
         document.getElementById('areaForm').reset();
+        resetImagePreview();
+      }
+
+      const imageInput = document.getElementById('image');
+      const imagePreview = document.getElementById('imagePreview');
+      const imagePreviewFrame = document.getElementById('imagePreviewFrame');
+
+      imageInput.addEventListener('change', function(event) {
+        const [file] = event.target.files;
+
+        if (!file) {
+          resetImagePreview();
+          return;
+        }
+
+        showImagePreview(URL.createObjectURL(file));
+      });
+
+      function showImagePreview(url) {
+        if (!url) {
+          resetImagePreview();
+          return;
+        }
+
+        imagePreview.src = url;
+        imagePreviewFrame.classList.remove('hidden');
+      }
+
+      function resetImagePreview() {
+        if (imagePreview.src.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview.src);
+        }
+
+        imagePreview.src = '';
+        imagePreviewFrame.classList.add('hidden');
       }
 
       // Delete Area

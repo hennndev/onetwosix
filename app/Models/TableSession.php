@@ -66,6 +66,16 @@ class TableSession extends Model
         return $this->hasManyThrough(OrderItem::class, Order::class);
     }
 
+    public function songRequests()
+    {
+        return $this->hasMany(SongRequest::class);
+    }
+
+    public function displayMessageRequests()
+    {
+        return $this->hasMany(DisplayMessageRequest::class);
+    }
+
     public function isQRValid()
     {
         return $this->check_in_qr_code

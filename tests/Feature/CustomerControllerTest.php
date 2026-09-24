@@ -65,6 +65,30 @@ test('admin can update customer successfully', function () {
         ->and((float) $customerUser->lifetime_spending)->toBe(150000.0);
 });
 
+test('customer list spending and visits match their editable lifetime values', function () {
+    $admin = adminUser();
+
+    $user = User::factory()->create([
+        'name' => 'Customer Spending Test',
+        'email' => 'spending@test.com',
+    ]);
+    $profile = \App\Models\UserProfile::create(['user_id' => $user->id]);
+    CustomerUser::create([
+        'user_id' => $user->id,
+        'user_profile_id' => $profile->id,
+        'customer_code' => 'CUST-SPENDING',
+        'total_visits' => 17,
+        'lifetime_spending' => 987654,
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.customers.index'))
+        ->assertOk()
+        ->assertSee('Rp 987.654')
+        ->assertSee('"total_visits":17', false)
+        ->assertSee('"lifetime_spending":"987654.00"', false);
+});
+
 test('admin can sync customer to accurate using sync route', function () {
     $admin = adminUser();
 
