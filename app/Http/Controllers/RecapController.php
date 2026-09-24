@@ -40,7 +40,9 @@ class RecapController extends Controller
             : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
 
         [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
-        $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
+        $recapData = $this->shouldUseMergedAreaPreview($validated, $selectedAreaId)
+            ? $this->buildMergedAreaRecapData((bool) ($validated['reprint'] ?? false))
+            : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
 
         if ($request->headers->get('X-Live')) {
             return response(
@@ -86,7 +88,9 @@ class RecapController extends Controller
             : (session('active_area_id') && session('active_area_id') !== 'all' ? (int) session('active_area_id') : null));
 
         [$startAt, $endAt] = $this->resolveRange($validated, $selectedAreaId);
-        $recapData = $this->buildRecapData($startAt, $endAt, false, $selectedAreaId);
+        $recapData = $this->shouldUseMergedAreaPreview($validated, $selectedAreaId)
+            ? $this->buildMergedAreaRecapData(false)
+            : $this->buildRecapData($startAt, $endAt, false, $selectedAreaId);
 
         return $this->downloadRows(
             $this->buildLiveRecapExportRows($recapData),
@@ -119,7 +123,9 @@ class RecapController extends Controller
 
         $recapData = $recapHistory
             ? $this->buildRecapDataFromHistory($recapHistory)
-            : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId);
+            : ($this->shouldUseMergedAreaPreview($validated, $selectedAreaId)
+                ? $this->buildMergedAreaRecapData((bool) ($validated['reprint'] ?? false))
+                : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false), $selectedAreaId));
 
         return view('recap.close-preview', array_merge($recapData, [
             'printedAt' => now(),
@@ -154,7 +160,9 @@ class RecapController extends Controller
 
         $recapData = $recapHistory
             ? $this->buildRecapDataFromHistory($recapHistory)
-            : $this->buildRecapData($startAt, $endAt, false, $selectedAreaId);
+            : ($this->shouldUseMergedAreaPreview($validated, $selectedAreaId)
+                ? $this->buildMergedAreaRecapData(false)
+                : $this->buildRecapData($startAt, $endAt, false, $selectedAreaId));
 
         $includeTransactionHistory = (bool) ($validated['include_transaction_history'] ?? true);
 
@@ -627,6 +635,94 @@ class RecapController extends Controller
     }
 
     /**
+     * Preview "Semua Area" = gabungan view semua area (bukan siklus global
+     * tersendiri). Tiap area dihitung dengan window siklusnya masing-masing,
+     * lalu angka dijumlah dan daftar transaksi digabung. Tanpa ini, scope
+     * "Semua Area" memakai timeline recap global yang bisa telat ditutup,
+     * sehingga fallback live menghidupkan ulang angka yang sudah ter-seal di
+     * rekap area (kasus produksi 24/09: DP 9,1 jt muncul lagi di preview).
+     */
+    private function buildMergedAreaRecapData(bool $includeClosedEndDayData): array
+    {
+        $areas = \App\Models\Area::query()->where('is_active', true)->orderBy('sort_order')->get();
+
+        if ($areas->isEmpty()) {
+            [$startAt, $endAt] = RecapHistory::resolveActiveWindow(null);
+
+            return $this->buildRecapData($startAt, $endAt, $includeClosedEndDayData, null);
+        }
+
+        $merged = null;
+        $minStartAt = null;
+        $maxEndAt = null;
+
+        foreach ($areas as $area) {
+            [$startAt, $endAt] = RecapHistory::resolveActiveWindow($area->id);
+
+            $minStartAt = $minStartAt === null || $startAt->lt($minStartAt) ? $startAt : $minStartAt;
+            $maxEndAt = $maxEndAt === null || $endAt->gt($maxEndAt) ? $endAt : $maxEndAt;
+
+            $data = $this->buildRecapData($startAt, $endAt, $includeClosedEndDayData, $area->id);
+            $merged = $merged === null ? $data : $this->mergeAreaRecapData($merged, $data);
+        }
+
+        $merged['selectedDate'] = $minStartAt->toDateString();
+        $merged['selectedStartDatetime'] = $minStartAt->format('Y-m-d\TH:i');
+        $merged['selectedEndDatetime'] = $maxEndAt->format('Y-m-d\TH:i');
+        $merged['recapHistories'] = RecapHistory::query()
+            ->latest('end_day')
+            ->paginate(10)
+            ->withQueryString();
+
+        return $merged;
+    }
+
+    private function mergeAreaRecapData(array $base, array $next): array
+    {
+        $collectionKeys = ['cashierTransactions', 'kitchenItems', 'barItems', 'rokokItems', 'focItems', 'todayBillingTransactions', 'todayWalkInTransactions'];
+        $skippedKeys = ['recapHistories', 'selectedDate', 'selectedStartDatetime', 'selectedEndDatetime'];
+
+        foreach ($next as $key => $value) {
+            if (in_array($key, $skippedKeys, true)) {
+                continue;
+            }
+
+            if (in_array($key, $collectionKeys, true)) {
+                $baseValue = $base[$key];
+                $base[$key] = $baseValue instanceof \Illuminate\Support\Collection
+                    ? $baseValue->concat($value)->values()
+                    : collect(array_merge((array) $baseValue, (array) $value));
+
+                continue;
+            }
+
+            if (is_array($value)) {
+                foreach ($value as $subKey => $subValue) {
+                    $base[$key][$subKey] = ($base[$key][$subKey] ?? 0) + $subValue;
+                }
+
+                continue;
+            }
+
+            $base[$key] = ($base[$key] ?? 0) + $value;
+        }
+
+        return $base;
+    }
+
+    /**
+     * Merged view hanya untuk window operasional default. Bila user memilih
+     * rentang eksplisit (start/end_datetime atau date), pakai perilaku lama
+     * yang menghormati rentang tersebut apa adanya.
+     */
+    private function shouldUseMergedAreaPreview(array $validated, ?int $areaId): bool
+    {
+        return $areaId === null
+            && empty($validated['start_datetime'])
+            && empty($validated['date']);
+    }
+
+    /**
      * @return array{has_paid_billings: bool, totals: array{cash: float, transfer: float, debit: float, kredit: float, qris: float}}
      */
     private function resolveLivePaymentMethodTotals(Carbon $startAt, Carbon $endAt, ?int $areaId = null): array
@@ -779,7 +875,7 @@ class RecapController extends Controller
      */
     private function buildTodayTransactionsRecap(?int $areaId = null): array
     {
-        [$todayStart, $todayEnd] = $this->resolveTodayCycleWindow();
+        [$todayStart, $todayEnd] = $this->resolveTodayCycleWindow($areaId);
 
         return [
             $this->buildTodayBillingTransactions($todayStart, $todayEnd, $areaId),
@@ -800,7 +896,7 @@ class RecapController extends Controller
      *
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function resolveTodayCycleWindow(): array
+    private function resolveTodayCycleWindow(?int $areaId = null): array
     {
         $now = now('Asia/Jakarta');
         $anchor = RecapHistory::resolveOperationalAnchor($now);
@@ -808,7 +904,11 @@ class RecapController extends Controller
             ? $anchor->copy()->subDay()
             : $anchor->copy();
 
+        // Jam awal siklus = close terakhir SIKLUS TERSEBUT. Untuk per-area,
+        // hanya rekap areanya sendiri yang menggeser awal siklus — close area
+        // lain (atau global) tidak boleh menyembunyikan transaksi area ini.
         $lastClose = RecapHistory::query()
+            ->when($areaId, fn ($q) => $q->where('area_id', $areaId), fn ($q) => $q->whereNull('area_id'))
             ->latest('created_at')
             ->value('created_at');
 

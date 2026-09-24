@@ -113,7 +113,7 @@ class KitchenController extends Controller
 
         [$endDay, $startAt, $endAt] = $this->resolveEndDayRange($areaId);
 
-        if ($this->isEarlyClosedToday($endDay)) {
+        if ($this->isEarlyClosedToday($endDay, $areaId)) {
             return back()->with('error', 'End day untuk hari ini sudah ditutup lebih awal. Menunggu jam operasional.');
         }
 
@@ -429,16 +429,22 @@ class KitchenController extends Controller
     /**
      * Tolak close kedua dalam rentang pre-anchor (sebelum jam operasional).
      *
-     * Jika sudah ada recap (utama) dengan created_at pada kalender hari yang
-     * sama untuk end_day yang berbeda, berarti close dini-hari sudah terjadi dan
-     * hari baru jangan di-seal prematur.
+     * Hanya close dini-hari (created_at sebelum anchor hari ini) untuk siklus
+     * yang sama — rekap area ini sendiri atau rekap global — yang mengunci.
+     * Close post-anchor pada hari kalender yang sama (mis. "Semua Area" jam
+     * 11:00 lalu end-day kitchen jam 11:05) adalah alur normal dan tidak boleh
+     * saling memblokir.
      */
-    private function isEarlyClosedToday(string $endDay): bool
+    private function isEarlyClosedToday(string $endDay, ?int $areaId): bool
     {
-        $anchor = now('Asia/Jakarta');
+        $now = now('Asia/Jakarta');
 
         return \App\Models\RecapHistory::query()
-            ->whereDate('created_at', $anchor->toDateString())
+            ->when($areaId, fn ($q) => $q->where(fn ($cycle) => $cycle
+                ->where('area_id', $areaId)
+                ->orWhereNull('area_id')), fn ($q) => $q->whereNull('area_id'))
+            ->whereDate('created_at', $now->toDateString())
+            ->where('created_at', '<', \App\Models\RecapHistory::resolveOperationalAnchor($now))
             ->whereDate('end_day', '<>', $endDay)
             ->exists();
     }

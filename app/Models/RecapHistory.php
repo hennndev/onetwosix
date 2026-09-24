@@ -93,6 +93,29 @@ class RecapHistory extends Model
     }
 
     /**
+     * Recap terakhir yang mencakup siklus suatu area: rekap areanya sendiri
+     * ATAU rekap global — mana yang paling baru.
+     *
+     * Label end_day berikutnya harus maju mengikuti close yang benar-benar
+     * menutup uang area tersebut. Jika hanya timeline global yang dibaca,
+     * label area membeku ketika rekap global telat ditutup (kasus produksi
+     * 2026-09-24: global macet di end_day 21 sehingga end-day semua area
+     * selalu `already_closed` padahal rekap areanya sudah di 22).
+     *
+     * Tanpa $areaId, siklus yang dipakai tetap timeline global.
+     */
+    public static function resolveLatestCycleRecap(?int $areaId): ?self
+    {
+        return self::query()
+            ->when($areaId, fn ($q) => $q->where(fn ($cycle) => $cycle
+                ->where('area_id', $areaId)
+                ->orWhereNull('area_id')), fn ($q) => $q->whereNull('area_id'))
+            ->orderByDesc('end_day')
+            ->orderByDesc('created_at')
+            ->first();
+    }
+
+    /**
      * Determine the end_day date label for the next closing.
      *
      * Uses the latest RecapHistory to calculate the next day sequentially,
@@ -105,11 +128,9 @@ class RecapHistory extends Model
             ? $now->copy()->subDay()->toDateString()
             : $now->toDateString();
 
-        // Timeline siklus = global (lihat resolveActiveWindow)
-        $latestRecap = self::query()
-            ->whereNull('area_id')
-            ->latest('end_day')
-            ->first();
+        // Timeline siklus mengikuti close yang mencakup area (rekap area
+        // sendiri atau rekap global, terbaru menang) — lihat resolveLatestCycleRecap.
+        $latestRecap = self::resolveLatestCycleRecap($areaId);
 
         if ($latestRecap) {
             $nextDay = $latestRecap->end_day->copy()->addDay()->toDateString();
@@ -137,11 +158,9 @@ class RecapHistory extends Model
     public static function resolveNextEndDayForEarlyClose(?int $areaId = null): string
     {
         $now = now('Asia/Jakarta');
-        // Timeline siklus = global (lihat resolveActiveWindow)
-        $latestRecap = self::query()
-            ->whereNull('area_id')
-            ->latest('end_day')
-            ->first();
+        // Timeline siklus mengikuti close yang mencakup area (rekap area
+        // sendiri atau rekap global, terbaru menang) — lihat resolveLatestCycleRecap.
+        $latestRecap = self::resolveLatestCycleRecap($areaId);
 
         if ($latestRecap
             && $latestRecap->created_at
@@ -168,11 +187,9 @@ class RecapHistory extends Model
     public static function resolveEndDayWindowForToday(?int $areaId = null): array
     {
         $now = now('Asia/Jakarta');
-        // Timeline siklus = global (lihat resolveActiveWindow)
-        $latestRecap = self::query()
-            ->whereNull('area_id')
-            ->latest('end_day')
-            ->first();
+        // Timeline siklus mengikuti close yang mencakup area (rekap area
+        // sendiri atau rekap global, terbaru menang) — lihat resolveLatestCycleRecap.
+        $latestRecap = self::resolveLatestCycleRecap($areaId);
 
         if (! $latestRecap) {
             $endDay = self::resolveNextEndDayForEarlyClose($areaId);
