@@ -289,12 +289,6 @@ class PrinterService
      */
     protected function checkNetworkReachable(string $ip, int $port, int $timeoutSeconds = 3): void
     {
-        Log::info('Checking network printer reachability', [
-            'ip' => $ip,
-            'port' => $port,
-            'timeout_seconds' => $timeoutSeconds,
-        ]);
-
         $socket = @fsockopen($ip, $port, $errno, $errstr, $timeoutSeconds);
 
         if ($socket === false) {
@@ -313,11 +307,6 @@ class PrinterService
         }
 
         fclose($socket);
-
-        Log::info('Network printer is reachable and listening', [
-            'ip' => $ip,
-            'port' => $port,
-        ]);
     }
 
     /**
@@ -482,11 +471,6 @@ class PrinterService
             $content."\n",
             FILE_APPEND
         );
-
-        Log::info('Printer simulation log', [
-            'title' => $title,
-            'lines' => $lines,
-        ]);
     }
 
     /**
@@ -495,13 +479,10 @@ class PrinterService
     public function printReceipt(Order $order, Printer $printer): bool
     {
         $receiptTotals = $this->calculateReceiptTotals($order);
-        Log::info('data', ['data' => $receiptTotals]);
 
         $lines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
 
         return $this->withPrinter($printer, function (EscposPrinter $escpos) use ($order, $printer, $receiptTotals): void {
-            Log::info('connector', ['connector' => get_class($escpos)]);
-
             // Logo (if configured)
             $this->printLogo($escpos, $printer);
 
@@ -615,16 +596,6 @@ class PrinterService
      */
     public function testPrint(Printer $printer): bool
     {
-        Log::info('Starting printer test print', [
-            'printer_id' => $printer->id,
-            'name' => $printer->name,
-            'printer_type' => $printer->printer_type,
-            'location' => $printer->location,
-            'connection_type' => $printer->connection_type,
-            'ip' => $printer->ip,
-            'port' => $printer->port,
-        ]);
-
         $lines = [
             "Printer    : {$printer->name}",
             'Type       : '.($printer->printer_type ?: '-'),

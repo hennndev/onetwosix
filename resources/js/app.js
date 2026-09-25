@@ -1,4 +1,5 @@
 import './bootstrap';
+import './payment-settings';
 
 import Alpine from 'alpinejs';
 

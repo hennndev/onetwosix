@@ -2,54 +2,52 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Areas\SaveArea;
+use App\Http\Requests\StoreAreaRequest;
+use App\Http\Requests\UpdateAreaRequest;
 use App\Models\Area;
-use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\View\View;
 
 class AreaController extends Controller
 {
-  // HALAMAN AREA MANAGEMENT
-  public function index()
-  {
-    $areas = Area::orderBy('sort_order')->orderBy('name')->get();
-    return view('areas.index', compact('areas'));
-  }
+    public function index(): View
+    {
+        $areas = Area::orderBy('sort_order')->orderBy('name')->get();
 
-  // CREATE AREA
-  public function store(Request $request)
-  {
-    $validated = $request->validate([
-      'code' => 'required|string|max:255|unique:areas,code',
-      'name' => 'required|string|max:255',
-      'capacity' => 'nullable|integer|min:0',
-      'description' => 'nullable|string',
-      'sort_order' => 'nullable|integer',
-    ]);
-    $validated['is_active'] = $request->has('is_active');
-    $validated['sort_order'] = $validated['sort_order'] ?? 0;
-    Area::create($validated);
-    return redirect()->route('admin.areas.index')->with('success', 'Area berhasil ditambahkan!');
-  }
+        return view('areas.index', compact('areas'));
+    }
 
-  // UPDATE AREA
-  public function update(Request $request, Area $area)
-  {
-    $validated = $request->validate([
-      'code' => 'required|string|max:255|unique:areas,code,' . $area->id,
-      'name' => 'required|string|max:255',
-      'capacity' => 'nullable|integer|min:0',
-      'description' => 'nullable|string',
-      'sort_order' => 'nullable|integer',
-    ]);
-    $validated['is_active'] = $request->has('is_active');
-    $validated['sort_order'] = $validated['sort_order'] ?? 0;
-    $area->update($validated);
-    return redirect()->route('admin.areas.index')->with('success', 'Area berhasil diupdate!');
-  }
+    public function store(StoreAreaRequest $request, SaveArea $saveArea): RedirectResponse
+    {
+        $attributes = $request->validated();
+        $attributes['is_active'] = $request->boolean('is_active');
+        $attributes['sort_order'] ??= 0;
+        $saveArea->handle($attributes);
 
-  // DELETE AREA
-  public function destroy(Area $area)
-  {
-    $area->delete();
-    return redirect()->route('admin.areas.index')->with('success', 'Area berhasil dihapus!');
-  }
+        return redirect()->route('admin.areas.index')->with('success', 'Area berhasil ditambahkan!');
+    }
+
+    public function update(UpdateAreaRequest $request, Area $area, SaveArea $saveArea): RedirectResponse
+    {
+        $attributes = $request->validated();
+        $attributes['is_active'] = $request->boolean('is_active');
+        $attributes['sort_order'] ??= 0;
+        $saveArea->handle($attributes, $area);
+
+        return redirect()->route('admin.areas.index')->with('success', 'Area berhasil diupdate!');
+    }
+
+    public function destroy(Area $area): RedirectResponse
+    {
+        $imagePath = $area->image;
+        $area->delete();
+
+        if ($imagePath) {
+            Storage::disk('public')->delete($imagePath);
+        }
+
+        return redirect()->route('admin.areas.index')->with('success', 'Area berhasil dihapus!');
+    }
 }

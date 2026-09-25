@@ -1,0 +1,4293 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "126 Club Mobile API",
+        "version": "1.0.0",
+        "description": "126 Club Mobile API v1. Endpoint untuk autentikasi, profil, booking, event, promo, leaderboard, membership, pembayaran, request lagu dan display message, bottle keep, serta reward."
+    },
+    "servers": [
+        {
+            "url": "http://localhost/api"
+        }
+    ],
+    "security": [
+        {
+            "http": []
+        }
+    ],
+    "paths": {
+        "/v1/register": {
+            "post": {
+                "operationId": "auth.register",
+                "tags": [
+                    "Auth"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "allOf": [
+                                    {
+                                        "$ref": "#/components/schemas/RegisterRequest"
+                                    },
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "device_name": {
+                                                "type": "string",
+                                                "default": "mobile"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Registrasi berhasil."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "user": {
+                                                    "$ref": "#/components/schemas/UserResource"
+                                                },
+                                                "token": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "user",
+                                                "token"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/login": {
+            "post": {
+                "operationId": "auth.login",
+                "tags": [
+                    "Auth"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LoginRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Login berhasil."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "user": {
+                                                    "$ref": "#/components/schemas/UserResource"
+                                                },
+                                                "token": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "user",
+                                                "token"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Akun ini bukan akun customer."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Email/nomor telepon atau password salah."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/logout": {
+            "post": {
+                "operationId": "auth.logout",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Logout berhasil."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/me": {
+            "get": {
+                "operationId": "auth.me",
+                "tags": [
+                    "Auth"
+                ],
+                "parameters": [
+                    {
+                        "name": "token_firebase",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 2048
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "user": {
+                                                    "$ref": "#/components/schemas/UserResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "user"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bookings": {
+            "get": {
+                "operationId": "booking.index",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "bookings": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/BookingResource"
+                                                    }
+                                                },
+                                                "meta": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "last_page",
+                                                        "per_page",
+                                                        "total"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "bookings",
+                                                "meta"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "booking.store",
+                "tags": [
+                    "Booking"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreBookingRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Reservasi berhasil dibuat."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "booking": {
+                                                    "$ref": "#/components/schemas/BookingResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "booking"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bookings/available-tables": {
+            "get": {
+                "operationId": "booking.availableTables",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "date",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "available_tables": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "area": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "id": {
+                                                                        "type": "integer"
+                                                                    },
+                                                                    "code": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "denah_url": {
+                                                                        "type": [
+                                                                            "string",
+                                                                            "null"
+                                                                        ]
+                                                                    }
+                                                                },
+                                                                "required": [
+                                                                    "id",
+                                                                    "code",
+                                                                    "name",
+                                                                    "denah_url"
+                                                                ]
+                                                            },
+                                                            "tables": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "$ref": "#/components/schemas/TableResource"
+                                                                }
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "area",
+                                                            "tables"
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "available_tables"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bookings/{booking}": {
+            "get": {
+                "operationId": "booking.show",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "booking",
+                        "in": "path",
+                        "required": true,
+                        "description": "The booking ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "booking": {
+                                                    "allOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/BookingResource"
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "table",
+                                                                "transaction_history"
+                                                            ]
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "booking"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Unauthorized."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bookings/{booking}/cancel": {
+            "post": {
+                "operationId": "booking.cancel",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "booking",
+                        "in": "path",
+                        "required": true,
+                        "description": "The booking ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Reservasi berhasil dibatalkan."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "booking": {
+                                                    "$ref": "#/components/schemas/BookingResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "booking"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Reservasi tidak dapat dibatalkan."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Unauthorized."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bottles": {
+            "get": {
+                "operationId": "customerKeep.index",
+                "tags": [
+                    "CustomerKeep"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Success."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "bottles": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/CustomerKeepResource"
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "bottles"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Success."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "bottles": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            },
+                                                            "minItems": 0,
+                                                            "maxItems": 0,
+                                                            "additionalItems": false
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "bottles"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/bottles/{customerKeep}": {
+            "get": {
+                "operationId": "customerKeep.show",
+                "tags": [
+                    "CustomerKeep"
+                ],
+                "parameters": [
+                    {
+                        "name": "customerKeep",
+                        "in": "path",
+                        "required": true,
+                        "description": "The customer keep ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "bottle": {
+                                                    "$ref": "#/components/schemas/CustomerKeepResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "bottle"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Unauthorized."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/display-messages": {
+            "get": {
+                "operationId": "displayMessage.index",
+                "tags": [
+                    "DisplayMessage"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "display_messages": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/DisplayMessageResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "display_messages"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "displayMessage.store",
+                "tags": [
+                    "DisplayMessage"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreDisplayMessageRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Display message berhasil dikirim."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "display_message": {
+                                                    "$ref": "#/components/schemas/DisplayMessageResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "display_message"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Kamu tidak memiliki booking aktif. Display message hanya bisa dikirim saat check-in."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/v1/display-messages/{displayMessage}": {
+            "get": {
+                "operationId": "displayMessage.show",
+                "tags": [
+                    "DisplayMessage"
+                ],
+                "parameters": [
+                    {
+                        "name": "displayMessage",
+                        "in": "path",
+                        "required": true,
+                        "description": "The display message ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "display_message": {
+                                                    "$ref": "#/components/schemas/DisplayMessageResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "display_message"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/events": {
+            "get": {
+                "operationId": "event.index",
+                "tags": [
+                    "Event"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": "upcoming"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "events": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/EventResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "events"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/events/{event}": {
+            "get": {
+                "operationId": "event.show",
+                "tags": [
+                    "Event"
+                ],
+                "parameters": [
+                    {
+                        "name": "event",
+                        "in": "path",
+                        "required": true,
+                        "description": "The event ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "event": {
+                                                    "$ref": "#/components/schemas/EventResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "event"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/notifications/test": {
+            "post": {
+                "operationId": "firebaseNotificationTest",
+                "tags": [
+                    "FirebaseNotificationTest"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 255
+                                    },
+                                    "body": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 1000
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Notifikasi berhasil dikirim."
+                                        },
+                                        "data": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "sent": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "sent",
+                                                        "message"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "sent": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "status": {
+                                                            "type": "integer"
+                                                        },
+                                                        "response": {}
+                                                    },
+                                                    "required": [
+                                                        "sent",
+                                                        "status",
+                                                        "response"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "sent": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "message": {
+                                                            "type": "string",
+                                                            "const": "Token Firebase kosong."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "sent",
+                                                        "message"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/leaderboard": {
+            "get": {
+                "operationId": "leaderboard.index",
+                "tags": [
+                    "Leaderboard"
+                ],
+                "parameters": [
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": "spending"
+                        }
+                    },
+                    {
+                        "name": "period",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "period": {
+                                                    "type": "string",
+                                                    "const": "all_time"
+                                                },
+                                                "leaderboard": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/LeaderboardResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "period",
+                                                "leaderboard"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/leaderboard/my-rank": {
+            "get": {
+                "operationId": "leaderboard.myRank",
+                "tags": [
+                    "Leaderboard"
+                ],
+                "parameters": [
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": "spending"
+                        }
+                    },
+                    {
+                        "name": "period",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Success."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "period": {
+                                                            "type": "string",
+                                                            "const": "all_time"
+                                                        },
+                                                        "ranking": {
+                                                            "$ref": "#/components/schemas/LeaderboardResource"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "period",
+                                                        "ranking"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Data customer tidak ditemukan."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "ranking": {
+                                                            "type": "null"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "ranking"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Akun customer tidak ditemukan."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "ranking": {
+                                                            "type": "null"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "ranking"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/tiers": {
+            "get": {
+                "operationId": "membership.index",
+                "tags": [
+                    "Membership"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "tiers": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/TierResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "tiers"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/membership": {
+            "get": {
+                "operationId": "membership.myMembership",
+                "tags": [
+                    "Membership"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "membership": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_tier": {
+                                                            "anyOf": [
+                                                                {
+                                                                    "$ref": "#/components/schemas/TierResource"
+                                                                },
+                                                                {
+                                                                    "type": "null"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "next_tier": {
+                                                            "anyOf": [
+                                                                {
+                                                                    "$ref": "#/components/schemas/TierResource"
+                                                                },
+                                                                {
+                                                                    "type": "null"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "points": {
+                                                            "type": "string"
+                                                        },
+                                                        "lifetime_spending": {
+                                                            "type": "number"
+                                                        },
+                                                        "total_visits": {
+                                                            "type": "string"
+                                                        },
+                                                        "spending_to_next_tier": {
+                                                            "type": "number"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_tier",
+                                                        "next_tier",
+                                                        "points",
+                                                        "lifetime_spending",
+                                                        "total_visits",
+                                                        "spending_to_next_tier"
+                                                    ]
+                                                },
+                                                "all_tiers": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/TierResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "membership",
+                                                "all_tiers"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Akun customer tidak ditemukan."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/membership/qr": {
+            "get": {
+                "operationId": "membership.qrCode",
+                "tags": [
+                    "Membership"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "qr_data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "type": {
+                                                            "type": "string",
+                                                            "const": "member"
+                                                        },
+                                                        "user_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "customer_user_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "email": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "type",
+                                                        "user_id",
+                                                        "customer_user_id",
+                                                        "name",
+                                                        "email"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "qr_data"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Akun customer tidak ditemukan."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/music/search": {
+            "get": {
+                "operationId": "musicSearch.search",
+                "tags": [
+                    "MusicSearch"
+                ],
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                        }
+                    },
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "songs",
+                                "all",
+                                null
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "503": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "query": {},
+                                                "filter": {},
+                                                "total": {
+                                                    "type": "integer"
+                                                },
+                                                "results": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "query",
+                                                "filter",
+                                                "total",
+                                                "results"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/payment-info": {
+            "get": {
+                "operationId": "paymentInfo.index",
+                "summary": "Get all active bank accounts, active QRIS, and the active WhatsApp confirmation number",
+                "tags": [
+                    "PaymentInfo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "bank_accounts": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/BankAccountResource"
+                                                    }
+                                                },
+                                                "qris": {
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/QrisSettingResource"
+                                                        },
+                                                        {
+                                                            "type": "null"
+                                                        }
+                                                    ]
+                                                },
+                                                "whatsapp": {
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/WhatsappSettingResource"
+                                                        },
+                                                        {
+                                                            "type": "null"
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "bank_accounts",
+                                                "qris",
+                                                "whatsapp"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/profile": {
+            "get": {
+                "operationId": "profile.show",
+                "tags": [
+                    "Profile"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "user": {
+                                                    "$ref": "#/components/schemas/UserResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "user"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "profile.update",
+                "tags": [
+                    "Profile"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateProfileRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Profil berhasil diperbarui."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "user": {
+                                                    "$ref": "#/components/schemas/UserResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "user"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/v1/promos": {
+            "get": {
+                "operationId": "promo.index",
+                "tags": [
+                    "Promo"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": "upcoming"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "promos": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/PromoResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "promos"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/promos/{promo}": {
+            "get": {
+                "operationId": "promo.show",
+                "tags": [
+                    "Promo"
+                ],
+                "parameters": [
+                    {
+                        "name": "promo",
+                        "in": "path",
+                        "required": true,
+                        "description": "The promo ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "promo": {
+                                                    "$ref": "#/components/schemas/PromoResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "promo"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/v1/rewards": {
+            "get": {
+                "operationId": "reward.index",
+                "tags": [
+                    "Reward"
+                ],
+                "parameters": [
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "rewards": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/RewardResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "rewards"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/rewards/my-redemptions": {
+            "get": {
+                "operationId": "reward.myRedemptions",
+                "tags": [
+                    "Reward"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Success."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "redemptions": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/RewardRedemptionResource"
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "redemptions"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Success."
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "redemptions": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            },
+                                                            "minItems": 0,
+                                                            "maxItems": 0,
+                                                            "additionalItems": false
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "redemptions"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/rewards/redeem": {
+            "post": {
+                "operationId": "reward.redeem",
+                "tags": [
+                    "Reward"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RedeemRewardRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Reward berhasil di-redeem."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "redemption": {
+                                                    "$ref": "#/components/schemas/RewardRedemptionResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "redemption"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Akun customer tidak ditemukan."
+                                        },
+                                        "data": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/rewards/{reward}": {
+            "get": {
+                "operationId": "reward.show",
+                "tags": [
+                    "Reward"
+                ],
+                "parameters": [
+                    {
+                        "name": "reward",
+                        "in": "path",
+                        "required": true,
+                        "description": "The reward ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "reward": {
+                                                    "$ref": "#/components/schemas/RewardResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "reward"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/song-requests": {
+            "get": {
+                "operationId": "songRequest.index",
+                "tags": [
+                    "SongRequest"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "song_requests": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/SongRequestResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "song_requests"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "songRequest.store",
+                "tags": [
+                    "SongRequest"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreSongRequestRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Song request berhasil dikirim."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "song_request": {
+                                                    "$ref": "#/components/schemas/SongRequestResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "song_request"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Kamu tidak memiliki booking aktif. Request lagu hanya bisa dilakukan saat check-in."
+                                                },
+                                                "data": {
+                                                    "type": "null"
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "boolean"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Akun customer tidak ditemukan."
+                                                },
+                                                "data": {
+                                                    "type": "null"
+                                                }
+                                            },
+                                            "required": [
+                                                "error",
+                                                "message",
+                                                "data"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/v1/song-requests/{songRequest}": {
+            "get": {
+                "operationId": "songRequest.show",
+                "tags": [
+                    "SongRequest"
+                ],
+                "parameters": [
+                    {
+                        "name": "songRequest",
+                        "in": "path",
+                        "required": true,
+                        "description": "The song request ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "const": "Success."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "song_request": {
+                                                    "$ref": "#/components/schemas/SongRequestResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "song_request"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message",
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "http": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "AreaResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "code": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "capacity": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "image_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "code",
+                    "name",
+                    "capacity",
+                    "description",
+                    "image_url"
+                ],
+                "title": "AreaResource"
+            },
+            "BankAccountResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "bank_name": {
+                        "type": "string"
+                    },
+                    "account_number": {
+                        "type": "string"
+                    },
+                    "account_holder": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "bank_name",
+                    "account_number",
+                    "account_holder",
+                    "is_active"
+                ],
+                "title": "BankAccountResource"
+            },
+            "BookingResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "booking_code": {
+                        "type": "integer"
+                    },
+                    "booking_code_formatted": {
+                        "type": "string"
+                    },
+                    "booking_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "reservation_date": {
+                        "type": "string"
+                    },
+                    "reservation_time": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "down_payment_amount": {
+                        "type": "number"
+                    },
+                    "check_in_qr_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "check_in_qr_expires_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "table": {
+                        "$ref": "#/components/schemas/TableResource"
+                    },
+                    "transaction_history": {
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "table_session": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {
+                                                "type": "integer"
+                                            },
+                                            "session_code": {
+                                                "type": "string"
+                                            },
+                                            "status": {
+                                                "type": "string"
+                                            },
+                                            "checked_in_at": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ]
+                                            },
+                                            "checked_out_at": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ]
+                                            }
+                                        },
+                                        "required": [
+                                            "id",
+                                            "session_code",
+                                            "status",
+                                            "checked_in_at",
+                                            "checked_out_at"
+                                        ]
+                                    },
+                                    "billing": {
+                                        "type": [
+                                            "object",
+                                            "null"
+                                        ],
+                                        "properties": {
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "transaction_code": {
+                                                "type": "string"
+                                            },
+                                            "status": {
+                                                "type": "string"
+                                            },
+                                            "minimum_charge": {
+                                                "type": "number"
+                                            },
+                                            "orders_total": {
+                                                "type": "number"
+                                            },
+                                            "subtotal": {
+                                                "type": "number"
+                                            },
+                                            "tax": {
+                                                "type": "number"
+                                            },
+                                            "service_charge": {
+                                                "type": "number"
+                                            },
+                                            "discount": {
+                                                "type": "string"
+                                            },
+                                            "discount_amount": {
+                                                "type": "number"
+                                            },
+                                            "order_discount_amount": {
+                                                "type": "number"
+                                            },
+                                            "song_tip": {
+                                                "type": "number"
+                                            },
+                                            "display_tip": {
+                                                "type": "number"
+                                            },
+                                            "grand_total": {
+                                                "type": "string"
+                                            },
+                                            "paid_amount": {
+                                                "type": "number"
+                                            },
+                                            "payment_mode": {
+                                                "type": "string"
+                                            },
+                                            "payment_method": {
+                                                "type": "string"
+                                            },
+                                            "payment_reference_number": {
+                                                "type": "string"
+                                            },
+                                            "paid_at": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ]
+                                            }
+                                        },
+                                        "required": [
+                                            "id",
+                                            "transaction_code",
+                                            "status",
+                                            "minimum_charge",
+                                            "orders_total",
+                                            "subtotal",
+                                            "tax",
+                                            "service_charge",
+                                            "discount",
+                                            "discount_amount",
+                                            "order_discount_amount",
+                                            "song_tip",
+                                            "display_tip",
+                                            "grand_total",
+                                            "paid_amount",
+                                            "payment_mode",
+                                            "payment_method",
+                                            "payment_reference_number",
+                                            "paid_at"
+                                        ]
+                                    },
+                                    "orders": {
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string"
+                                                        },
+                                                        "order_number": {
+                                                            "type": "string"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "items_total": {
+                                                            "type": "number"
+                                                        },
+                                                        "discount_amount": {
+                                                            "type": "number"
+                                                        },
+                                                        "total": {
+                                                            "type": "number"
+                                                        },
+                                                        "ordered_at": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "completed_at": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "notes": {
+                                                            "type": "string"
+                                                        },
+                                                        "items": {
+                                                            "anyOf": [
+                                                                {
+                                                                    "type": "string"
+                                                                },
+                                                                {
+                                                                    "type": "array",
+                                                                    "items": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "minItems": 0,
+                                                                    "maxItems": 0,
+                                                                    "additionalItems": false
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "order_number",
+                                                        "status",
+                                                        "items_total",
+                                                        "discount_amount",
+                                                        "total",
+                                                        "ordered_at",
+                                                        "completed_at",
+                                                        "notes",
+                                                        "items"
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "minItems": 0,
+                                                "maxItems": 0,
+                                                "additionalItems": false
+                                            }
+                                        ]
+                                    },
+                                    "song_requests": {
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer"
+                                                        },
+                                                        "song_title": {
+                                                            "type": "string"
+                                                        },
+                                                        "artist": {
+                                                            "type": "string"
+                                                        },
+                                                        "tip": {
+                                                            "type": "number"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "created_at": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "song_title",
+                                                        "artist",
+                                                        "tip",
+                                                        "status",
+                                                        "created_at"
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "minItems": 0,
+                                                "maxItems": 0,
+                                                "additionalItems": false
+                                            }
+                                        ]
+                                    },
+                                    "display_messages": {
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "tip": {
+                                                            "type": "integer"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "created_at": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "message",
+                                                        "tip",
+                                                        "status",
+                                                        "created_at"
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "minItems": 0,
+                                                "maxItems": 0,
+                                                "additionalItems": false
+                                            }
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "table_session",
+                                    "billing",
+                                    "orders",
+                                    "song_requests",
+                                    "display_messages"
+                                ]
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "table_session": {
+                                        "type": "null"
+                                    },
+                                    "billing": {
+                                        "type": "null"
+                                    },
+                                    "orders": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 0,
+                                        "maxItems": 0,
+                                        "additionalItems": false
+                                    },
+                                    "song_requests": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 0,
+                                        "maxItems": 0,
+                                        "additionalItems": false
+                                    },
+                                    "display_messages": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 0,
+                                        "maxItems": 0,
+                                        "additionalItems": false
+                                    }
+                                },
+                                "required": [
+                                    "table_session",
+                                    "billing",
+                                    "orders",
+                                    "song_requests",
+                                    "display_messages"
+                                ]
+                            }
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "booking_code",
+                    "booking_code_formatted",
+                    "booking_name",
+                    "reservation_date",
+                    "reservation_time",
+                    "status",
+                    "note",
+                    "down_payment_amount",
+                    "check_in_qr_code",
+                    "check_in_qr_expires_at",
+                    "created_at"
+                ],
+                "title": "BookingResource"
+            },
+            "CustomerKeepResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "item_name": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "type_label": {
+                        "type": "string"
+                    },
+                    "quantity": {
+                        "type": "number"
+                    },
+                    "unit": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "is_active_today": {
+                        "type": "string"
+                    },
+                    "stored_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "opened_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "item_name",
+                    "type",
+                    "type_label",
+                    "quantity",
+                    "unit",
+                    "status",
+                    "is_active_today",
+                    "stored_at",
+                    "opened_at"
+                ],
+                "title": "CustomerKeepResource"
+            },
+            "CustomerUserResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "total_visits": {
+                        "type": "integer"
+                    },
+                    "lifetime_spending": {
+                        "type": "number"
+                    },
+                    "points": {
+                        "type": "string"
+                    },
+                    "tier": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TierResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "total_visits",
+                    "lifetime_spending",
+                    "points"
+                ],
+                "title": "CustomerUserResource"
+            },
+            "DisplayMessageResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "tip": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "is_mine": {
+                        "type": "string"
+                    },
+                    "user": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "name": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "name"
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "message",
+                    "tip",
+                    "status",
+                    "is_mine",
+                    "user",
+                    "created_at"
+                ],
+                "title": "DisplayMessageResource"
+            },
+            "EventResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "image": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "start_date": {
+                        "type": "string"
+                    },
+                    "end_date": {
+                        "type": "string"
+                    },
+                    "start_time": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "end_time": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_today": {
+                        "type": "string"
+                    },
+                    "is_upcoming": {
+                        "type": "boolean"
+                    },
+                    "is_past": {
+                        "type": "boolean"
+                    },
+                    "is_multi_day": {
+                        "type": "boolean"
+                    },
+                    "price_adjustment_type": {
+                        "type": "string"
+                    },
+                    "price_adjustment_value": {
+                        "type": "number"
+                    },
+                    "price_adjustment_formatted": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "description",
+                    "image",
+                    "start_date",
+                    "end_date",
+                    "start_time",
+                    "end_time",
+                    "is_active",
+                    "is_today",
+                    "is_upcoming",
+                    "is_past",
+                    "is_multi_day",
+                    "price_adjustment_type",
+                    "price_adjustment_value",
+                    "price_adjustment_formatted"
+                ],
+                "title": "EventResource"
+            },
+            "LeaderboardResource": {
+                "type": "object",
+                "properties": {
+                    "rank": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "customer_user_id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "avatar": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "total_visits": {
+                        "type": "integer"
+                    },
+                    "lifetime_spending": {
+                        "type": "number"
+                    },
+                    "period_spending": {
+                        "type": "number"
+                    },
+                    "period_visits": {
+                        "type": "integer"
+                    },
+                    "points": {
+                        "type": "string"
+                    },
+                    "tier": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TierResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": [
+                    "rank",
+                    "customer_user_id",
+                    "name",
+                    "avatar",
+                    "total_visits",
+                    "lifetime_spending",
+                    "period_spending",
+                    "period_visits",
+                    "points"
+                ],
+                "title": "LeaderboardResource"
+            },
+            "LoginRequest": {
+                "type": "object",
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    },
+                    "password": {
+                        "type": "string"
+                    },
+                    "device_name": {
+                        "type": "string",
+                        "maxLength": 255
+                    }
+                },
+                "required": [
+                    "email",
+                    "password",
+                    "device_name"
+                ],
+                "title": "LoginRequest"
+            },
+            "ProfileResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "phone": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "birth_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "avatar": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "phone",
+                    "birth_date",
+                    "address",
+                    "avatar"
+                ],
+                "title": "ProfileResource"
+            },
+            "PromoResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "image": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "start_date": {
+                        "type": "string"
+                    },
+                    "end_date": {
+                        "type": "string"
+                    },
+                    "start_time": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "end_time": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_today": {
+                        "type": "string"
+                    },
+                    "is_upcoming": {
+                        "type": "boolean"
+                    },
+                    "is_past": {
+                        "type": "boolean"
+                    },
+                    "is_multi_day": {
+                        "type": "boolean"
+                    },
+                    "discount_type": {
+                        "type": "string"
+                    },
+                    "discount_value": {
+                        "type": "number"
+                    },
+                    "discount_formatted": {
+                        "type": "string"
+                    },
+                    "terms_conditions": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "description",
+                    "image",
+                    "start_date",
+                    "end_date",
+                    "start_time",
+                    "end_time",
+                    "is_active",
+                    "is_today",
+                    "is_upcoming",
+                    "is_past",
+                    "is_multi_day",
+                    "discount_type",
+                    "discount_value",
+                    "discount_formatted",
+                    "terms_conditions"
+                ],
+                "title": "PromoResource"
+            },
+            "QrisSettingResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "image_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "image_url",
+                    "is_active"
+                ],
+                "title": "QrisSettingResource"
+            },
+            "RedeemRewardRequest": {
+                "type": "object",
+                "properties": {
+                    "reward_id": {
+                        "type": "integer"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    }
+                },
+                "required": [
+                    "reward_id"
+                ],
+                "title": "RedeemRewardRequest"
+            },
+            "RegisterRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 255
+                    },
+                    "password": {
+                        "type": "string",
+                        "minLength": 8
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "birth_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    },
+                    "password_confirmation": {
+                        "type": "string",
+                        "minLength": 8
+                    }
+                },
+                "required": [
+                    "name",
+                    "email",
+                    "password",
+                    "phone",
+                    "password_confirmation"
+                ],
+                "title": "RegisterRequest"
+            },
+            "RewardRedemptionResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "points_spent": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "reward": {
+                        "$ref": "#/components/schemas/RewardResource"
+                    },
+                    "created_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "points_spent",
+                    "status",
+                    "notes",
+                    "created_at"
+                ],
+                "title": "RewardRedemptionResource"
+            },
+            "RewardResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "image": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "category": {
+                        "type": "string"
+                    },
+                    "category_label": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "points_required": {
+                        "type": "integer"
+                    },
+                    "stock": {
+                        "type": "integer"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_redeemable": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "image",
+                    "category",
+                    "category_label",
+                    "description",
+                    "points_required",
+                    "stock",
+                    "is_active",
+                    "is_redeemable"
+                ],
+                "title": "RewardResource"
+            },
+            "SongRequestResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "song_title": {
+                        "type": "string"
+                    },
+                    "artist": {
+                        "type": "string"
+                    },
+                    "tip": {
+                        "type": "number"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "is_mine": {
+                        "type": "string"
+                    },
+                    "user": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "name": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "name"
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "song_title",
+                    "artist",
+                    "tip",
+                    "status",
+                    "is_mine",
+                    "user",
+                    "created_at"
+                ],
+                "title": "SongRequestResource"
+            },
+            "StoreBookingRequest": {
+                "type": "object",
+                "properties": {
+                    "table_id": {
+                        "type": "integer"
+                    },
+                    "reservation_date": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "reservation_time": {
+                        "type": "string"
+                    },
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    },
+                    "down_payment_amount": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "minimum": 0
+                    }
+                },
+                "required": [
+                    "table_id",
+                    "reservation_date",
+                    "reservation_time"
+                ],
+                "title": "StoreBookingRequest"
+            },
+            "StoreDisplayMessageRequest": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "maxLength": 500
+                    },
+                    "tip": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    }
+                },
+                "required": [
+                    "message"
+                ],
+                "title": "StoreDisplayMessageRequest"
+            },
+            "StoreSongRequestRequest": {
+                "type": "object",
+                "properties": {
+                    "song_title": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "artist": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "tip": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "minimum": 0
+                    }
+                },
+                "required": [
+                    "song_title",
+                    "artist"
+                ],
+                "title": "StoreSongRequestRequest"
+            },
+            "TableResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "table_number": {
+                        "type": "string"
+                    },
+                    "capacity": {
+                        "type": "integer"
+                    },
+                    "minimum_charge": {
+                        "type": "number"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "area": {
+                        "$ref": "#/components/schemas/AreaResource"
+                    }
+                },
+                "required": [
+                    "id",
+                    "table_number",
+                    "capacity",
+                    "minimum_charge",
+                    "status"
+                ],
+                "title": "TableResource"
+            },
+            "TierResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "level": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "discount_percentage": {
+                        "type": "integer"
+                    },
+                    "minimum_spent": {
+                        "type": "integer"
+                    },
+                    "color": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "level",
+                    "name",
+                    "discount_percentage",
+                    "minimum_spent",
+                    "color"
+                ],
+                "title": "TierResource"
+            },
+            "UpdateProfileRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "birth_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    },
+                    "avatar": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "binary",
+                        "contentMediaType": "application/octet-stream",
+                        "description": "Maximum file size: 2048 kilobytes."
+                    }
+                },
+                "title": "UpdateProfileRequest"
+            },
+            "UserResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "email": {
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "profile": {
+                        "$ref": "#/components/schemas/ProfileResource"
+                    },
+                    "customer": {
+                        "$ref": "#/components/schemas/CustomerUserResource"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "email",
+                    "created_at"
+                ],
+                "title": "UserResource"
+            },
+            "WhatsappSettingResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "phone_number": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "phone_number",
+                    "description",
+                    "is_active"
+                ],
+                "title": "WhatsappSettingResource"
+            }
+        },
+        "responses": {
+            "ValidationException": {
+                "description": "Validation error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Errors overview."
+                                },
+                                "errors": {
+                                    "type": "object",
+                                    "description": "A detailed description of each field that failed validation.",
+                                    "additionalProperties": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            },
+                            "required": [
+                                "message",
+                                "errors"
+                            ]
+                        }
+                    }
+                }
+            },
+            "ModelNotFoundException": {
+                "description": "Not found",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            },
+            "AuthenticationException": {
+                "description": "Unauthenticated",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
