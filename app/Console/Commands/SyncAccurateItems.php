@@ -126,11 +126,6 @@ class SyncAccurateItems extends Command
             $page++;
         } while ($stocks->count() >= $pageSize);
 
-        Log::info('Accurate Stock Map fetched', [
-            'warehouse_name' => $this->targetWarehouseName(),
-            'total_items' => count($map),
-        ]);
-
         if ($map === []) {
             Log::error('Accurate Stock Map KOSONG — kemungkinan besar nama gudang salah di Pengaturan Umum. Stok lokal tidak akan ditimpa (proteksi mass-zero).', [
                 'warehouse_name' => $this->targetWarehouseName(),
@@ -161,8 +156,6 @@ class SyncAccurateItems extends Command
             ]);
 
             $items = $this->accurateService->getItems($request, $this->itemFields);
-
-            Log::info('items', ['items' => $items]);
 
             if ($items->isEmpty()) {
                 $paginationCompleted = true;

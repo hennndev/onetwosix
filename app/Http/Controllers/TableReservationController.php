@@ -1243,11 +1243,6 @@ class TableReservationController extends Controller
 
     public function reSyncAccurate(TableReservation $booking)
     {
-        Log::info('Re-sync Accurate triggered for booking', [
-            'booking_id' => $booking->id,
-            'user_id' => auth()->id(),
-        ]);
-
         $booking->loadMissing([
             'table.area',
             'tableSession.orders.items.inventoryItem',
@@ -1279,12 +1274,6 @@ class TableReservationController extends Controller
 
             return back()->with('error', $billing->error_message ?: 'Re-sync ke Accurate gagal. Silakan coba lagi.');
         }
-
-        Log::info('Re-sync Accurate successful', [
-            'booking_id' => $booking->id,
-            'so_number' => $billing->accurate_so_number,
-            'inv_number' => $billing->accurate_inv_number,
-        ]);
 
         return back()->with('success', 'Re-sync Accurate berhasil.');
     }
@@ -2720,18 +2709,6 @@ class TableReservationController extends Controller
             }
 
             $session->loadMissing(['table', 'customer', 'reservation', 'orders.items.inventoryItem']);
-
-            Log::info('Close billing auto receipt print selected printer', [
-                'table_session_id' => $session->id,
-                'billing_id' => $billing->id,
-                'area_id' => $areaId,
-                'selected_printer_id' => $printer->id,
-                'selected_printer_name' => $printer->name,
-                'selected_printer_type' => $printer->printer_type,
-                'selected_printer_location' => $printer->location,
-                'selected_printer_area_id' => $printer->area_id,
-                'connection_type' => $printer->connection_type,
-            ]);
 
             $this->printerService->printClosedBillingReceipt($billing, $session, $printer);
 

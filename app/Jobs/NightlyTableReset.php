@@ -71,11 +71,6 @@ class NightlyTableReset implements ShouldQueue
                 ->whereIn('status', ['reserved', 'occupied'])
                 ->whereNotIn('id', $activeTableIds)
                 ->update(['status' => 'available']);
-
-            Log::info('NightlyTableReset completed', [
-                'sessions_closed' => $activeSessions->count(),
-                'reset_at' => now()->toDateTimeString(),
-            ]);
         });
     }
 }

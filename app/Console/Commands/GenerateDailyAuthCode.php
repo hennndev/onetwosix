@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\DailyAuthCode;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class GenerateDailyAuthCode extends Command
 {
@@ -25,8 +24,6 @@ class GenerateDailyAuthCode extends Command
             'override_code' => null,
             'generated_at' => now(),
         ])->save();
-
-        Log::info('Daily auth code generated', ['date' => $today, 'code' => $newCode]);
 
         $this->info("Daily auth code for {$today}: {$newCode}");
 

@@ -151,8 +151,6 @@ class AccurateService
         try {
             $response = $this->dataClient()->get("/api/{$endpoint}/detail.do", ['id' => $id]);
 
-            Log::info('response', ['response' => $response->json(), 'endpoint' => $endpoint, 'id' => $id]);
-
             if ($response->failed()) {
                 return null;
             }
@@ -266,7 +264,6 @@ class AccurateService
 
             return $result;
         } catch (\Exception $e) {
-            Log::info('error', ['message' => $e->getMessage(), 'endpoint' => $endpoint, 'action' => $action, 'data' => $data]);
             throw new Exception('Accurate Error: '.$e->getMessage());
         }
     }
@@ -478,7 +475,6 @@ class AccurateService
                 $parsedUrl = parse_url($lastUrl);
                 $newHost = ($parsedUrl['scheme'] ?? 'https').'://'.$parsedUrl['host'];
                 $responseData['host'] = $newHost;
-                Log::info('Accurate host redirected and updated.', ['old_host' => session('accurate_database.host'), 'new_host' => $newHost]);
             }
 
             return $responseData;

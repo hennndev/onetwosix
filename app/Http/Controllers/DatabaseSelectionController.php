@@ -14,7 +14,6 @@ class DatabaseSelectionController extends Controller
   {
     try {
       $databases = $accurate->getDatabaseList();
-      Log::info('ACCURATE_DB_LIST_RESPONSE', $databases);
 
       if (count($databases) === 1) {
         // Memanggil method openDatabaseById untuk mendapatkan host dan session
