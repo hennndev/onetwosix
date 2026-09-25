@@ -29,88 +29,30 @@ class DashboardController extends Controller
             )->withHeaders(['X-Live' => '1']);
         }
 
-        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
-        // lastClose selalu dari timeline recap GLOBAL (siklus outlet-level)
+        // Kartu live "hari ini" mengikuti siklus area masing-masing; scope
+        // "Semua Area" = gabungan statistik live tiap area (bukan window
+        // timeline global yang tidak pernah maju lagi sejak end-day
+        // per-area — tanpa ini kartu Semua Area menghisap transaksi yang
+        // sudah ter-seal ke rekap area).
+        $liveTodayStats = $this->resolveLiveStatsForScope($selectedAreaId);
+        $revenueToday = $liveTodayStats['revenue'];
+        $transactionsToday = $liveTodayStats['transactions'];
+        $itemsSoldToday = $liveTodayStats['items'];
+
+        // Batas segel untuk guard tampilan agregat tetap dari timeline recap
+        // global (perilaku lama dipertahankan).
         $lastCloseAt = RecapHistory::query()
             ->whereNull('area_id')
             ->latest('created_at')
             ->value('created_at');
 
-        // --- Revenue & Transactions (paid billings today) ---
-        $todayBillings = Billing::query()
-            ->where('billing_status', 'paid')
-            ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
-                // Samakan semantik dengan DashboardSyncService: area_id billing
-                // ATAU area meja dari session-nya. Walk-in tidak punya session,
-                // jadi tanpa cabang area_id ia lenyap dari tampilan per-area.
-                $query->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)));
-            })
-            ->where(function ($query) {
-                $query->where('is_booking', true)
-                    ->orWhere('is_walk_in', true);
-            })
-            ->where(function ($query) use ($windowStart, $windowEnd) {
-                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd) {
-                    $paidAtQuery->whereNotNull('paid_at')
-                        ->where('paid_at', '>=', $windowStart)
-                        ->where('paid_at', '<', $windowEnd);
-                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd) {
-                    $fallbackQuery->whereNull('paid_at')
-                        ->where('updated_at', '>=', $windowStart)
-                        ->where('updated_at', '<', $windowEnd);
-                });
-            })
-            ->when($lastCloseAt, function ($query) use ($lastCloseAt) {
-                $query->where(function ($lastCloseQuery) use ($lastCloseAt) {
-                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt) {
-                        $paidAtQuery->whereNotNull('paid_at')
-                            ->where('paid_at', '>', $lastCloseAt);
-                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt) {
-                        $fallbackQuery->whereNull('paid_at')
-                            ->where('updated_at', '>', $lastCloseAt);
-                    });
-                });
-            });
-
-        $revenueToday = (clone $todayBillings)
-            ->where(function ($query) {
-                $query->whereNull('foc_comp_payment_method')
-                    ->orWhereNotIn('foc_comp_payment_method', ['FOC', 'Compliment']);
-            })
-            ->sum('grand_total');
-        $transactionsToday = (clone $todayBillings)->count();
-
-        // Items sold today (bar + kitchen orders)
-        $barItemsSold = BarOrderItem::whereHas(
-            'barOrder',
-            fn ($q) => $q->where('created_at', '>=', $windowStart)
-                ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
-                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
-        )->sum('quantity');
-
-        $kitchenItemsSold = KitchenOrderItem::whereHas(
-            'kitchenOrder',
-            fn ($q) => $q->where('created_at', '>=', $windowStart)
-                ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
-                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
-        )->sum('quantity');
-
-        $itemsSoldToday = $barItemsSold + $kitchenItemsSold;
-
         // --- Bookings ---
         $bookingPending = TableReservation::where('status', 'pending')->count();
         $bookingConfirmed = TableReservation::where('status', 'confirmed')->count();
+        [$bookingWindowStart, $bookingWindowEnd] = $this->resolveBookingWindowForScope($selectedAreaId);
         $bookingCompleted = TableReservation::where('status', 'completed')
-            ->where('updated_at', '>=', $windowStart)
-            ->where('updated_at', '<', $windowEnd)
+            ->where('updated_at', '>=', $bookingWindowStart)
+            ->where('updated_at', '<', $bookingWindowEnd)
             ->count();
 
         // --- Tables ---
@@ -202,70 +144,16 @@ class DashboardController extends Controller
 
     private function liveStats(?int $selectedAreaId): array
     {
-        [$windowStart, $windowEnd] = \App\Models\RecapHistory::resolveActiveWindow($selectedAreaId);
-        // lastClose selalu dari timeline recap GLOBAL (siklus outlet-level)
+        $liveTodayStats = $this->resolveLiveStatsForScope($selectedAreaId);
+        $transactionsToday = $liveTodayStats['transactions'];
+        $itemsSoldToday = $liveTodayStats['items'];
+
+        // Batas segel untuk guard tampilan agregat tetap dari timeline recap
+        // global (perilaku lama dipertahankan).
         $lastCloseAt = RecapHistory::query()
             ->whereNull('area_id')
             ->latest('created_at')
             ->value('created_at');
-
-        $todayBillings = Billing::query()
-            ->where('billing_status', 'paid')
-            ->when($selectedAreaId, function ($query) use ($selectedAreaId) {
-                // Samakan semantik dengan DashboardSyncService: area_id billing
-                // ATAU area meja dari session-nya. Walk-in tidak punya session,
-                // jadi tanpa cabang area_id ia lenyap dari tampilan per-area.
-                $query->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId)));
-            })
-            ->where(function ($query) {
-                $query->where('is_booking', true)->orWhere('is_walk_in', true);
-            })
-            ->where(function ($query) use ($windowStart, $windowEnd) {
-                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd) {
-                    $paidAtQuery->whereNotNull('paid_at')
-                        ->where('paid_at', '>=', $windowStart)
-                        ->where('paid_at', '<', $windowEnd);
-                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd) {
-                    $fallbackQuery->whereNull('paid_at')
-                        ->where('updated_at', '>=', $windowStart)
-                        ->where('updated_at', '<', $windowEnd);
-                });
-            })
-            ->when($lastCloseAt, function ($query) use ($lastCloseAt) {
-                $query->where(function ($lastCloseQuery) use ($lastCloseAt) {
-                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt) {
-                        $paidAtQuery->whereNotNull('paid_at')->where('paid_at', '>', $lastCloseAt);
-                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt) {
-                        $fallbackQuery->whereNull('paid_at')->where('updated_at', '>', $lastCloseAt);
-                    });
-                });
-            });
-
-        $transactionsToday = (clone $todayBillings)->count();
-
-        $barItemsSold = BarOrderItem::whereHas(
-            'barOrder',
-            fn ($q) => $q->where('created_at', '>=', $windowStart)
-                ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
-                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
-        )->sum('quantity');
-
-        $kitchenItemsSold = KitchenOrderItem::whereHas(
-            'kitchenOrder',
-            fn ($q) => $q->where('created_at', '>=', $windowStart)
-                ->where('created_at', '<', $windowEnd)
-                ->when($selectedAreaId, fn ($inner) => $inner->where(fn ($sub) => $sub
-                    ->where('area_id', $selectedAreaId)
-                    ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $selectedAreaId))))
-                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
-        )->sum('quantity');
-
-        $itemsSoldToday = $barItemsSold + $kitchenItemsSold;
 
         $bookingPending = TableReservation::where('status', 'pending')->count();
         $bookingConfirmed = TableReservation::where('status', 'confirmed')->count();
@@ -296,6 +184,144 @@ class DashboardController extends Controller
             'dashboardGrossSales',
             'dashboardNetSales'
         );
+    }
+
+    /**
+     * Statistik live "hari ini" untuk satu area: revenue (non FOC/Compliment),
+     * jumlah transaksi, dan item keluar (bar + kitchen).
+     *
+     * Window dan batas seal diambil dari siklus AREA ITU SENDIRI (rekap area
+     * sendiri ATAU rekap global, terbaru menang) — semantik sama dengan
+     * DashboardSyncService::sync. Timeline global saja tidak dipakai lagi
+     * karena end-day kini hanya per-area, sehingga timeline global tidak
+     * pernah maju dan kartu Semua Area akan menghisap transaksi ter-seal.
+     *
+     * @return array{revenue: float, transactions: int, items: int}
+     */
+    private function resolveLiveTodayStats(?int $areaId): array
+    {
+        [$windowStart, $windowEnd] = RecapHistory::resolveActiveWindow($areaId);
+        $lastCloseAt = RecapHistory::resolveLatestCycleRecap($areaId)?->created_at?->timezone('Asia/Jakarta');
+
+        $todayBillings = Billing::query()
+            ->where('billing_status', 'paid')
+            ->when($areaId, fn ($query) => $query->where(fn ($sub) => $sub
+                ->where('area_id', $areaId)
+                ->orWhereHas('tableSession.table', fn ($t) => $t->where('area_id', $areaId))))
+            ->where(fn ($query) => $query->where('is_booking', true)->orWhere('is_walk_in', true))
+            ->where(function ($query) use ($windowStart, $windowEnd) {
+                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd) {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->where('paid_at', '>=', $windowStart)
+                        ->where('paid_at', '<', $windowEnd);
+                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd) {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->where('updated_at', '>=', $windowStart)
+                        ->where('updated_at', '<', $windowEnd);
+                });
+            })
+            ->when($lastCloseAt, function ($query) use ($lastCloseAt) {
+                $query->where(function ($lastCloseQuery) use ($lastCloseAt) {
+                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt) {
+                        $paidAtQuery->whereNotNull('paid_at')->where('paid_at', '>', $lastCloseAt);
+                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt) {
+                        $fallbackQuery->whereNull('paid_at')->where('updated_at', '>', $lastCloseAt);
+                    });
+                });
+            });
+
+        $revenueToday = (float) (clone $todayBillings)
+            ->where(fn ($query) => $query->whereNull('foc_comp_payment_method')
+                ->orWhereNotIn('foc_comp_payment_method', ['FOC', 'Compliment']))
+            ->sum('grand_total');
+
+        $areaFilter = fn ($query) => $query->where(fn ($sub) => $sub
+            ->where('area_id', $areaId)
+            ->orWhereHas('order.tableSession.table', fn ($t) => $t->where('area_id', $areaId)));
+
+        $itemsSoldToday = BarOrderItem::whereHas(
+            'barOrder',
+            fn ($q) => $q->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<', $windowEnd)
+                ->when($areaId, $areaFilter)
+                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
+        )->sum('quantity')
+            + KitchenOrderItem::whereHas(
+                'kitchenOrder',
+                fn ($q) => $q->where('created_at', '>=', $windowStart)
+                    ->where('created_at', '<', $windowEnd)
+                    ->when($areaId, $areaFilter)
+                    ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
+            )->sum('quantity');
+
+        return [
+            'revenue' => $revenueToday,
+            'transactions' => (int) (clone $todayBillings)->count(),
+            'items' => (int) $itemsSoldToday,
+        ];
+    }
+
+    /**
+     * Statistik live untuk scope yang dipilih. Scope "Semua Area" (null) =
+     * gabungan statistik live tiap area aktif — konsisten dengan arsitektur
+     * "Semua Area = hasil merging area-area".
+     *
+     * @return array{revenue: float, transactions: int, items: int}
+     */
+    private function resolveLiveStatsForScope(?int $areaId): array
+    {
+        if ($areaId !== null) {
+            return $this->resolveLiveTodayStats($areaId);
+        }
+
+        $areas = \App\Models\Area::query()->where('is_active', true)->get();
+
+        if ($areas->isEmpty()) {
+            return $this->resolveLiveTodayStats(null);
+        }
+
+        $totals = ['revenue' => 0.0, 'transactions' => 0, 'items' => 0];
+
+        foreach ($areas as $area) {
+            $stats = $this->resolveLiveTodayStats($area->id);
+            $totals['revenue'] += $stats['revenue'];
+            $totals['transactions'] += $stats['transactions'];
+            $totals['items'] += $stats['items'];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Window untuk hitungan booking selesai. Scope per-area memakai siklus
+     * areanya; scope "Semua Area" memakai union window semua area aktif
+     * (min start, max end) — query booking tidak difilter area, jadi window
+     * digabung alih-alih dijumlah agar tidak dobel-hitung.
+     *
+     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
+     */
+    private function resolveBookingWindowForScope(?int $areaId): array
+    {
+        if ($areaId !== null) {
+            return RecapHistory::resolveActiveWindow($areaId);
+        }
+
+        $areas = \App\Models\Area::query()->where('is_active', true)->get();
+
+        if ($areas->isEmpty()) {
+            return RecapHistory::resolveActiveWindow(null);
+        }
+
+        $startAt = null;
+        $endAt = null;
+
+        foreach ($areas as $area) {
+            [$areaStart, $areaEnd] = RecapHistory::resolveActiveWindow($area->id);
+            $startAt = $startAt === null || $areaStart->lt($startAt) ? $areaStart : $startAt;
+            $endAt = $endAt === null || $areaEnd->gt($endAt) ? $areaEnd : $endAt;
+        }
+
+        return [$startAt, $endAt];
     }
 
     /**
