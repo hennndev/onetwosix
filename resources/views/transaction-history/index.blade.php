@@ -116,7 +116,7 @@
 
       <!-- Realtime order list (polled) -->
       @php
-        $txListQuery = request()->only(['area_id', 'transaction_mode', 'date_from', 'date_to', 'search', 'per_page']);
+        $txListQuery = request()->only(['area_id', 'transaction_mode', 'date_from', 'date_to', 'search', 'per_page', 'page']);
       @endphp
       <div id="txListWrap">
         <div class="overflow-x-auto">
