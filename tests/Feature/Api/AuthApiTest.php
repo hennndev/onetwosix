@@ -1,10 +1,36 @@
 <?php
 
+use App\Models\AuthOtpChallenge;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\Tier;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\FirebaseFcmService;
+use App\Services\FonnteService;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+
+beforeEach(function () {
+    GeneralSetting::instance()->update(['fonnte_token' => 'test-fonnte-token']);
+
+    Http::fake([
+        'api.fonnte.com/*' => Http::response(['status' => true]),
+        '*' => Http::response(['r' => []]),
+    ]);
+});
+
+function latestAuthOtp(): string
+{
+    $record = Http::recorded(function ($request) {
+        return $request->url() === 'https://api.fonnte.com/send';
+    })->last();
+
+    expect($record)->not->toBeNull();
+    preg_match('/\*(\d{6})\*/', (string) $record[0]['message'], $matches);
+
+    return $matches[1];
+}
 
 function createCustomerUser(array $overrides = []): User
 {
@@ -29,7 +55,7 @@ function createCustomerUser(array $overrides = []): User
 }
 
 it('registers a new customer', function () {
-    $response = $this->postJson('/api/v1/register', [
+    $requestOtp = $this->postJson('/api/v1/register', [
         'name' => 'John Doe',
         'email' => 'john@example.com',
         'password' => 'password123',
@@ -38,7 +64,20 @@ it('registers a new customer', function () {
         'device_name' => 'iPhone 15',
     ]);
 
-    $response->assertStatus(201)
+    $requestOtp->assertStatus(202)
+        ->assertJsonStructure([
+            'error',
+            'message',
+            'data' => ['challenge_id', 'expires_at'],
+        ]);
+    $this->assertDatabaseMissing('users', ['email' => 'john@example.com']);
+
+    $response = $this->postJson('/api/v1/register/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+    ]);
+
+    $response->assertCreated()
         ->assertJsonStructure([
             'error',
             'message',
@@ -63,7 +102,7 @@ it('assigns first tier on registration', function () {
         'color' => 'amber',
     ]);
 
-    $response = $this->postJson('/api/v1/register', [
+    $requestOtp = $this->postJson('/api/v1/register', [
         'name' => 'John Doe',
         'email' => 'john@example.com',
         'password' => 'password123',
@@ -71,7 +110,12 @@ it('assigns first tier on registration', function () {
         'phone' => '081234567890',
     ]);
 
-    $response->assertStatus(201);
+    $response = $this->postJson('/api/v1/register/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+    ]);
+
+    $response->assertCreated();
 
     $this->assertDatabaseHas('customer_users', [
         'user_id' => $response->json('data.user.id'),
@@ -104,10 +148,18 @@ it('rejects duplicate email on registration', function () {
 it('logs in a customer', function () {
     createCustomerUser(['email' => 'login@test.com']);
 
-    $response = $this->postJson('/api/v1/login', [
+    $requestOtp = $this->postJson('/api/v1/login', [
         'email' => 'login@test.com',
         'password' => 'password',
         'device_name' => 'iPhone 15',
+    ]);
+
+    $requestOtp->assertStatus(202)
+        ->assertJsonMissingPath('data.token');
+
+    $response = $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
     ]);
 
     $response->assertSuccessful()
@@ -202,14 +254,125 @@ it('rejects unauthenticated /me request', function () {
 it('logs in a customer using phone number', function () {
     createCustomerUser(['email' => 'phone-login@test.com']);
 
-    $response = $this->postJson('/api/v1/login', [
+    $requestOtp = $this->postJson('/api/v1/login', [
         'email' => '08123456789',
         'password' => 'password',
         'device_name' => 'iPhone 15',
     ]);
 
+    $response = $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+    ]);
+
     $response->assertSuccessful()
-        ->assertJsonPath('message', 'Login berhasil.');
+        ->assertJsonPath('message', 'Login dan verifikasi OTP berhasil.');
+});
+
+it('rejects an invalid otp and allows the valid otp afterward', function () {
+    createCustomerUser(['email' => 'otp@test.com']);
+
+    $requestOtp = $this->postJson('/api/v1/login', [
+        'email' => 'otp@test.com',
+        'password' => 'password',
+        'device_name' => 'Android',
+    ]);
+    $validOtp = latestAuthOtp();
+
+    $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => $validOtp === '000000' ? '111111' : '000000',
+    ])->assertUnprocessable();
+
+    $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => $validOtp,
+    ])->assertSuccessful();
+});
+
+it('prevents an otp from being reused', function () {
+    createCustomerUser(['email' => 'reuse@test.com']);
+
+    $requestOtp = $this->postJson('/api/v1/login', [
+        'email' => 'reuse@test.com',
+        'password' => 'password',
+        'device_name' => 'Android',
+    ]);
+    $payload = [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+    ];
+
+    $this->postJson('/api/v1/login/verify-otp', $payload)->assertSuccessful();
+    $this->postJson('/api/v1/login/verify-otp', $payload)
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Kode OTP sudah pernah digunakan.');
+});
+
+it('rejects an expired otp', function () {
+    createCustomerUser(['email' => 'expired@test.com']);
+
+    $requestOtp = $this->postJson('/api/v1/login', [
+        'email' => 'expired@test.com',
+        'password' => 'password',
+        'device_name' => 'Android',
+    ]);
+
+    AuthOtpChallenge::query()
+        ->findOrFail($requestOtp->json('data.challenge_id'))
+        ->update(['expires_at' => now()->subSecond()]);
+
+    $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'Kode OTP sudah kedaluwarsa.');
+});
+
+it('does not leave a challenge when whatsapp delivery fails', function () {
+    createCustomerUser(['email' => 'delivery@test.com']);
+    $this->mock(FonnteService::class, function ($mock): void {
+        $mock->shouldReceive('sendAuthenticationOtp')->once()->andReturnFalse();
+    });
+
+    $this->postJson('/api/v1/login', [
+        'email' => 'delivery@test.com',
+        'password' => 'password',
+        'device_name' => 'Android',
+    ])->assertStatus(503);
+
+    $this->assertDatabaseCount('auth_otp_challenges', 0);
+});
+
+it('resets password with an otp and revokes existing tokens', function () {
+    $user = createCustomerUser(['email' => 'reset@test.com']);
+    $user->createToken('old-device');
+
+    $requestOtp = $this->postJson('/api/v1/forgot-password', [
+        'email' => 'reset@test.com',
+    ]);
+
+    $this->postJson('/api/v1/reset-password', [
+        'challenge_id' => $requestOtp->json('data.challenge_id'),
+        'otp' => latestAuthOtp(),
+        'password' => 'new-password-123',
+        'password_confirmation' => 'new-password-123',
+    ])->assertSuccessful();
+
+    expect(Hash::check('new-password-123', $user->fresh()->password))->toBeTrue();
+    $this->assertDatabaseCount('personal_access_tokens', 0);
+});
+
+it('does not reveal whether a password reset account exists', function () {
+    $response = $this->postJson('/api/v1/forgot-password', [
+        'email' => 'missing@test.com',
+    ]);
+
+    $response->assertStatus(202)
+        ->assertJsonStructure(['data' => ['challenge_id']])
+        ->assertJsonPath('message', 'Jika akun ditemukan, kode OTP reset password telah dikirim ke WhatsApp.');
+
+    Http::assertNothingSent();
 });
 
 it('rejects login with wrong password using phone number', function () {

@@ -43,4 +43,8 @@ return [
         'api_key' => env('YOUTUBE_API_KEY'),
     ],
 
+    'fonnte' => [
+        'token' => env('FONNTE_TOKEN'),
+    ],
+
 ];

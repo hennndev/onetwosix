@@ -336,6 +336,27 @@
   @push('scripts')
     <script>
       const events = @json($events);
+      const eventImageBaseUrl = @json(asset('storage'));
+      let eventImageObjectUrl = null;
+
+      function setEventImagePreview(source = '') {
+        const frame = document.getElementById('eventImagePreviewFrame');
+        const preview = document.getElementById('eventImagePreview');
+
+        if (eventImageObjectUrl) {
+          URL.revokeObjectURL(eventImageObjectUrl);
+          eventImageObjectUrl = null;
+        }
+
+        if (!source) {
+          preview.removeAttribute('src');
+          frame.classList.add('hidden');
+          return;
+        }
+
+        preview.src = source;
+        frame.classList.remove('hidden');
+      }
 
       function formatRupiahValue(value) {
         const numericValue = Number(String(value || '').replace(/[^\d]/g, ''));
@@ -438,6 +459,7 @@
           formMethod.value = 'POST';
           form.reset();
           document.getElementById('area_id').value = '';
+          setEventImagePreview();
           updatePriceLabel();
         } else if (mode === 'edit' && eventId) {
           const event = events.find(e => e.id === eventId);
@@ -449,6 +471,8 @@
             document.getElementById('area_id').value = event.area_id || '';
             document.getElementById('name').value = event.name;
             document.getElementById('description').value = event.description || '';
+            document.getElementById('image').value = '';
+            setEventImagePreview(event.image ? `${eventImageBaseUrl}/${event.image}` : '');
             document.getElementById('start_date').value = event.start_date;
             document.getElementById('end_date').value = event.end_date;
             document.getElementById('start_time').value = event.start_time || '';
@@ -524,6 +548,19 @@
 
       document.getElementById('price_adjustment_value').addEventListener('input', function() {
         updatePriceInputDisplay();
+      });
+
+      document.getElementById('image').addEventListener('change', function() {
+        const [file] = this.files;
+
+        if (!file) {
+          setEventImagePreview();
+          return;
+        }
+
+        eventImageObjectUrl = URL.createObjectURL(file);
+        document.getElementById('eventImagePreview').src = eventImageObjectUrl;
+        document.getElementById('eventImagePreviewFrame').classList.remove('hidden');
       });
 
       document.getElementById('eventForm').addEventListener('submit', function() {

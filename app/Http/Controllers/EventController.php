@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Events\SaveEvent;
+use App\Http\Requests\SaveEventRequest;
 use App\Models\Area;
 use App\Models\Event;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EventController extends Controller
@@ -72,30 +75,14 @@ class EventController extends Controller
         ));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(SaveEventRequest $request, SaveEvent $saveEvent): RedirectResponse
     {
-        $request->merge([
-            'is_active' => $request->boolean('is_active'),
-            'area_id' => $request->filled('area_id') ? (int) $request->input('area_id') : null,
-        ]);
-
-        $validated = $request->validate([
-            'area_id' => 'nullable|exists:areas,id',
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'start_time' => 'nullable',
-            'end_time' => 'nullable',
-            'is_active' => 'required|boolean',
-            'price_adjustment_type' => 'required|in:percentage,fixed',
-            'price_adjustment_value' => 'required|numeric|min:0',
-        ]);
+        $validated = $request->validated();
 
         try {
             $validated['slug'] = Str::slug($validated['name']);
 
-            Event::create($validated);
+            $saveEvent->handle($validated);
 
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil ditambahkan');
@@ -105,30 +92,14 @@ class EventController extends Controller
         }
     }
 
-    public function update(Request $request, Event $event): RedirectResponse
+    public function update(SaveEventRequest $request, Event $event, SaveEvent $saveEvent): RedirectResponse
     {
-        $request->merge([
-            'is_active' => $request->boolean('is_active'),
-            'area_id' => $request->filled('area_id') ? (int) $request->input('area_id') : null,
-        ]);
-
-        $validated = $request->validate([
-            'area_id' => 'nullable|exists:areas,id',
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'start_time' => 'nullable',
-            'end_time' => 'nullable',
-            'is_active' => 'required|boolean',
-            'price_adjustment_type' => 'required|in:percentage,fixed',
-            'price_adjustment_value' => 'required|numeric|min:0',
-        ]);
+        $validated = $request->validated();
 
         try {
             $validated['slug'] = Str::slug($validated['name']);
 
-            $event->update($validated);
+            $saveEvent->handle($validated, $event);
 
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil diupdate');
@@ -138,10 +109,15 @@ class EventController extends Controller
         }
     }
 
-    public function destroy(Event $event)
+    public function destroy(Event $event): RedirectResponse
     {
         try {
+            $imagePath = $event->image;
             $event->delete();
+
+            if ($imagePath) {
+                Storage::disk('public')->delete($imagePath);
+            }
 
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil dihapus');
@@ -150,7 +126,7 @@ class EventController extends Controller
         }
     }
 
-    public function toggleStatus(Event $event)
+    public function toggleStatus(Event $event): RedirectResponse
     {
         try {
             $event->update(['is_active' => ! $event->is_active]);

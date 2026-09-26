@@ -8,6 +8,7 @@
     <form id="eventForm"
           method="POST"
           action="{{ route('admin.events.store') }}"
+          enctype="multipart/form-data"
           class="p-6">
       @csrf
       <input type="hidden"
@@ -48,6 +49,29 @@
                     rows="3"
                     placeholder="Deskripsi event..."
                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"></textarea>
+        </div>
+
+        <!-- Event Image -->
+        <div>
+          <label for="image"
+                 class="block text-sm font-medium text-gray-700 mb-2">Gambar Event</label>
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-4 items-start">
+            <div>
+              <input type="file"
+                     name="image"
+                     id="image"
+                     accept="image/jpeg,image/png,image/webp"
+                     class="block w-full text-sm text-gray-600 border border-gray-300 rounded-lg file:mr-4 file:py-2 file:px-4 file:border-0 file:bg-slate-100 file:text-slate-700 file:font-medium hover:file:bg-slate-200">
+              <p class="mt-2 text-xs text-gray-500">JPG, PNG, atau WebP. Maksimal 2 MB.</p>
+            </div>
+            <div id="eventImagePreviewFrame"
+                 class="hidden overflow-hidden rounded-lg border border-gray-200 bg-slate-50 aspect-video">
+              <img id="eventImagePreview"
+                   src=""
+                   alt="Preview gambar event"
+                   class="h-full w-full object-cover">
+            </div>
+          </div>
         </div>
 
         <!-- Date Range -->
