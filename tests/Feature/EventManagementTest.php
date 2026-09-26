@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Event;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 use function Pest\Laravel\actingAs;
 
@@ -37,7 +39,9 @@ test('events index shows newly created upcoming event', function () {
         ->get(route('admin.events.index'))
         ->assertSuccessful()
         ->assertSee('Upcoming Event Test')
-        ->assertSee('Past Event Test');
+        ->assertSee('Past Event Test')
+        ->assertSee('enctype="multipart/form-data"', false)
+        ->assertSee('name="image"', false);
 });
 
 test('event store accepts checkbox is_active value and creates active event', function () {
@@ -169,4 +173,132 @@ test('events index filters events by area_id', function () {
         ->get(route('admin.events.index', ['area_id' => $areaA->id]))
         ->assertOk()
         ->assertViewHas('events', fn ($events) => $events->contains('id', $globalEvent->id) && $events->contains('id', $eventA->id) && ! $events->contains('id', $eventB->id));
+});
+
+test('event can be created with an image', function () {
+    Storage::fake('public');
+    $admin = adminUser();
+
+    actingAs($admin)
+        ->post(route('admin.events.store'), [
+            'name' => 'Event With Image',
+            'description' => 'Event dengan poster',
+            'image' => UploadedFile::fake()->image('event-poster.jpg', 1200, 675),
+            'start_date' => now()->addDay()->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'is_active' => 'on',
+            'price_adjustment_type' => 'fixed',
+            'price_adjustment_value' => 50000,
+        ])
+        ->assertRedirect(route('admin.events.index'));
+
+    $event = Event::query()->where('name', 'Event With Image')->firstOrFail();
+
+    expect($event->image)->toStartWith('events/');
+    Storage::disk('public')->assertExists($event->image);
+});
+
+test('replacing an event image removes the old image', function () {
+    Storage::fake('public');
+    $admin = adminUser();
+    $oldImagePath = UploadedFile::fake()->image('old-event.jpg')->store('events', 'public');
+    $event = Event::create([
+        'name' => 'Replace Event Image',
+        'slug' => 'replace-event-image',
+        'image' => $oldImagePath,
+        'start_date' => now()->addDay()->toDateString(),
+        'end_date' => now()->addDays(2)->toDateString(),
+        'is_active' => true,
+        'price_adjustment_type' => 'fixed',
+        'price_adjustment_value' => 50000,
+    ]);
+
+    actingAs($admin)
+        ->put(route('admin.events.update', $event), [
+            'name' => $event->name,
+            'image' => UploadedFile::fake()->image('new-event.png', 1200, 675),
+            'start_date' => $event->start_date->toDateString(),
+            'end_date' => $event->end_date->toDateString(),
+            'is_active' => 'on',
+            'price_adjustment_type' => 'fixed',
+            'price_adjustment_value' => 50000,
+        ])
+        ->assertRedirect(route('admin.events.index'));
+
+    $newImagePath = $event->fresh()->image;
+
+    expect($newImagePath)->not->toBe($oldImagePath);
+    Storage::disk('public')->assertMissing($oldImagePath);
+    Storage::disk('public')->assertExists($newImagePath);
+});
+
+test('updating an event without a new image keeps the current image', function () {
+    Storage::fake('public');
+    $admin = adminUser();
+    $imagePath = UploadedFile::fake()->image('current-event.jpg')->store('events', 'public');
+    $event = Event::create([
+        'name' => 'Keep Event Image',
+        'slug' => 'keep-event-image',
+        'image' => $imagePath,
+        'start_date' => now()->addDay()->toDateString(),
+        'end_date' => now()->addDays(2)->toDateString(),
+        'is_active' => true,
+        'price_adjustment_type' => 'percentage',
+        'price_adjustment_value' => 10,
+    ]);
+
+    actingAs($admin)
+        ->put(route('admin.events.update', $event), [
+            'name' => 'Keep Event Image Updated',
+            'start_date' => $event->start_date->toDateString(),
+            'end_date' => $event->end_date->toDateString(),
+            'is_active' => 'on',
+            'price_adjustment_type' => 'percentage',
+            'price_adjustment_value' => 15,
+        ])
+        ->assertRedirect(route('admin.events.index'));
+
+    expect($event->fresh()->image)->toBe($imagePath);
+    Storage::disk('public')->assertExists($imagePath);
+});
+
+test('deleting an event removes its image', function () {
+    Storage::fake('public');
+    $admin = adminUser();
+    $imagePath = UploadedFile::fake()->image('deleted-event.jpg')->store('events', 'public');
+    $event = Event::create([
+        'name' => 'Delete Event Image',
+        'slug' => 'delete-event-image',
+        'image' => $imagePath,
+        'start_date' => now()->addDay()->toDateString(),
+        'end_date' => now()->addDays(2)->toDateString(),
+        'is_active' => true,
+        'price_adjustment_type' => 'fixed',
+        'price_adjustment_value' => 50000,
+    ]);
+
+    actingAs($admin)
+        ->delete(route('admin.events.destroy', $event))
+        ->assertRedirect(route('admin.events.index'));
+
+    Storage::disk('public')->assertMissing($imagePath);
+    $this->assertModelMissing($event);
+});
+
+test('event rejects a non-image upload', function () {
+    Storage::fake('public');
+
+    actingAs(adminUser())
+        ->post(route('admin.events.store'), [
+            'name' => 'Invalid Event Image',
+            'image' => UploadedFile::fake()->create('event.svg', 100, 'image/svg+xml'),
+            'start_date' => now()->addDay()->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'is_active' => 'on',
+            'price_adjustment_type' => 'fixed',
+            'price_adjustment_value' => 50000,
+        ])
+        ->assertSessionHasErrors('image');
+
+    expect(Event::query()->where('name', 'Invalid Event Image')->exists())->toBeFalse();
 });

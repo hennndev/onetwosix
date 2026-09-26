@@ -25,8 +25,16 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
 
     // === Auth (Public) ===
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::middleware('throttle:5,1')->group(function () {
+        Route::post('/register', [AuthController::class, 'register']);
+        Route::post('/login', [AuthController::class, 'login']);
+        Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    });
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/register/verify-otp', [AuthController::class, 'verifyRegistration']);
+        Route::post('/login/verify-otp', [AuthController::class, 'verifyLogin']);
+        Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    });
 
     // === Public ===
     Route::get('/events', [EventController::class, 'index']);

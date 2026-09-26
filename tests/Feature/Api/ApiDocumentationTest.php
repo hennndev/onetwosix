@@ -12,7 +12,11 @@ it('publishes complete OpenAPI documentation for the mobile API', function () {
         ->assertJsonStructure([
             'paths' => [
                 '/v1/register' => ['post'],
+                '/v1/register/verify-otp' => ['post'],
                 '/v1/login' => ['post'],
+                '/v1/login/verify-otp' => ['post'],
+                '/v1/forgot-password' => ['post'],
+                '/v1/reset-password' => ['post'],
                 '/v1/me' => ['get'],
                 '/v1/bookings' => ['get', 'post'],
                 '/v1/events' => ['get'],
@@ -23,5 +27,5 @@ it('publishes complete OpenAPI documentation for the mobile API', function () {
             ],
         ]);
 
-    expect($response->json('paths'))->toHaveCount(31);
+    expect($response->json('paths'))->toHaveCount(35);
 });

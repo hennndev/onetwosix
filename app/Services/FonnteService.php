@@ -10,8 +10,22 @@ class FonnteService
 {
     public function sendOtp(string $targetPhone, string $otpCode, string $requestedBy): bool
     {
+        return $this->send($targetPhone, $otpCode, $requestedBy, 'otorisasi POS');
+    }
+
+    public function sendAuthenticationOtp(
+        string $targetPhone,
+        string $otpCode,
+        string $requestedBy,
+        string $purpose,
+    ): bool {
+        return $this->send($targetPhone, $otpCode, $requestedBy, $purpose);
+    }
+
+    private function send(string $targetPhone, string $otpCode, string $requestedBy, string $purpose): bool
+    {
         $settings = GeneralSetting::instance();
-        $token = env('FONNTE_TOKEN') ?: $settings->fonnte_token;
+        $token = config('services.fonnte.token') ?: $settings->fonnte_token;
 
         if (empty($token) || empty($targetPhone)) {
             Log::warning('Fonnte sendOtp skipped: token or target phone is missing.', [
@@ -22,19 +36,23 @@ class FonnteService
             return false;
         }
 
-        $message = "🔑 *KODE OTP OTORISASI POS 126 CLUB*\n\n".
+        $message = "🔑 *KODE OTP 126 CLUB*\n\n".
                    "Kode OTP Anda: *{$otpCode}*\n\n".
+                   "• Keperluan: {$purpose}\n".
                    "• Diminta oleh: {$requestedBy}\n".
                    '• Waktu: '.now()->format('d M Y H:i:s')."\n\n".
                    '_Harap rahasiakan kode ini dari siapapun._';
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => $token,
-            ])->post('https://api.fonnte.com/send', [
-                'target' => $targetPhone,
-                'message' => $message,
-            ]);
+            $response = Http::connectTimeout(5)
+                ->timeout(10)
+                ->retry([200, 500], throw: false)
+                ->withHeaders([
+                    'Authorization' => $token,
+                ])->post('https://api.fonnte.com/send', [
+                    'target' => $targetPhone,
+                    'message' => $message,
+                ]);
 
             $data = $response->json();
 

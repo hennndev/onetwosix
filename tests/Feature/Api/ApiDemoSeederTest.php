@@ -11,6 +11,7 @@ use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\WhatsappSetting;
+use App\Services\FonnteService;
 use Database\Seeders\ApiDemoSeeder;
 
 it('creates complete API demo data idempotently', function () {
@@ -37,10 +38,28 @@ it('creates complete API demo data idempotently', function () {
 it('provides working credentials and populated API responses', function () {
     $this->seed(ApiDemoSeeder::class);
 
-    $login = $this->postJson('/api/v1/login', [
+    $otp = null;
+    $this->mock(FonnteService::class, function ($mock) use (&$otp): void {
+        $mock->shouldReceive('sendAuthenticationOtp')
+            ->once()
+            ->andReturnUsing(function (string $targetPhone, string $otpCode) use (&$otp): bool {
+                $otp = $otpCode;
+
+                return true;
+            });
+    });
+
+    $loginChallenge = $this->postJson('/api/v1/login', [
         'email' => ApiDemoSeeder::CUSTOMER_EMAIL,
         'password' => ApiDemoSeeder::CUSTOMER_PASSWORD,
         'device_name' => 'Pest API Demo',
+    ]);
+
+    $loginChallenge->assertStatus(202);
+
+    $login = $this->postJson('/api/v1/login/verify-otp', [
+        'challenge_id' => $loginChallenge->json('data.challenge_id'),
+        'otp' => $otp,
     ]);
 
     $login->assertSuccessful()
