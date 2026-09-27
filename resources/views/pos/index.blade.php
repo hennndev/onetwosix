@@ -328,9 +328,11 @@
             return serverDisabled;
           },
 
-          async pollLive() {
+          async pollLive(force = false) {
             // Receipt modal bersifat informasional — stok tetap boleh refresh.
-            if ((this.isCheckoutBusy() && !this.showReceiptModal) || document.hidden) {
+            // `force` dipakai tepat setelah checkout sukses: saat itu isProcessing
+            // masih true (reset di finally) sehingga guard biasa akan memblok.
+            if (! force && ((this.isCheckoutBusy() && !this.showReceiptModal) || document.hidden)) {
               return;
             }
 
@@ -1376,7 +1378,9 @@
               if (data.success) {
                 this.checkoutToken = null;
                 // Order sudah masuk — segarkan stok produk seketika.
-                this.pollLive();
+                // force=true karena isProcessing masih true di titik ini
+                // (baru direset di blok finally), agar guard tidak memblok.
+                this.pollLive(true);
                 const checkoutSnapshot = {
                   ...this.checkoutForm,
                 };
