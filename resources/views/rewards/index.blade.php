@@ -440,11 +440,11 @@
               :method="'POST'"
               id="rewardForm">
           @csrf
-          <div x-show="isEdit">
+          <template x-if="isEdit">
             <input type="hidden"
                    name="_method"
                    value="PUT">
-          </div>
+          </template>
           <div class="px-6 py-5 space-y-4">
             <!-- Name -->
             <div>
