@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\GeneralSetting;
+use App\Support\FeatureAccess;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +22,13 @@ class CheckAdminRole
 
         if (! $currentRoute) {
             return $next($request);
+        }
+
+        // Feature yang diblokir lewat .env (BLOCKED_FEATURES) ditolak untuk
+        // SEMUA role, termasuk Administrator — konsisten dengan sidebar yang
+        // menyembunyikan item feature tersebut.
+        if (FeatureAccess::isRouteBlocked($currentRoute)) {
+            abort(403, 'Fitur ini sedang dinonaktifkan.');
         }
 
         if (str_starts_with($currentRoute, 'admin.settings.daily-auth-code.')) {
