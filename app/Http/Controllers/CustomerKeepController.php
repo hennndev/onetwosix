@@ -26,6 +26,16 @@ class CustomerKeepController extends Controller
             $query->where('type', 'weekend_event');
         }
 
+        $scannedKeepId = $request->integer('scan_keep');
+
+        if ($scannedKeepId > 0) {
+            $query->whereKey($scannedKeepId)
+                ->when($request->filled('scan_item'), fn ($keepQuery) => $keepQuery->where('item_name', $request->string('scan_item')->toString()))
+                ->when($request->filled('scan_type'), fn ($keepQuery) => $keepQuery->where('type', $request->string('scan_type')->toString()))
+                ->when($request->filled('scan_quantity'), fn ($keepQuery) => $keepQuery->where('quantity', (float) $request->input('scan_quantity')))
+                ->when($request->filled('scan_unit'), fn ($keepQuery) => $keepQuery->where('unit', $request->string('scan_unit')->toString()));
+        }
+
         $keeps = $query->get();
 
         $totalActive = CustomerKeep::where('status', 'active')->count();
@@ -48,12 +58,14 @@ class CustomerKeepController extends Controller
         // Pre-processed for JavaScript (avoids arrow functions in @json blade directives)
         $todayCustomersData = $todayCustomers->map(fn ($c) => [
             'id' => $c->id,
+            'user_id' => $c->user_id,
             'name' => $c->profile?->name ?? $c->user?->name ?? 'Unknown',
             'code' => $c->customer_code,
         ])->values()->toArray();
 
         $allCustomersData = $allCustomers->map(fn ($c) => [
             'id' => $c->id,
+            'user_id' => $c->user_id,
             'name' => $c->profile?->name ?? $c->user?->name ?? 'Unknown',
             'code' => $c->customer_code,
         ])->values()->toArray();
@@ -72,6 +84,7 @@ class CustomerKeepController extends Controller
             'todayCustomersData',
             'allCustomersData',
             'tab',
+            'scannedKeepId',
             'todayType',
             'todayLabel'
         ));

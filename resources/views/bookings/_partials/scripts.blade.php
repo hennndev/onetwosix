@@ -37,6 +37,22 @@
       bookedIds: bookedIds,
       checkedInIds: checkedInIds,
 
+      searchBookingsByCustomerQr(payload) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('page');
+        url.searchParams.delete('search');
+        url.searchParams.delete('customer_id');
+        url.searchParams.delete('customer_user_id');
+
+        if (payload.id) {
+          url.searchParams.set('customer_id', String(payload.id));
+        } else {
+          url.searchParams.set('customer_user_id', String(payload.customer_id));
+        }
+
+        window.location.href = url.toString();
+      },
+
       openModal(tableId) {
         this.selectedTableId = tableId;
         const modal = document.getElementById('bookingModal');

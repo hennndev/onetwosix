@@ -43,6 +43,14 @@
     <!-- Step: Type Selection -->
     <div x-show="bookingStep === 'type'"
          class="px-6 pb-6">
+      <button type="button"
+              onclick="openQrScanner('pos-customer')"
+              class="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3v2H5v3H3V5zm13-2h3a2 2 0 012 2v3h-2V5h-3V3zM3 16h2v3h3v2H5a2 2 0 01-2-2v-3zm16 0h2v3a2 2 0 01-2 2h-3v-2h3v-3zM7 7h3v3H7V7zm7 0h3v3h-3V7z" />
+        </svg>
+        Scan QR Customer
+      </button>
       <div class="grid grid-cols-2 gap-3">
         <button @click="bookingStep = 'list'"
                 class="p-5 border-2 border-gray-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/50 transition group text-center">
@@ -150,6 +158,7 @@
             ];
           @endphp
           <button type="button"
+                  data-pos-booking-customer-id="{{ $session->customer_id }}"
                   @click="selectBookingSession({{ json_encode($sessionData) }})"
                   class="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-transparent hover:border-blue-300 hover:bg-blue-50/50 transition text-left">
             <div class="w-10 h-10 {{ $avatarBg }} rounded-full flex-shrink-0 flex items-center justify-center">
@@ -186,7 +195,8 @@
     <div x-show="bookingStep === 'walkin-customer'"
          style="display: none;">
       <div x-data="walkInCheckout()"
-           @walk-in-reset.window="reset()">
+           @walk-in-reset.window="reset()"
+           @pos-walk-in-customer-qr.window="selectCustomerFromQr($event.detail)">
         <div class="flex items-center justify-between px-6 pb-3">
           <span class="font-semibold text-gray-900">Customer Walk-in</span>
           <button @click="bookingStep = 'type'"
@@ -344,3 +354,8 @@
 
   </div>
 </div>
+
+<x-qr-scanner name="pos-customer"
+              title="Scan QR Customer POS"
+              event="pos-customer-qr-scanned"
+              expected="customer" />

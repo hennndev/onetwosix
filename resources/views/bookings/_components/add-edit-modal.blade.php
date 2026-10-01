@@ -4,7 +4,8 @@
 
 <div id="bookingModal"
      class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-     x-data="bookingModal()">
+     x-data="bookingModal()"
+     @booking-customer-qr-scanned.window="selectCustomerFromQr($event.detail.parsed)">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 
     <!-- Modal Header -->
@@ -152,9 +153,19 @@
 
       <!-- Customer Mode Select -->
       <div>
-        <label class="block text-sm font-semibold text-gray-700 mb-2">
-          Pilih / Tambah Customer <span class="text-red-500">*</span>
-        </label>
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <label class="block text-sm font-semibold text-gray-700">
+            Pilih / Tambah Customer <span class="text-red-500">*</span>
+          </label>
+          <button type="button"
+                  onclick="openQrScanner('booking-customer')"
+                  class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 transition hover:text-blue-800">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3v2H5v3H3V5zm13-2h3a2 2 0 012 2v3h-2V5h-3V3zM3 16h2v3h3v2H5a2 2 0 01-2-2v-3zm16 0h2v3a2 2 0 01-2 2h-3v-2h3v-3z" />
+            </svg>
+            Scan QR Customer
+          </button>
+        </div>
         <input type="hidden"
                name="customer_mode"
                :value="customerMode">
@@ -404,6 +415,11 @@
   </div>
 </div>
 
+<x-qr-scanner name="booking-customer"
+              title="Scan QR Customer Booking"
+              event="booking-customer-qr-scanned"
+              expected="customer" />
+
 <script>
   const bookingActiveSessionCustomerIds = @json($activeSessionCustomerIds ?? []);
 
@@ -411,6 +427,7 @@
       $customers->map(
               fn($c) => [
                   'id' => $c->id,
+                  'customer_id' => $c->customerUser?->id,
                   'name' => $c->name,
                   'phone' => $c->profile?->phone ?? '',
                   'email' => $c->email ?? '',
@@ -512,6 +529,20 @@
         } else {
           this.clearCustomerSelection();
         }
+      },
+
+      selectCustomerFromQr(payload) {
+        const customer = bookingCustomers.find(item =>
+          Number(item.id) === Number(payload.id) ||
+          Number(item.customer_id) === Number(payload.customer_id),
+        );
+
+        if (!customer) {
+          alert('Customer dari QR tidak ditemukan pada daftar customer.');
+          return;
+        }
+
+        this.chooseCustomer(customer);
       },
 
       clearCustomerSelection() {

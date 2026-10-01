@@ -2,6 +2,7 @@
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\DisplayMessageRequest;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -109,6 +110,28 @@ it('kalkulator sesi sadar-DP: 5.054.940 - DP 500.000 = 4.554.940', function () {
         ->and($totals['service_charge'])->toBe(500940.0)
         ->and(round($totals['subtotal'] + $totals['tax'] + $totals['service_charge'], 2))->toBe(5054940.0)
         ->and($totals['grand_total'])->toBe(4554940.0);
+});
+
+it('kalkulator sesi menambahkan tip message setelah displayed di luar potongan DP', function () {
+    [$booking, $session] = fredyFixture(adminUser());
+
+    DisplayMessageRequest::create([
+        'customer_id' => $session->customer_id,
+        'table_session_id' => $session->id,
+        'message' => 'Happy birthday',
+        'tip' => 25000,
+        'status' => 'displayed',
+    ]);
+
+    $totals = app(SessionBillingCalculator::class)->calculate(
+        $session->fresh()->load('orders.items.inventoryItem'),
+        0,
+        0,
+        (float) $booking->down_payment_amount,
+    );
+
+    expect($totals['display_tip'])->toBe(25000.0)
+        ->and($totals['grand_total'])->toBe(4579940.0);
 });
 
 it('tambah order jalur POS setelah DP: grand_total & sisa tetap net-DP (tidak menghidupkan DP)', function () {

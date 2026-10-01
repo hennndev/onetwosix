@@ -251,6 +251,52 @@ it('does not update billing song_tip when song request is stored (only on played
         ->and((float) $billing->grand_total)->toBe(100000.0);
 });
 
+it('adds song tip to the customer bill only after the song is played', function () {
+    $user = createSongRequestCustomer(['email' => 'played-tip@test.com']);
+    $session = createActiveSession($user);
+    $billing = createBillingForSession($session);
+
+    $songRequest = SongRequest::create([
+        'customer_user_id' => $user->customerUser->id,
+        'table_session_id' => $session->id,
+        'song_title' => 'Billable Song',
+        'artist' => 'Test Artist',
+        'tip' => 75000,
+        'status' => 'pending',
+    ]);
+
+    $songRequest->update(['status' => 'played']);
+
+    expect((float) $billing->fresh()->song_tip)->toBe(75000.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(175000.0)
+        ->and((float) $billing->fresh()->remaining_balance)->toBe(175000.0);
+
+    $songRequest->update(['status' => 'completed']);
+
+    expect((float) $billing->fresh()->song_tip)->toBe(75000.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(175000.0);
+});
+
+it('removes song tip from the customer bill when a played request is rejected', function () {
+    $user = createSongRequestCustomer(['email' => 'rejected-played-tip@test.com']);
+    $session = createActiveSession($user);
+    $billing = createBillingForSession($session);
+
+    $songRequest = SongRequest::create([
+        'customer_user_id' => $user->customerUser->id,
+        'table_session_id' => $session->id,
+        'song_title' => 'Rejected Song',
+        'artist' => 'Test Artist',
+        'tip' => 50000,
+        'status' => 'played',
+    ]);
+
+    $songRequest->update(['status' => 'rejected']);
+
+    expect((float) $billing->fresh()->song_tip)->toBe(0.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(100000.0);
+});
+
 it('does not accumulate song_tip in billing across multiple stored song requests', function () {
     $user = createSongRequestCustomer(['email' => 'multitip@test.com']);
     $session = createActiveSession($user);

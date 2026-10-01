@@ -1,6 +1,8 @@
 <x-app-layout title="Customer Keep">
   <div class="p-4 sm:p-6"
        x-data="keepManager()"
+       @bottle-qr-scanned.window="showScannedBottle($event.detail.parsed)"
+       @keep-customer-qr-scanned.window="selectCustomerFromQr($event.detail.parsed)"
        x-cloak>
 
     @if (session('success'))
@@ -33,16 +35,33 @@
           <p class="text-sm text-gray-500">Kelola minuman simpan customer</p>
         </div>
       </div>
-      <button @click="openAddModal()"
-              :disabled="todayCustomers.length === 0"
-              :class="todayCustomers.length === 0 ? 'opacity-40 cursor-not-allowed bg-slate-800' : 'bg-slate-800 hover:bg-slate-700'"
-              class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        Tambah Keep
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button"
+                onclick="openQrScanner('customer-keep-bottle')"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3v2H5v3H3V5zm13-2h3a2 2 0 012 2v3h-2V5h-3V3zM3 16h2v3h3v2H5a2 2 0 01-2-2v-3zm16 0h2v3a2 2 0 01-2 2h-3v-2h3v-3zM7 7h3v3H7V7zm7 0h3v3h-3V7zm-7 7h3v3H7v-3zm7 0h3v3h-3v-3z" />
+          </svg>
+          Scan QR Botol
+        </button>
+        <button @click="openAddModal()"
+                :disabled="todayCustomers.length === 0"
+                :class="todayCustomers.length === 0 ? 'opacity-40 cursor-not-allowed bg-slate-800' : 'bg-slate-800 hover:bg-slate-700'"
+                class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Tambah Keep
+        </button>
+      </div>
     </div>
+
+    @if ($scannedKeepId > 0)
+      <div class="mb-6 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm {{ $keeps->isNotEmpty() ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700' }}">
+        <span>{{ $keeps->isNotEmpty() ? 'Data botol hasil scan berhasil ditemukan.' : 'Data botol dari QR tidak ditemukan.' }}</span>
+        <a href="{{ route('admin.customer-keep.index') }}" class="shrink-0 font-semibold underline">Tampilkan semua</a>
+      </div>
+    @endif
 
     <!-- Today Booking Info -->
     @if (empty($todayCustomersData))
@@ -271,7 +290,14 @@
 
           <!-- Customer -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+            <div class="mb-1 flex items-center justify-between gap-3">
+              <label class="block text-sm font-medium text-gray-700">Customer</label>
+              <button type="button"
+                      onclick="openQrScanner('customer-keep-customer')"
+                      class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 transition hover:text-blue-800">
+                Scan QR Customer
+              </button>
+            </div>
             <select name="customer_user_id"
                     x-model="form.customer_user_id"
                     required
@@ -410,6 +436,15 @@
       </div>
     </div>
 
+    <x-qr-scanner name="customer-keep-bottle"
+                  title="Scan QR Botol Keep"
+                  event="bottle-qr-scanned"
+                  expected="bottle" />
+    <x-qr-scanner name="customer-keep-customer"
+                  title="Scan QR Customer"
+                  event="keep-customer-qr-scanned"
+                  expected="customer" />
+
   </div>
 
   @push('scripts')
@@ -467,6 +502,31 @@
           },
           closeModal() {
             this.showModal = false;
+          },
+          showScannedBottle(payload) {
+            const url = new URL('{{ route('admin.customer-keep.index') }}', window.location.origin);
+            url.searchParams.set('scan_keep', String(payload.id));
+            url.searchParams.set('scan_item', payload.item_name);
+            url.searchParams.set('scan_type', payload.type);
+            url.searchParams.set('scan_quantity', String(payload.quantity));
+            url.searchParams.set('scan_unit', payload.unit);
+            window.location.href = url.toString();
+          },
+          selectCustomerFromQr(payload) {
+            const customers = this.isEdit ? this.allCustomers : this.todayCustomers;
+            const customer = customers.find(item =>
+              Number(item.id) === Number(payload.customer_id) ||
+              Number(item.user_id) === Number(payload.id),
+            );
+
+            if (!customer) {
+              alert(this.isEdit
+                ? 'Customer dari QR tidak ditemukan.'
+                : 'Customer dari QR tidak memiliki booking hari ini.');
+              return;
+            }
+
+            this.form.customer_user_id = String(customer.id);
           },
           confirmDelete(id, name) {
             this.deleteItemName = name;
