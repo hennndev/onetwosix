@@ -32,6 +32,20 @@ class CheckAdminRole
         }
 
         if (str_starts_with($currentRoute, 'admin.settings.daily-auth-code.')) {
+            // Endpoint workflow POS (dipakai tombol "Request Auth Code" &
+            // validasi kode saat checkout): tidak mengekspos kode apa pun —
+            // verify hanya membandingkan, send-email mengirim ke tujuan yang
+            // dikonfigurasi. Bebas untuk semua user area admin; kalau tidak,
+            // kasir selalu 403 "Akses ditolak" saat minta/validasi kode.
+            if (in_array($currentRoute, [
+                'admin.settings.daily-auth-code.verify',
+                'admin.settings.daily-auth-code.send-email',
+            ], true)) {
+                return $next($request);
+            }
+
+            // Endpoint manajemen kode (lihat kode, regenerate, override):
+            // tetap terbatas Administrator + email whitelist.
             if ($user->hasRole('Administrator') && GeneralSetting::instance()->allowsDailyAuthCodeAccess($user->email)) {
                 return $next($request);
             }

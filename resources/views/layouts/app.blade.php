@@ -57,7 +57,11 @@
       @include('layouts.top-spender-banner')
 
       <!-- Page Content -->
-      <main class="flex-1 overflow-y-auto">
+      <!-- overscroll-contain: cegah scroll-chaining ke body saat mentok.
+           will-change-transform: promosikan scroller ke layer komposit sendiri —
+           work-around bug Chromium paint-layer mati (halaman jadi blank putih)
+           saat scroll di halaman panjang dalam shell h-screen overflow-hidden. -->
+      <main class="flex-1 overflow-y-auto overscroll-contain will-change-transform">
         {{ $slot }}
       </main>
     </div>
