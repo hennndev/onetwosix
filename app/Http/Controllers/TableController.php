@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\GeneralSetting;
 use App\Models\Tabel;
 use App\Models\TableSession;
+use App\Services\SessionTipService;
 use App\Support\RealtimeTopSpenderBanner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -16,6 +17,8 @@ use Illuminate\Support\Str;
 
 class TableController extends Controller
 {
+    public function __construct(protected SessionTipService $sessionTipService) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -214,6 +217,7 @@ class TableController extends Controller
         $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
         $grandTotalBeforeDownPayment = max($discountBaseTotal - $discountAmount, 0);
         $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
+        $tips = $this->sessionTipService->calculate($session);
 
         return [
             'orders_total' => $ordersTotal,
@@ -226,9 +230,11 @@ class TableController extends Controller
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,
             'tax' => $tax,
+            'song_tip' => $tips['song_tip'],
+            'display_tip' => $tips['display_tip'],
             'down_payment_amount' => $downPaymentAmount,
             'grand_total_before_down_payment' => $grandTotalBeforeDownPayment,
-            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0) + $tips['tip_total'],
         ];
     }
 

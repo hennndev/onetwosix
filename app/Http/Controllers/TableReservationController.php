@@ -18,6 +18,7 @@ use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
 use App\Services\PrinterService;
+use App\Services\SessionTipService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -36,6 +37,7 @@ class TableReservationController extends Controller
         protected PrinterService $printerService,
         protected \App\Services\PosStockConsumer $posStockConsumer,
         protected \App\Services\OrderNumberGenerator $orderNumberGenerator,
+        protected SessionTipService $sessionTipService,
     ) {}
 
     public function index(Request $request)
@@ -44,7 +46,15 @@ class TableReservationController extends Controller
 
         $this->reconcileTableStatuses();
 
-        $query = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing']);
+        $requestedCustomerId = $request->integer('customer_id');
+        $scannedCustomerUserId = $request->integer('customer_user_id');
+        $isQrCustomerFilterActive = $requestedCustomerId > 0 || $scannedCustomerUserId > 0;
+        $scannedCustomerId = $requestedCustomerId > 0
+            ? $requestedCustomerId
+            : (int) CustomerUser::query()->whereKey($scannedCustomerUserId)->value('user_id');
+
+        $query = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing'])
+            ->when($isQrCustomerFilterActive, fn ($bookingQuery) => $bookingQuery->where('customer_id', $scannedCustomerId ?: -1));
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -136,7 +146,9 @@ class TableReservationController extends Controller
             $bookings = $bookings->get();
         }
 
-        $areaScope = fn ($q) => $q->when($activeAreaId, fn ($sub) => $sub->whereHas('table.area', fn ($t) => $t->where('id', $activeAreaId)));
+        $areaScope = fn ($q) => $q
+            ->when($activeAreaId, fn ($sub) => $sub->whereHas('table.area', fn ($t) => $t->where('id', $activeAreaId)))
+            ->when($isQrCustomerFilterActive, fn ($sub) => $sub->where('customer_id', $scannedCustomerId ?: -1));
 
         $totalBookings = TableReservation::tap($areaScope)->count();
         $pendingBookings = TableReservation::where('status', 'pending')->tap($areaScope)->count();
@@ -149,7 +161,12 @@ class TableReservationController extends Controller
         $tables = Tabel::with('area')->where('is_active', true)
             ->when($activeAreaId, fn ($q) => $q->where('area_id', $activeAreaId))
             ->orderBy('table_number')->get();
-        $customers = User::whereHas('customerUser')->with(['profile', 'customerUser'])->orderBy('name')->get();
+        $customers = User::whereHas('customerUser')
+            ->with(['profile', 'customerUser'])
+            ->when($isQrCustomerFilterActive, fn ($customerQuery) => $customerQuery->whereKey($scannedCustomerId ?: -1))
+            ->orderBy('name')
+            ->get();
+        $scannedCustomer = $isQrCustomerFilterActive ? $customers->first() : null;
         $user = auth()->user();
         $areas = $user ? $user->getAccessibleAreas() : \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
 
@@ -180,6 +197,7 @@ class TableReservationController extends Controller
         ])
             ->where('status', 'active')
             ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
+            ->when($isQrCustomerFilterActive, fn ($q) => $q->where('customer_id', $scannedCustomerId ?: -1))
             ->orderBy('checked_in_at')
             ->get();
 
@@ -272,10 +290,11 @@ class TableReservationController extends Controller
         $historyTotalCount = TableReservation::whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed'])->tap($areaScope)->count();
         $historyCompletedCount = TableReservation::where('status', 'completed')->tap($areaScope)->count();
         $historyForceClosedCount = TableReservation::where('status', 'force_closed')->tap($areaScope)->count();
-        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q) use ($activeAreaId): void {
-            $q->whereHas('reservation', function ($q2) use ($activeAreaId): void {
+        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q) use ($activeAreaId, $isQrCustomerFilterActive, $scannedCustomerId): void {
+            $q->whereHas('reservation', function ($q2) use ($activeAreaId, $isQrCustomerFilterActive, $scannedCustomerId): void {
                 $q2->whereIn('status', ['completed', 'force_closed'])
-                    ->when($activeAreaId, fn ($t) => $t->whereHas('table.area', fn ($a) => $a->where('id', $activeAreaId)));
+                    ->when($activeAreaId, fn ($t) => $t->whereHas('table.area', fn ($a) => $a->where('id', $activeAreaId)))
+                    ->when($isQrCustomerFilterActive, fn ($reservationQuery) => $reservationQuery->where('customer_id', $scannedCustomerId ?: -1));
             });
         })->sum('grand_total');
         $historyAvgSpending = $historyCompletedCount > 0
@@ -290,6 +309,7 @@ class TableReservationController extends Controller
         $activeSessionCustomerIds = TableSession::query()
             ->where('status', 'active')
             ->when($activeAreaId, fn ($q) => $q->whereHas('table', fn ($t) => $t->where('area_id', $activeAreaId)))
+            ->when($isQrCustomerFilterActive, fn ($q) => $q->where('customer_id', $scannedCustomerId ?: -1))
             ->pluck('customer_id')
             ->unique()
             ->values();
@@ -351,6 +371,9 @@ class TableReservationController extends Controller
             'historyTotalRevenue',
             'historyAvgSpending',
             'activeSessionCustomerIds',
+            'scannedCustomer',
+            'scannedCustomerId',
+            'scannedCustomerUserId',
             'generalSettings'
         ));
     }
@@ -1054,6 +1077,8 @@ class TableReservationController extends Controller
                     'tax' => (float) $totals['tax'],
                     'service_charge_percentage' => (float) $totals['service_charge_percentage'],
                     'service_charge' => (float) $totals['service_charge'],
+                    'song_tip' => (float) $totals['song_tip'],
+                    'display_tip' => (float) $totals['display_tip'],
                     'grand_total' => (float) $totals['grand_total'],
                     'paid_amount' => $paidAmount,
                     'remaining_balance' => $remainingBalance,
@@ -1536,6 +1561,7 @@ class TableReservationController extends Controller
         $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
         $grandTotalBeforeDownPayment = max($discountBaseTotal - $discountAmount, 0);
         $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
+        $tips = $this->sessionTipService->calculate($session);
 
         return [
             'orders_total' => $ordersTotal,
@@ -1548,9 +1574,11 @@ class TableReservationController extends Controller
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,
             'tax' => $tax,
+            'song_tip' => $tips['song_tip'],
+            'display_tip' => $tips['display_tip'],
             'down_payment_amount' => $downPaymentAmount,
             'grand_total_before_down_payment' => $grandTotalBeforeDownPayment,
-            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0) + $tips['tip_total'],
         ];
     }
 
@@ -2577,6 +2605,8 @@ class TableReservationController extends Controller
                     'tax' => (float) $totals['tax'],
                     'service_charge_percentage' => (float) $totals['service_charge_percentage'],
                     'service_charge' => (float) $totals['service_charge'],
+                    'song_tip' => (float) $totals['song_tip'],
+                    'display_tip' => (float) $totals['display_tip'],
                     'grand_total' => (float) $totals['grand_total'],
                 ]);
 

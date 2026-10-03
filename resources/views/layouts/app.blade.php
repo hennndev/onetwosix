@@ -7,7 +7,8 @@
         content="width=device-width, initial-scale=1">
   <meta name="csrf-token"
         content="{{ csrf_token() }}">
-  <meta name="robots" content="noindex, nofollow">
+  <meta name="robots"
+        content="noindex, nofollow">
 
   <title>{{ isset($title) && filled($title) ? $title . ' — ' . config('app.name', '126 Club') : config('app.name', '126 Club') }}</title>
 
@@ -37,9 +38,9 @@
        @keydown.escape.window="sidebarOpen = false; localStorage.setItem('sidebarOpen', false)">
     <!-- Sidebar: off-canvas overlay di mobile, inline di desktop -->
     <aside :class="[
-      'fixed z-40 inset-y-0 left-0 overflow-hidden transition-all duration-300 lg:relative lg:inset-auto',
-      sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-      sidebarOpen ? 'w-64' : 'w-0 lg:w-64'
+        'fixed z-40 inset-y-0 left-0 overflow-hidden transition-all duration-300 lg:relative lg:inset-auto',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        sidebarOpen ? 'w-64' : 'w-0 lg:w-64'
     ]">
       @include('layouts.sidebar')
     </aside>
@@ -57,11 +58,12 @@
       @include('layouts.top-spender-banner')
 
       <!-- Page Content -->
-      <!-- overscroll-contain: cegah scroll-chaining ke body saat mentok.
-           will-change-transform: promosikan scroller ke layer komposit sendiri —
-           work-around bug Chromium paint-layer mati (halaman jadi blank putih)
-           saat scroll di halaman panjang dalam shell h-screen overflow-hidden. -->
-      <main class="flex-1 overflow-y-auto overscroll-contain will-change-transform">
+      <!-- overscroll-contain: cegah scroll-chaining/rubber-band ke body saat
+           scroll mentok (penyebab layar putih di bawah shell h-screen).
+           JANGAN menambah transform/will-change/filter di sini: itu membuat
+           <main> menjadi containing block bagi position:fixed → semua modal
+           melekat ke area scroll, bukan viewport. -->
+      <main class="flex-1 overflow-y-auto overscroll-contain">
         {{ $slot }}
       </main>
     </div>

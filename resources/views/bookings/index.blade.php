@@ -15,7 +15,8 @@
   @endphp
 
   <div class="p-4 sm:p-6"
-       x-data="bookingPage(@js($tablesJson), @js($activeBookingsByTable->keys()->values()), @js(collect()))">
+       x-data="bookingPage(@js($tablesJson), @js($activeBookingsByTable->keys()->values()), @js(collect()))"
+       @booking-search-customer-qr.window="searchBookingsByCustomerQr($event.detail.parsed)">
 
     @if (session('success'))
       <div class="mb-4 px-4 py-3 bg-green-100 border border-green-400 text-green-700 rounded-lg text-sm">
@@ -40,6 +41,20 @@
     @endif
 
     @include('bookings._partials.header')
+
+    @if ($scannedCustomerId > 0 || $scannedCustomerUserId > 0)
+      <div class="mb-6 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm {{ $scannedCustomer ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-700' }}">
+        <span>
+          @if ($scannedCustomer)
+            Menampilkan booking milik <strong>{{ $scannedCustomer->name }}</strong> ({{ $bookings->count() }} data).
+          @else
+            Customer dari QR tidak ditemukan.
+          @endif
+        </span>
+        <a href="{{ route('admin.bookings.index', array_filter(['tab' => $tab, 'area_id' => $activeAreaId])) }}"
+           class="shrink-0 font-semibold underline">Hapus filter</a>
+      </div>
+    @endif
 
     <!-- Area Tabs (multi-area header) -->
     @if (($areas ?? collect())->count() > 1 && (! session('active_area_id') || session('active_area_id') === 'all'))
@@ -82,6 +97,10 @@
     @include('bookings._components.move-table-modal')
     @include('bookings._components.order-history-modal')
     @include('bookings._components.active-delete-confirmation-modal')
+    <x-qr-scanner name="booking-search-customer"
+                  title="Cari Booking dari QR Customer"
+                  event="booking-search-customer-qr"
+                  expected="customer" />
   </div>
 
   @push('scripts')

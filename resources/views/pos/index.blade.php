@@ -3,6 +3,7 @@
        x-data="posApp"
        x-cloak
        @walk-in-proceed.window="receiveWalkIn($event.detail)"
+       @pos-customer-qr-scanned.window="selectCustomerFromQr($event.detail.parsed)"
        @pos-toast.window="showToastMessage($event.detail.message, $event.detail.type)">
 
     <!-- Products Section -->
@@ -131,6 +132,37 @@
             this.walkInSelected = c;
             this.walkInFoundCustomers = [];
             this.walkInSearch = '';
+          },
+
+          async selectCustomerFromQr(payload) {
+            const lookup = payload.phone || payload.name;
+
+            if (!lookup) {
+              this.toast('QR customer tidak memiliki nama atau nomor telepon.', 'error');
+              return;
+            }
+
+            this.walkInSearching = true;
+
+            try {
+              const response = await fetch(
+                posRoutes.walkInSearchCustomers + '?q=' + encodeURIComponent(lookup),
+                { headers: { Accept: 'application/json' } },
+              );
+              const data = await response.json();
+              const customer = (data.customers ?? []).find(item => Number(item.id) === Number(payload.id));
+
+              if (!customer) {
+                this.toast('Customer dari QR tidak ditemukan atau sedang aktif di meja lain.', 'error');
+                return;
+              }
+
+              this.selectWalkInCustomer(customer);
+            } catch (error) {
+              this.toast('Gagal mencari customer dari QR.', 'error');
+            } finally {
+              this.walkInSearching = false;
+            }
           },
 
           async createWalkInCustomer() {
@@ -689,6 +721,19 @@
             this.showCustomerTypeModal = false;
             this.bookingStep = 'type';
             this.showCheckoutModal = true;
+          },
+
+          selectCustomerFromQr(payload) {
+            const bookingButton = Array.from(document.querySelectorAll('[data-pos-booking-customer-id]'))
+              .find(button => Number(button.dataset.posBookingCustomerId) === Number(payload.id));
+
+            if (bookingButton) {
+              bookingButton.click();
+              return;
+            }
+
+            this.bookingStep = 'walkin-customer';
+            window.dispatchEvent(new CustomEvent('pos-walk-in-customer-qr', { detail: payload }));
           },
 
           async assignWaiterFromPos(waiterId) {

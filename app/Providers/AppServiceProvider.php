@@ -6,6 +6,8 @@ use App\Models\DisplayMessageRequest;
 use App\Models\SongRequest;
 use App\Models\TableReservation;
 use App\Models\User;
+use App\Observers\DisplayMessageRequestObserver;
+use App\Observers\SongRequestObserver;
 use App\Services\AccurateService;
 use App\Support\RealtimeTopSpenderBanner;
 use Illuminate\Support\Facades\Gate;
@@ -33,6 +35,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        SongRequest::observe(SongRequestObserver::class);
+        DisplayMessageRequest::observe(DisplayMessageRequestObserver::class);
+
         Gate::define('viewApiDocs', fn (?User $user = null): bool => app()->isLocal()
             || app()->runningUnitTests()
             || $user?->hasRole('Administrator') === true);
