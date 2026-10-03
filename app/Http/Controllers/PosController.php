@@ -989,6 +989,8 @@ class PosController extends Controller
                         'tax' => (float) $sessionTotals['tax'],
                         'service_charge_percentage' => (float) $sessionTotals['service_charge_percentage'],
                         'service_charge' => (float) $sessionTotals['service_charge'],
+                        'song_tip' => (float) $sessionTotals['song_tip'],
+                        'display_tip' => (float) $sessionTotals['display_tip'],
                         'grand_total' => (float) $sessionTotals['grand_total'],
                         'foc_comp_payment_method' => $focCompPaymentMethod,
                     ]);

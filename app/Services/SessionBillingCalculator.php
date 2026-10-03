@@ -7,6 +7,8 @@ use App\Models\TableSession;
 
 class SessionBillingCalculator
 {
+    public function __construct(protected SessionTipService $sessionTipService) {}
+
     /** @return array<string, float> */
     /**
      * Hitung total tagihan sesi. $downPaymentAmount opsional: DP booking
@@ -56,6 +58,7 @@ class SessionBillingCalculator
         $discountAmount = min(max($discountAmount, 0), $beforeDiscount);
         $grandTotalBeforeDownPayment = max($beforeDiscount - $discountAmount, 0);
         $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
+        $tips = $this->sessionTipService->calculate($session);
 
         return [
             'orders_total' => $ordersTotal,
@@ -65,7 +68,9 @@ class SessionBillingCalculator
             'tax' => $tax,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceCharge,
-            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
+            'song_tip' => $tips['song_tip'],
+            'display_tip' => $tips['display_tip'],
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0) + $tips['tip_total'],
         ];
     }
 }

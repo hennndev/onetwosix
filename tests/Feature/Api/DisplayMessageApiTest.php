@@ -232,6 +232,50 @@ it('does not update billing display_tip when display message is stored (only on 
         ->and((float) $billing->grand_total)->toBe(100000.0);
 });
 
+it('adds display tip to the customer bill only after the message is displayed', function () {
+    $user = createDisplayMessageCustomer(['email' => 'displayed-tip@test.com']);
+    $session = createDmActiveSession($user);
+    $billing = createDmBillingForSession($session);
+
+    $displayMessage = DisplayMessageRequest::create([
+        'customer_id' => $user->id,
+        'table_session_id' => $session->id,
+        'message' => 'Billable message',
+        'tip' => 75000,
+        'status' => 'pending',
+    ]);
+
+    $displayMessage->update(['status' => 'displayed']);
+
+    expect((float) $billing->fresh()->display_tip)->toBe(75000.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(175000.0)
+        ->and((float) $billing->fresh()->remaining_balance)->toBe(175000.0);
+
+    $displayMessage->update(['status' => 'completed']);
+
+    expect((float) $billing->fresh()->display_tip)->toBe(75000.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(175000.0);
+});
+
+it('removes display tip from the customer bill when a displayed request is cancelled', function () {
+    $user = createDisplayMessageCustomer(['email' => 'cancelled-displayed-tip@test.com']);
+    $session = createDmActiveSession($user);
+    $billing = createDmBillingForSession($session);
+
+    $displayMessage = DisplayMessageRequest::create([
+        'customer_id' => $user->id,
+        'table_session_id' => $session->id,
+        'message' => 'Cancelled message',
+        'tip' => 50000,
+        'status' => 'displayed',
+    ]);
+
+    $displayMessage->update(['status' => 'cancelled']);
+
+    expect((float) $billing->fresh()->display_tip)->toBe(0.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(100000.0);
+});
+
 it('does not accumulate display_tip in billing across multiple stored display messages', function () {
     $user = createDisplayMessageCustomer(['email' => 'dm-accum@test.com']);
     $session = createDmActiveSession($user);
